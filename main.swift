@@ -339,11 +339,12 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         config.queueDepth = 5
         config.capturesAudio = true
         config.showsCursor = true
-        #if compiler(>=5.9)
-        if #available(macOS 14.0, *) {
-            config.capturesMouseClicks = currentSettings.showsClicks
+        if config.responds(to: Selector(("setShowsClicks:"))) {
+            config.setValue(currentSettings.showsClicks, forKey: "showsClicks")
         }
-        #endif
+        if config.responds(to: Selector(("setCapturesMouseClicks:"))) {
+            config.setValue(currentSettings.showsClicks, forKey: "capturesMouseClicks")
+        }
         config.pixelFormat = kCVPixelFormatType_32BGRA
 
         do {
@@ -877,7 +878,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let micsMenu = NSMenu(title: "Microphones")
 
         // Find microphones
-        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone], mediaType: .audio, position: .unspecified)
+        let deviceType = AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeBuiltInMicrophone")
+        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [deviceType], mediaType: .audio, position: .unspecified)
         for device in session.devices {
             let item = NSMenuItem(title: device.localizedName, action: #selector(audioChanged(_:)), keyEquivalent: "")
             item.identifier = NSUserInterfaceItemIdentifier(device.uniqueID)
