@@ -6,6 +6,7 @@
 # =============================================================================
 
 APP_NAME="Rec"
+APP_VERSION="1.0"
 REPO_RAW="." # Use current directory for now, but usually from github
 
 # ---- Terminal styling ------------------------------------
@@ -43,20 +44,30 @@ ok "Build tools ready."
 printf "\n"
 
 # ---- Step 2: Workspace ----------------------------------------------------
-step "Preparing workspace…"
+step "Preparing a clean workspace…"
 BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
-# Download main.swift from github if run directly from url, otherwise fallback to local
-if [ -f "main.swift" ]; then
-    cp main.swift "$BUILD_DIR/"
-else
-    # if you want remote fetching later add curl here
-    fail "main.swift not found in current directory."
-    exit 1
-fi
 cd "$BUILD_DIR" || { fail "Could not create workspace."; exit 1; }
 ok "Workspace ready."
-printf "\n"
+printf "
+"
+
+# ---- Step 3: Download the source -----------------------------------------
+step "Downloading Rec source…"
+if ! curl -fsSL "https://raw.githubusercontent.com/arunofhyd/Rec/main/main.swift" -o main.swift 2>/dev/null; then
+    if [ -f "$OLDPWD/main.swift" ]; then
+        cp "$OLDPWD/main.swift" .
+    else
+        fail "Could not download the app source."
+        printf "  ${GREY}Check your internet connection and try again.${NC}
+
+"
+        exit 1
+    fi
+fi
+ok "Source ready."
+printf "
+"
 
 
 # ---- Step 3: Generate the app icon ---------------------------------------
@@ -135,8 +146,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>$APP_NAME</string>
   <key>CFBundleIdentifier</key><string>com.local.screenrecorder</string>
-  <key>CFBundleVersion</key><string>1.0</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>$APP_VERSION</string>
+  <key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
   <key>CFBundleExecutable</key><string>$APP_NAME</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>

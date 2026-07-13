@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "changelog": [
+    {
+      "version": "1.0",
+      "date": "2024-11-20",
+      "changes": [
+        "Initial release of Rec.",
+        "Added native ScreenCaptureKit and AVAssetWriter recording.",
+        "Added internal audio and microphone capture.",
+        "Added floating control panel and countdown timer."
+      ]
+    }
+  ]
+}

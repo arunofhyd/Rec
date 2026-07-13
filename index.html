@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- SEO Meta Tags -->
+    <title>Rec | Native Screen & Audio Recorder for macOS</title>
+    <meta name="description" content="Rec is a native macOS screen recorder and internal audio recorder. Seamlessly record your entire screen, select a specific region, or record a specific app window with high quality video encoding and no external drivers.">
+    <meta name="keywords" content="macOS screen recorder, internal audio recorder, native screen recording, mac app, screen capture kit, screen recorder with internal audio">
+    <meta name="author" content="Arun Thomas">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Rec | Native Screen & Audio Recorder for macOS">
+    <meta property="og:description" content="A native macOS screen and audio recorder. Capture your screen and system audio perfectly.">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:title" content="Rec | Native Screen & Audio Recorder for macOS">
+    <meta property="twitter:description" content="A delightfully simple native screen and internal audio recorder for macOS.">
+
+    <script>
+        const APP_VERSION = "1.0";
+    </script>
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Rec",
+      "operatingSystem": "macOS",
+      "applicationCategory": "UtilitiesApplication",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "description": "A delightfully simple native screen and internal audio recorder for macOS.",
+      "author": { "@type": "Person", "name": "Arun Thomas" },
+      "softwareVersion": "Latest"
+    }
+    </script>
+
+    <link rel="icon" href="logo.svg" type="image/svg+xml">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        if (history.scrollRestoration) { history.scrollRestoration = 'manual'; }
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            red: '#FF3B30',
+                            deep: '#CC2A22',
+                            ink: '#0b0d10',
+                            panel: '#15181d'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+        function copyEmail(btn) {
+            navigator.clipboard.writeText('arunthomas04042001@gmail.com').then(() => {
+                const original = "Contact Developer";
+                btn.innerText = 'Email Copied!';
+                btn.classList.add('text-brand-red');
+                setTimeout(() => { btn.innerText = original; btn.classList.remove('text-brand-red'); }, 2000);
+            });
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap');
+        body { background-color: #0b0d10; color: #e6e8eb; }
+        .gradient-text {
+            background: linear-gradient(90deg, #FF3B30, #FF6B60);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .typing-cursor::after {
+            content: '|'; margin-left: 2px; animation: blink 1s step-end infinite;
+            color: #FF3B30; -webkit-text-fill-color: #FF3B30;
+        }
+        @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
+        .pill { animation: pulse-glow 3s infinite ease-in-out; }
+        @keyframes pulse-glow {
+            0%,100% { box-shadow: 0 0 5px rgba(255,59,48,0.2); border-color: rgba(255,59,48,0.3); }
+            50% { box-shadow: 0 0 20px rgba(255,59,48,0.55); border-color: rgba(255,59,48,0.8); }
+        }
+        .copied-toast { transition: opacity .3s, transform .3s; }
+    </style>
+</head>
+<body class="antialiased selection:bg-brand-red selection:text-white">
+
+    <!-- Navbar -->
+    <nav class="fixed w-full z-50 bg-brand-ink/90 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <img src="logo.svg" alt="Rec Logo" width="28" height="28">
+                <span class="font-bold text-xl tracking-tight text-white">Rec</span>
+            </div>
+            <div class="hidden md:flex gap-8 text-sm font-medium text-gray-400">
+                <a href="#features" class="hover:text-brand-red transition-colors">Features</a>
+                <a href="#launch" class="version-label hover:text-brand-red transition-colors">Latest Version</a>
+                <a href="#how-it-works" class="hover:text-brand-red transition-colors">How it Works</a>
+                <a href="#install" class="hover:text-brand-red transition-colors">Install</a>
+                <a href="#changelog" class="hover:text-brand-red transition-colors">Changelog</a>
+            </div>
+            <a href="install-rec.command" download
+               class="bg-brand-red text-white px-4 py-1.5 rounded-md text-sm font-semibold hover:bg-brand-deep transition-all shadow-[0_0_10px_rgba(255,59,48,0.35)]">
+               Download
+            </a>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="pt-28 pb-16 px-6 max-w-7xl mx-auto text-center">
+        <div id="version-pill" class="pill inline-block px-3 py-1 mb-6 rounded-full bg-brand-red/10 border border-brand-red/30 text-brand-red text-xs font-mono">
+            Latest Version
+        </div>
+
+        <h1 class="text-5xl md:text-7xl font-bold mb-6 tracking-tight">
+            Record anything.<br>
+            <span id="typing-text" class="gradient-text typing-cursor">Yours alone.</span>
+        </h1>
+        <p class="text-xl text-gray-400 mb-4 max-w-2xl mx-auto leading-relaxed">
+            A delightfully simple native screen and internal audio recorder for macOS. No third-party drivers needed.
+        </p>
+        <p class="text-xl font-bold text-gray-300 mb-6 max-w-2xl mx-auto">
+            100% native. Captured locally on your Mac.
+        </p>
+        <p class="text-sm font-semibold text-brand-red mb-10 tracking-widest flex items-center justify-center gap-2">
+            MADE FOR
+            <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.127 3.675-.552 9.127 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
+            macOS
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <a href="install-rec.command" download class="bg-brand-red text-white px-8 py-3 rounded-lg font-bold hover:bg-brand-deep transition-all shadow-[0_0_20px_rgba(255,59,48,0.4)]">
+                Download Installer
+            </a>
+            <a href="#how-it-works" class="text-gray-400 hover:text-white px-6 py-3 transition-colors flex items-center gap-2">
+                <span>See how it works</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </a>
+        </div>
+
+        </section>
+
+    <!-- Features -->
+    <section id="features" class="py-20 bg-black/20">
+        <div class="max-w-6xl mx-auto px-6">
+            <h2 class="text-3xl font-bold mb-12 text-center">Why use Rec?</h2>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🚀</div>
+                    <h3 class="text-xl font-bold mb-2">Native & Fast</h3>
+                    <p class="text-gray-400">Built with Apple's ScreenCaptureKit and AVFoundation. Directly encodes to .mov using hardware acceleration.</p>
+                </div>
+                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🔊</div>
+                    <h3 class="text-xl font-bold mb-2">Internal Audio</h3>
+                    <p class="text-gray-400">Seamlessly captures your Mac's internal audio right alongside your video feed. No third-party drivers or loopback extensions required.</p>
+                </div>
+                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🎯</div>
+                    <h3 class="text-xl font-bold mb-2">Multiple Modes</h3>
+                    <p class="text-gray-400">Record your entire screen, select a specific region, or focus exclusively on a specific application window.</p>
+                </div>
+                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">⚙️</div>
+                    <h3 class="text-xl font-bold mb-2">Custom Quality</h3>
+                    <p class="text-gray-400">Adjust your Framerate (30 or 60 FPS), Resolution (Native Retina, 1080p, or 720p), and set the target Video Bitrate.</p>
+                </div>
+                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">⏱️</div>
+                    <h3 class="text-xl font-bold mb-2">Countdown Timer</h3>
+                    <p class="text-gray-400">Set a 3 or 5-second countdown delay before the recording officially begins, giving you time to prepare your screen.</p>
+                </div>
+                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🪟</div>
+                    <h3 class="text-xl font-bold mb-2">Floating Controls</h3>
+                    <p class="text-gray-400">An unobtrusive floating control panel gives you quick access to start and stop recordings and automatically hides from the final video.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How it works -->
+    <!-- How it Works -->
+    <section id="how-it-works" class="py-20 px-6">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold mb-16 text-center">How it works</h2>
+            <div class="space-y-12">
+                <div class="flex gap-6">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-brand-ink border border-white/20 flex items-center justify-center font-bold text-lg">1</div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">Select your target</h3>
+                        <p class="text-gray-400">Choose to record your entire screen, a specific app, or click-and-drag to capture a precise region.</p>
+                    </div>
+                </div>
+                <div class="flex gap-6">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-brand-red text-white flex items-center justify-center font-bold text-lg">2</div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2 text-brand-red">Hit Record</h3>
+                        <p class="text-gray-400">A clean countdown timer prepares you for the take. The floating control panel will automatically hide from your footage.</p>
+                    </div>
+                </div>
+                <div class="flex gap-6">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-brand-ink border border-white/20 flex items-center justify-center font-bold text-lg">3</div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">Save Instantly</h3>
+                        <p class="text-gray-400">Click the stop button to finish. Your recording is instantly saved as a high-quality .mov file directly to your Downloads folder.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Launch Notes -->
+    <section id="launch" class="py-20 px-6 border-y border-white/5 bg-gradient-to-b from-brand-red/5 to-transparent">
+        <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-12">
+                <span class="version-badge inline-block px-3 py-1 mb-4 rounded-full bg-brand-red/10 border border-brand-red/30 text-brand-red text-xs font-mono">🎉 Latest Release</span>
+                <h2 class="text-3xl font-bold mb-4">Say hello to Rec</h2>
+                <p class="text-gray-400 max-w-2xl mx-auto leading-relaxed">
+                    Rec is a beautifully simple, lightweight alternative to complex screen recording suites. It gets out of your way and does one thing exceptionally well: <span class="text-white font-semibold">native, high-quality screen and audio capture without the fuss.</span>
+                </p>
+            </div>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
+                    <div class="text-2xl mb-3">🔐</div>
+                    <h3 class="font-bold text-lg mb-2">Internal Audio without the drivers</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Most screen recorders require you to install messy third-party loopback extensions just to capture system audio. Rec uses modern macOS APIs to capture it natively.</p>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
+                    <div class="text-2xl mb-3">🎚️</div>
+                    <h3 class="font-bold text-lg mb-2">Capture exactly what you need</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Record your entire screen, click and drag to select a specific region, or lock the recording to a specific app window. The choice is yours.</p>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
+                    <div class="text-2xl mb-3">🛡️</div>
+                    <h3 class="font-bold text-lg mb-2">Floating, out-of-the-way UI</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">A sleek floating control panel lets you start, stop, and configure recordings. Best of all, it automatically hides itself from your final video.</p>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
+                    <div class="text-2xl mb-3">🪶</div>
+                    <h3 class="font-bold text-lg mb-2">Customizable Quality</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Adjust your framerate, set a countdown timer, and choose between Native Retina, 1080p, or 720p scaling. Export directly to a standard .mov file.</p>
+                </div>
+            </div>
+            <p class="text-center text-gray-500 text-sm mt-10">This is just the beginning. Have an idea? <button onclick="copyEmail(this)" class="text-brand-red hover:underline bg-transparent border-none cursor-pointer p-0">Contact Developer</button>.</p>
+        </div>
+    </section>
+
+    <!-- Install -->
+    <section id="install" class="py-20 bg-white/5 border-y border-white/5">
+        <div class="max-w-6xl mx-auto px-6">
+            <h2 class="text-3xl font-bold mb-12 text-center">Installation</h2>
+            <div class="max-w-2xl mx-auto">
+                <div class="bg-black/40 border border-white/10 rounded-2xl p-8">
+                    <h3 class="text-lg font-bold mb-4 text-white">Install via Terminal</h3>
+                    <ol class="space-y-3 text-gray-300 list-decimal list-inside text-sm">
+                        <li><span class="font-semibold text-white">Download</span> the installer using the button above.</li>
+                        <li><span class="font-semibold text-white">Open Terminal</span> (⌘+Space, type "Terminal", press Enter).</li>
+                        <li>Type <span class="text-brand-red font-mono">sh </span> — that's <span class="font-semibold text-white">s</span>, <span class="font-semibold text-white">h</span>, then a <span class="font-semibold text-white">space</span>.</li>
+                        <li><span class="font-semibold text-white">Drag and drop</span> the downloaded file into the Terminal window (its path fills in automatically).</li>
+                        <li>Press <span class="font-semibold text-white">Enter</span> and follow the on-screen prompts, then drag Rec onto Applications.</li>
+                    </ol>
+                </div>
+            </div>
+            <div class="mt-6 p-4 bg-black rounded border border-white/10 text-xs text-gray-500 font-mono break-all whitespace-pre-wrap max-w-2xl mx-auto"><span class="text-green-400">user@macbook ~ %</span> sh ~/Downloads/install-rec.command<br><span class="text-brand-red">▸</span> Checking for build tools…</div>
+            <p class="text-center text-gray-500 text-sm mt-6 max-w-2xl mx-auto">First time only: the installer may ask to install Apple's Command Line Tools (a small official Apple download). This lets your Mac build the app locally — which is why macOS trusts it, with no "damaged app" warnings.</p>
+        </div>
+    </section>
+
+    <!-- Changelog -->
+    <section id="changelog" class="py-12 bg-black/40 border-b border-white/5">
+        <div class="max-w-6xl mx-auto px-6">
+            <h2 class="text-2xl font-bold mb-8 text-center text-gray-200">Release Notes</h2>
+            <div id="changelog-container" class="space-y-6 max-w-3xl mx-auto">
+                <div class="text-center text-gray-500 animate-pulse">Loading updates…</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-6 border-t border-white/10 text-center">
+        <div class="flex flex-col md:flex-row justify-center items-center gap-4 md:gap-8 text-xs text-gray-500">
+            <div>Built by <span class="text-white">Arun Thomas</span></div>
+            <button onclick="copyEmail(this)" class="hover:text-brand-red transition-colors bg-transparent border-none cursor-pointer">Contact Developer</button>
+            <div class="text-gray-700">&copy; 2026 Rec.</div>
+        </div>
+    </footer>
+
+    <script>
+        // Version pill from version.json
+        fetch('version.json').then(r => r.json()).then(data => {
+            if (data.version) {
+                const pill = document.getElementById('version-pill');
+                if (pill) pill.textContent = `v${data.version} Now Available`;
+            }
+            // Changelog
+            const container = document.getElementById('changelog-container');
+            if (container && Array.isArray(data.changelog)) {
+                container.innerHTML = '';
+                data.changelog.forEach(release => {
+                    const div = document.createElement('div');
+                    div.className = 'bg-white/5 border border-white/10 rounded-xl p-6 hover:border-brand-red/30 transition-colors';
+                    const header = `<div class="flex items-center gap-3 mb-4">
+                        <span class="text-brand-red font-mono font-bold text-lg">v${release.version}</span>
+                        ${release.date ? `<span class="text-gray-500 text-xs px-2 py-0.5 rounded bg-white/5 border border-white/5">${release.date}</span>` : ''}
+                    </div>`;
+                    const list = document.createElement('ul');
+                    list.className = 'space-y-2 text-gray-400 text-sm list-disc list-inside';
+                    (release.changes || []).forEach(change => {
+                        const li = document.createElement('li');
+                        li.textContent = change;
+                        list.appendChild(li);
+                    });
+                    div.innerHTML = header;
+                    div.appendChild(list);
+                    container.appendChild(div);
+                });
+            }
+        }).catch(() => {
+            const c = document.getElementById('changelog-container');
+            if (c) c.innerHTML = '<div class="text-red-500 text-center text-sm">Failed to load updates.</div>';
+        });
+
+        // Inject version dynamically
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.version-label').forEach(el => el.textContent = 'v' + APP_VERSION);
+            document.querySelectorAll('.version-badge').forEach(el => el.textContent = '🎉 Now on v' + APP_VERSION);
+
+            const schema = document.querySelector('script[type="application/ld+json"]');
+            if (schema) {
+                let json = JSON.parse(schema.textContent);
+                json.softwareVersion = APP_VERSION;
+                schema.textContent = JSON.stringify(json);
+            }
+        });
+
+        // Typing effect
+        document.addEventListener('DOMContentLoaded', function() {
+            const el = document.getElementById('typing-text');
+            if (!el) return;
+            const phrases = ["Record anything.", "Capture internal audio.", "Native to macOS."];
+            let pi = 0, ci = 0, deleting = false, speed = 100;
+            function type() {
+                const cur = phrases[pi];
+                if (deleting) { el.textContent = cur.substring(0, ci - 1); ci--; speed = 50; }
+                else { el.textContent = cur.substring(0, ci + 1); ci++; speed = 100; }
+                if (!deleting && ci === cur.length) { deleting = true; speed = 2000; }
+                else if (deleting && ci === 0) { deleting = false; pi = (pi + 1) % phrases.length; speed = 500; }
+                setTimeout(type, speed);
+            }
+            el.textContent = '';
+            setTimeout(type, 500);
+        });
+    </script>
+</body>
+</html>

@@ -1,49 +1,81 @@
-# Rec
+<div align="center">
+  <img src="logo.svg" alt="Rec Logo" width="120" height="120">
+  <h1>Rec</h1>
+  <p><strong>Native Screen & Audio Recorder for macOS</strong></p>
+  <p align="center">
+  Made for <img src="https://cdn.simpleicons.org/apple/white" width="11" height="11" valign="middle"> <strong>macOS</strong>
+  </p>
 
-A lightweight, native macOS screen and internal audio recorder built with Swift, AVFoundation, and ScreenCaptureKit.
+  <p>
+    <img src="https://img.shields.io/badge/Built%20With-Swift-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift">
+    <img src="https://img.shields.io/badge/Capture-ScreenCaptureKit-34C759?style=flat-square&logo=apple&logoColor=white" alt="On-Device">
+    <img src="https://img.shields.io/badge/Platform-macOS-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS">
+    <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
+  </p>
 
-It runs cleanly with a simple floating UI, saving your recordings directly to your Downloads folder.
+  <p><em>Your recording. Simplified.</em></p>
+</div>
 
-## Installation
+---
 
-This application requires no external dependencies. It builds itself directly on your Mac using Apple's Command Line Tools, ensuring the resulting app is fully native and fully trusted by your system.
+**Rec** is a free, delightfully simple native screen and internal audio recorder for macOS. It features an unobtrusive floating UI, allowing you to capture exactly what you need without cluttering your workspace.
 
-### How to Install
+Built with Apple's modern ScreenCaptureKit framework, Rec seamlessly records your system's internal audio right alongside your video feed—without needing any third-party audio drivers. **100% on-device, no cloud, no accounts, no subscriptions.**
 
-1. Download the source code as a ZIP (or clone this repository).
-2. Open your terminal and navigate to the downloaded folder.
-3. Run the installer script:
+## 🔒 Why Rec?
 
-```bash
-./install-screenrecorder.command
-```
+| Feature | Rec | Native macOS Screen Recorder |
+| :--- | :--- | :--- |
+| **Internal Audio** | 🔊 **Included Native Capture** | 🔇 Requires 3rd-party drivers |
+| **UI** | 🪟 **Floating Panel** | 🪟 Floating Panel |
+| **Specific App** | 🎯 **Yes, Window Target** | ❌ No |
+| **Custom Quality** | ⚙️ **Selectable FPS, Res, Bitrate** | ❌ Fixed |
+| **Timer** | ⏱️ **None, 3s, or 5s** | ⏱️ 5s or 10s |
 
-**Note:** If macOS prevents the script from running, you may need to make it executable first:
-```bash
-chmod +x install-screenrecorder.command
-./install-screenrecorder.command
-```
+## ✨ Key Features
 
-4. The script will guide you through installing the Command Line Tools (if you don't already have them).
-5. Once built, a window will pop up. **Drag the Rec icon onto the Applications folder** to complete the installation.
+*   **Internal Audio**: 🔊 Seamlessly captures your Mac's internal audio right alongside your video feed using ScreenCaptureKit. No 3rd-party audio loopback drivers needed.
+*   **Multiple Modes**: 🎯 Record your entire screen, click-and-drag to select a specific region, or record a specific application window.
+*   **Custom Quality**: ⚙️ Adjust your Framerate (30 or 60 FPS), Resolution (Native Retina, 1080p, or 720p), and Video Encoding Bitrate.
+*   **Floating Controls**: 🪟 A small, unobtrusive control panel that stays out of your way and hides automatically from the final recording.
+*   **Countdown Timer**: ⏱️ Set a 3 or 5-second countdown delay before recording officially begins.
+*   **Native & Fast**: 🚀 Encodes directly to a multiplexed `.mov` file using hardware acceleration via AVAssetWriter. No post-processing or splicing delays.
 
-## Usage
+## 📦 Install
 
-1. Open **Rec** from your Applications folder.
-2. A small, floating record button will appear on your screen.
-3. Click the circle to start recording. It will capture your screen and the internal audio output.
-4. Click the square (stop) button to finish recording.
-5. The recording will be saved directly into your `Downloads` folder as a `.mov` file.
+Install by running the installer in **Terminal**:
 
-## Requirements
+1. **Download** [`install-rec.command`](install-rec.command) (open the file, then click **Download raw file**).
+2. Open **Terminal** (`⌘ + Space`, type `Terminal`, press Enter).
+3. Type `sh ` — that's **s**, **h**, then a **space**.
+4. **Drag** the downloaded `install-rec.command` into the Terminal window (its path fills in automatically).
+5. Press **Enter**, follow the prompts, then **drag Rec onto the Applications folder**.
 
-- macOS 13.0 (Ventura) or later.
-- Apple's Command Line Tools (the installer script handles this automatically).
-- Permissions: You will need to grant Screen Recording and Microphone permissions upon first launch.
+> **First time only:** The installer may ask to install Apple's Command Line Tools (a small, official Apple download). Click **Install**, wait, then continue. This lets your Mac build the app locally — which is why macOS trusts it and never shows a "damaged app" warning.
 
-## Built With
+After installing, look for the **record circle icon in your menu bar** (top-right).
 
-- **Swift**
-- **ScreenCaptureKit**
-- **AVFoundation**
-- **Cocoa (AppKit)**
+## ⚙️ How It Works
+
+The installer downloads the app's source and **builds it right on your Mac**. Because it's compiled locally rather than downloaded pre-made, macOS Gatekeeper trusts it — no bypassing scary warnings.
+
+## 🗑️ Uninstall
+
+1. Quit Rec (menu-bar icon → **Quit**).
+2. Drag **Rec** from Applications to the Trash.
+3. To remove saved data: delete `~/Library/Application Support/Rec`.
+
+## 📦 Tech Stack
+*   **Swift** (AppKit)
+*   **ScreenCaptureKit** (Native video/audio capturing)
+*   **AVFoundation** (Hardware-accelerated multiplexing)
+*   **Shell** (Installer & Builder)
+
+## 📄 License
+MIT License. Free for personal use.
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="mailto:arunthomas04042001@gmail.com">Arun Thomas</a>
+</p>

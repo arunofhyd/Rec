@@ -1,0 +1,20 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#333333"/>
+      <stop offset="1" stop-color="#1a1a1a"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.6"/>
+      <stop offset="0.3" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.7" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="120" height="120" rx="27" ry="27" fill="url(#bg)"/>
+  <rect x="1" y="1" width="118" height="118" rx="26" ry="26" fill="none" stroke="url(#shine)" stroke-width="2"/>
+  <!-- Record Circle Outer -->
+  <circle cx="60" cy="60" r="30" fill="none" stroke="#ffffff" stroke-width="6"/>
+  <!-- Record Circle Inner -->
+  <circle cx="60" cy="60" r="20" fill="#FF3B30"/>
+</svg>
