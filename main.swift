@@ -707,7 +707,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.items.forEach { $0.state = .off }
         sender.state = .on
         let index = menu.index(of: sender)
-        currentSettings.fps = index == 0 ? 60 : 30
+        if index == 0 { currentSettings.fps = 60 }
+        else if index == 1 { currentSettings.fps = 30 }
+        else { currentSettings.fps = 24 }
     }
     @objc func resChanged(_ sender: NSMenuItem) {
         guard let menu = sender.menu else { return }
@@ -804,7 +806,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let fpsMenu = NSMenu(title: "Framerate")
         let fps60 = fpsMenu.addItem(withTitle: "60 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: ""); fps60.target = self
         let fps30 = fpsMenu.addItem(withTitle: "30 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: ""); fps30.target = self
-        if currentSettings.fps == 60 { fps60.state = .on } else { fps30.state = .on }
+        let fps24 = fpsMenu.addItem(withTitle: "24 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: ""); fps24.target = self
+        if currentSettings.fps == 60 { fps60.state = .on }
+        else if currentSettings.fps == 30 { fps30.state = .on }
+        else { fps24.state = .on }
         let fpsItem = NSMenuItem(title: "Framerate", action: nil, keyEquivalent: "")
         fpsItem.image = NSImage(systemSymbolName: "film", accessibilityDescription: nil)
         fpsItem.submenu = fpsMenu
@@ -868,7 +873,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.isBordered = false
         modePopUp.imagePosition = .imageOnly
 
-        let stackView = NSStackView(views: [modePopUp, recordButton, audioPopUp, timerPopUp, settingsPopUp, closeButton])
+        let stackView = NSStackView(views: [closeButton, settingsPopUp, timerPopUp, audioPopUp, modePopUp, recordButton])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.spacing = 16
