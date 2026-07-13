@@ -533,104 +533,6 @@ class FloatingPanel: NSPanel {
     }
 }
 
-class SettingsWindowController: NSWindowController {
-    convenience init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 300), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        win.title = "Settings"
-        win.center()
-        self.init(window: win)
-
-        let stackView = NSStackView()
-        stackView.orientation = .vertical
-        stackView.alignment = .leading
-        stackView.spacing = 16
-        stackView.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
-
-        let container = NSView()
-        container.addSubview(stackView)
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            stackView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            stackView.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-        ])
-
-        win.contentView = container
-        win.backgroundColor = .windowBackgroundColor
-
-        let iconConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-
-        let fpsIcon = NSImageView(image: NSImage(systemSymbolName: "film", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
-        let fpsLabel = NSTextField(labelWithString: "Framerate:")
-        let fpsPopUp = NSPopUpButton()
-        fpsPopUp.addItems(withTitles: ["60 FPS", "30 FPS"])
-        fpsPopUp.selectItem(at: currentSettings.fps == 60 ? 0 : 1)
-        fpsPopUp.action = #selector(fpsChanged(_:))
-        fpsPopUp.target = self
-        let fpsStack = NSStackView(views: [fpsIcon, fpsLabel, fpsPopUp]); fpsStack.spacing = 12
-        stackView.addArrangedSubview(fpsStack)
-
-        let resIcon = NSImageView(image: NSImage(systemSymbolName: "display", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
-        let resLabel = NSTextField(labelWithString: "Resolution:")
-        let resPopUp = NSPopUpButton()
-        resPopUp.addItems(withTitles: ["Native", "1080p", "720p"])
-        if currentSettings.resolution == 0 { resPopUp.selectItem(at: 0) }
-        else if currentSettings.resolution == 1080 { resPopUp.selectItem(at: 1) }
-        else { resPopUp.selectItem(at: 2) }
-        resPopUp.action = #selector(resChanged(_:))
-        resPopUp.target = self
-        let resStack = NSStackView(views: [resIcon, resLabel, resPopUp]); resStack.spacing = 12
-        stackView.addArrangedSubview(resStack)
-
-        let bitIcon = NSImageView(image: NSImage(systemSymbolName: "speedometer", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
-        let bitLabel = NSTextField(labelWithString: "Bitrate:")
-        let bitPopUp = NSPopUpButton()
-        bitPopUp.addItems(withTitles: ["High", "Medium", "Low"])
-        bitPopUp.selectItem(at: currentSettings.bitrate)
-        bitPopUp.action = #selector(bitChanged(_:))
-        bitPopUp.target = self
-        let bitStack = NSStackView(views: [bitIcon, bitLabel, bitPopUp]); bitStack.spacing = 12
-        stackView.addArrangedSubview(bitStack)
-
-
-        // Audio Source
-        let audioIcon = NSImageView(image: NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
-        let audioLabel = NSTextField(labelWithString: "Audio:")
-        let audioPopUp = NSPopUpButton()
-        audioPopUp.addItems(withTitles: ["System Audio", "Microphone", "System + Mic", "None"])
-        audioPopUp.selectItem(at: currentSettings.audioSource)
-        audioPopUp.action = #selector(audioChanged(_:))
-        audioPopUp.target = self
-        let audioStack = NSStackView(views: [audioIcon, audioLabel, audioPopUp]); audioStack.spacing = 12
-        stackView.addArrangedSubview(audioStack)
-
-        let timerIcon = NSImageView(image: NSImage(systemSymbolName: "timer", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
-        let timerLabel = NSTextField(labelWithString: "Timer:")
-        let timerPopUp = NSPopUpButton()
-        timerPopUp.addItems(withTitles: ["None", "3 Seconds", "5 Seconds"])
-        if currentSettings.timer == 0 { timerPopUp.selectItem(at: 0) }
-        else if currentSettings.timer == 3 { timerPopUp.selectItem(at: 1) }
-        else { timerPopUp.selectItem(at: 2) }
-        timerPopUp.action = #selector(timerChanged(_:))
-        timerPopUp.target = self
-        let timerStack = NSStackView(views: [timerIcon, timerLabel, timerPopUp]); timerStack.spacing = 12
-        stackView.addArrangedSubview(timerStack)
-    }
-
-    @objc func fpsChanged(_ sender: NSPopUpButton) { currentSettings.fps = sender.indexOfSelectedItem == 0 ? 60 : 30 }
-    @objc func resChanged(_ sender: NSPopUpButton) {
-        if sender.indexOfSelectedItem == 0 { currentSettings.resolution = 0 }
-        else if sender.indexOfSelectedItem == 1 { currentSettings.resolution = 1080 }
-        else { currentSettings.resolution = 720 }
-    }
-    @objc func bitChanged(_ sender: NSPopUpButton) { currentSettings.bitrate = sender.indexOfSelectedItem }
-        @objc func audioChanged(_ sender: NSPopUpButton) { currentSettings.audioSource = sender.indexOfSelectedItem }
-    @objc func timerChanged(_ sender: NSPopUpButton) {
-        if sender.indexOfSelectedItem == 0 { currentSettings.timer = 0 }
-        else if sender.indexOfSelectedItem == 1 { currentSettings.timer = 3 }
-        else { currentSettings.timer = 5 }
-    }
-}
-
 // MARK: - About Window
 class AboutWindowController: NSWindowController {
     var updateButton: NSButton!
@@ -651,24 +553,21 @@ class AboutWindowController: NSWindowController {
 
         let iconView = NSImageView()
 
-        let config = NSImage.SymbolConfiguration(pointSize: 64, weight: .regular)
-        if let baseImage = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-            let size = baseImage.size
-            let customImage = NSImage(size: size)
-            customImage.lockFocus()
+        let size = NSSize(width: 64, height: 64)
+        let customImage = NSImage(size: size)
+        customImage.lockFocus()
 
-            NSColor.white.setStroke()
-            let outerPath = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
-            outerPath.lineWidth = 2
-            outerPath.stroke()
+        NSColor.white.setStroke()
+        let outerPath = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
+        outerPath.lineWidth = 2
+        outerPath.stroke()
 
-            NSColor.systemRed.setFill()
-            let innerPath = NSBezierPath(ovalIn: NSRect(x: 14, y: 14, width: size.width - 28, height: size.height - 28))
-            innerPath.fill()
+        NSColor.systemRed.setFill()
+        let innerPath = NSBezierPath(ovalIn: NSRect(x: 14, y: 14, width: size.width - 28, height: size.height - 28))
+        innerPath.fill()
 
-            customImage.unlockFocus()
-            iconView.image = customImage
-        }
+        customImage.unlockFocus()
+        iconView.image = customImage
 
         iconView.imageScaling = .scaleProportionallyUpOrDown
         iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -748,13 +647,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: FloatingPanel!
     var recordButton: NSButton!
     var closeButton: NSButton!
-    var settingsButton: NSButton!
     var modePopUp: NSPopUpButton!
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
     var appSelectionMenu: AppSelectionMenuHandler?
-    var settingsWC: SettingsWindowController?
     var aboutWC: AboutWindowController?
 
     var countdownLabel: NSTextField?
@@ -786,10 +683,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         showControlsItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
         menu.addItem(showControlsItem)
 
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
-        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
-        menu.addItem(settingsItem)
-
         menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit Rec", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
@@ -803,19 +696,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func hidePanel() {
         panel.orderOut(nil)
     }
-    @objc func showSettings() {
-        if settingsWC == nil { settingsWC = SettingsWindowController() }
-        settingsWC?.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
     @objc func showAbout() {
         if aboutWC == nil { aboutWC = AboutWindowController() }
         aboutWC?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @objc func fpsChanged(_ sender: NSMenuItem) {
+        guard let menu = sender.menu else { return }
+        let index = menu.index(of: sender)
+        currentSettings.fps = index == 0 ? 60 : 30
+    }
+    @objc func resChanged(_ sender: NSMenuItem) {
+        guard let menu = sender.menu else { return }
+        let index = menu.index(of: sender)
+        if index == 0 { currentSettings.resolution = 0 }
+        else if index == 1 { currentSettings.resolution = 1080 }
+        else { currentSettings.resolution = 720 }
+    }
+    @objc func bitChanged(_ sender: NSMenuItem) {
+        guard let menu = sender.menu else { return }
+        currentSettings.bitrate = menu.index(of: sender)
+    }
+    @objc func audioChanged(_ sender: NSPopUpButton) { currentSettings.audioSource = sender.indexOfSelectedItem }
+    @objc func timerChanged(_ sender: NSPopUpButton) {
+        if sender.indexOfSelectedItem == 0 { currentSettings.timer = 0 }
+        else if sender.indexOfSelectedItem == 1 { currentSettings.timer = 3 }
+        else { currentSettings.timer = 5 }
+    }
+
     func setupUI() {
-        let width: CGFloat = 200
+        let width: CGFloat = 260
         let height: CGFloat = 60
         guard let screen = NSScreen.main else { return }
         let rect = NSRect(x: (screen.frame.width - width) / 2, y: 100, width: width, height: height)
@@ -832,14 +743,78 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         updateButtonImage()
 
-        settingsButton = NSButton()
-        settingsButton.translatesAutoresizingMaskIntoConstraints = false
-        settingsButton.bezelStyle = .regularSquare
-        settingsButton.isBordered = false
-        settingsButton.imagePosition = .imageOnly
-        settingsButton.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 18, weight: .regular))
-        settingsButton.target = self
-        settingsButton.action = #selector(showSettings)
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+
+        let audioPopUp = NSPopUpButton()
+        audioPopUp.translatesAutoresizingMaskIntoConstraints = false
+        audioPopUp.isBordered = false
+        audioPopUp.imagePosition = .imageOnly
+        let audioSystemItem = NSMenuItem(title: "System Audio", action: nil, keyEquivalent: "")
+        audioSystemItem.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let audioMicItem = NSMenuItem(title: "Microphone", action: nil, keyEquivalent: "")
+        audioMicItem.image = NSImage(systemSymbolName: "mic", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let audioBothItem = NSMenuItem(title: "System + Mic", action: nil, keyEquivalent: "")
+        audioBothItem.image = NSImage(systemSymbolName: "mic.and.signal.meter", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let audioNoneItem = NSMenuItem(title: "None", action: nil, keyEquivalent: "")
+        audioNoneItem.image = NSImage(systemSymbolName: "speaker.slash", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        audioPopUp.menu?.addItem(audioSystemItem)
+        audioPopUp.menu?.addItem(audioMicItem)
+        audioPopUp.menu?.addItem(audioBothItem)
+        audioPopUp.menu?.addItem(audioNoneItem)
+        audioPopUp.selectItem(at: currentSettings.audioSource)
+        audioPopUp.action = #selector(audioChanged(_:))
+        audioPopUp.target = self
+
+        let timerPopUp = NSPopUpButton()
+        timerPopUp.translatesAutoresizingMaskIntoConstraints = false
+        timerPopUp.isBordered = false
+        timerPopUp.imagePosition = .imageOnly
+        let timerNoneItem = NSMenuItem(title: "None", action: nil, keyEquivalent: "")
+        timerNoneItem.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let timer3sItem = NSMenuItem(title: "3 Seconds", action: nil, keyEquivalent: "")
+        timer3sItem.image = NSImage(systemSymbolName: "3.circle", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let timer5sItem = NSMenuItem(title: "5 Seconds", action: nil, keyEquivalent: "")
+        timer5sItem.image = NSImage(systemSymbolName: "5.circle", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        timerPopUp.menu?.addItem(timerNoneItem)
+        timerPopUp.menu?.addItem(timer3sItem)
+        timerPopUp.menu?.addItem(timer5sItem)
+        if currentSettings.timer == 0 { timerPopUp.selectItem(at: 0) }
+        else if currentSettings.timer == 3 { timerPopUp.selectItem(at: 1) }
+        else { timerPopUp.selectItem(at: 2) }
+        timerPopUp.action = #selector(timerChanged(_:))
+        timerPopUp.target = self
+
+        let settingsPopUp = NSPopUpButton()
+        settingsPopUp.translatesAutoresizingMaskIntoConstraints = false
+        settingsPopUp.isBordered = false
+        settingsPopUp.imagePosition = .imageOnly
+        settingsPopUp.pullsDown = true
+        let gearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        gearItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        settingsPopUp.menu?.addItem(gearItem)
+
+        let fpsMenu = NSMenu(title: "Framerate")
+        fpsMenu.addItem(withTitle: "60 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: "").target = self
+        fpsMenu.addItem(withTitle: "30 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: "").target = self
+        let fpsItem = NSMenuItem(title: "Framerate", action: nil, keyEquivalent: "")
+        fpsItem.submenu = fpsMenu
+        settingsPopUp.menu?.addItem(fpsItem)
+
+        let resMenu = NSMenu(title: "Resolution")
+        resMenu.addItem(withTitle: "Native", action: #selector(resChanged(_:)), keyEquivalent: "").target = self
+        resMenu.addItem(withTitle: "1080p", action: #selector(resChanged(_:)), keyEquivalent: "").target = self
+        resMenu.addItem(withTitle: "720p", action: #selector(resChanged(_:)), keyEquivalent: "").target = self
+        let resItem = NSMenuItem(title: "Resolution", action: nil, keyEquivalent: "")
+        resItem.submenu = resMenu
+        settingsPopUp.menu?.addItem(resItem)
+
+        let bitMenu = NSMenu(title: "Bitrate")
+        bitMenu.addItem(withTitle: "High", action: #selector(bitChanged(_:)), keyEquivalent: "").target = self
+        bitMenu.addItem(withTitle: "Medium", action: #selector(bitChanged(_:)), keyEquivalent: "").target = self
+        bitMenu.addItem(withTitle: "Low", action: #selector(bitChanged(_:)), keyEquivalent: "").target = self
+        let bitItem = NSMenuItem(title: "Bitrate", action: nil, keyEquivalent: "")
+        bitItem.submenu = bitMenu
+        settingsPopUp.menu?.addItem(bitItem)
 
         closeButton = NSButton()
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -854,8 +829,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.translatesAutoresizingMaskIntoConstraints = false
         // Remove the default empty item
         modePopUp.removeAllItems()
-
-        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
 
         let screenItem = NSMenuItem(title: "Entire Screen", action: nil, keyEquivalent: "")
         screenItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: "Entire Screen")?.withSymbolConfiguration(config)
@@ -877,7 +850,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.isBordered = false
         modePopUp.imagePosition = .imageOnly
 
-        let stackView = NSStackView(views: [modePopUp, recordButton, settingsButton, closeButton])
+        let stackView = NSStackView(views: [modePopUp, recordButton, audioPopUp, timerPopUp, settingsPopUp, closeButton])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.spacing = 16

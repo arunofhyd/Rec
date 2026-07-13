@@ -14,14 +14,14 @@ BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 BLUE='\033[38;5;39m'; GREEN='\033[38;5;35m'; YELLOW='\033[38;5;220m'; RED='\033[38;5;196m'; GREY='\033[38;5;245m'
 
 line() { printf "${DIM}────────────────────────────────────────────────────────────${NC}\n"; }
-step() { printf "${BLUE}${BOLD}▸${NC} ${BOLD}%s${NC}\n" "$1"; }
+step() { printf "${RED}${BOLD}▸${NC} ${BOLD}%s${NC}\n" "$1"; }
 ok()   { printf "  ${GREEN}✓${NC} %s\n" "$1"; }
 warn() { printf "  ${YELLOW}!${NC} %s\n" "$1"; }
 fail() { printf "  ${RED}✗ %s${NC}\n" "$1"; }
 
 clear
 printf "\n"
-printf "${BLUE}${BOLD}   Rec${NC}\n"
+printf "${RED}${BOLD}   Rec${NC}\n"
 printf "${GREY}   Simple, clean, native-feeling screen recording.${NC}\n\n"
 line
 printf "\n"
