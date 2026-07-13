@@ -704,11 +704,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func fpsChanged(_ sender: NSMenuItem) {
         guard let menu = sender.menu else { return }
+        menu.items.forEach { $0.state = .off }
+        sender.state = .on
         let index = menu.index(of: sender)
         currentSettings.fps = index == 0 ? 60 : 30
     }
     @objc func resChanged(_ sender: NSMenuItem) {
         guard let menu = sender.menu else { return }
+        menu.items.forEach { $0.state = .off }
+        sender.state = .on
         let index = menu.index(of: sender)
         if index == 0 { currentSettings.resolution = 0 }
         else if index == 1 { currentSettings.resolution = 1080 }
@@ -716,20 +720,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc func bitChanged(_ sender: NSMenuItem) {
         guard let menu = sender.menu else { return }
+        menu.items.forEach { $0.state = .off }
+        sender.state = .on
         currentSettings.bitrate = menu.index(of: sender)
     }
     @objc func audioChanged(_ sender: NSPopUpButton) { currentSettings.audioSource = sender.indexOfSelectedItem }
     @objc func timerChanged(_ sender: NSPopUpButton) {
         if sender.indexOfSelectedItem == 0 { currentSettings.timer = 0 }
-        else if sender.indexOfSelectedItem == 1 { currentSettings.timer = 3 }
-        else { currentSettings.timer = 5 }
+        else if sender.indexOfSelectedItem == 1 { currentSettings.timer = 5 }
+        else { currentSettings.timer = 10 }
     }
 
     func setupUI() {
-        let width: CGFloat = 260
-        let height: CGFloat = 60
         guard let screen = NSScreen.main else { return }
-        let rect = NSRect(x: (screen.frame.width - width) / 2, y: 100, width: width, height: height)
+        // We'll set a tiny initial rect; Auto Layout will resize it if we pin constraints
+        let rect = NSRect(x: screen.frame.width / 2, y: 100, width: 10, height: 10)
         panel = FloatingPanel(contentRect: rect, styleMask: [], backing: .buffered, defer: false)
         guard let contentView = panel.contentView else { return }
 
@@ -747,6 +752,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let audioPopUp = NSPopUpButton()
         audioPopUp.translatesAutoresizingMaskIntoConstraints = false
+        audioPopUp.removeAllItems()
         audioPopUp.isBordered = false
         audioPopUp.imagePosition = .imageOnly
         let audioSystemItem = NSMenuItem(title: "System Audio", action: nil, keyEquivalent: "")
@@ -767,25 +773,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let timerPopUp = NSPopUpButton()
         timerPopUp.translatesAutoresizingMaskIntoConstraints = false
+        timerPopUp.removeAllItems()
         timerPopUp.isBordered = false
         timerPopUp.imagePosition = .imageOnly
         let timerNoneItem = NSMenuItem(title: "None", action: nil, keyEquivalent: "")
         timerNoneItem.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)?.withSymbolConfiguration(config)
-        let timer3sItem = NSMenuItem(title: "3 Seconds", action: nil, keyEquivalent: "")
-        timer3sItem.image = NSImage(systemSymbolName: "3.circle", accessibilityDescription: nil)?.withSymbolConfiguration(config)
         let timer5sItem = NSMenuItem(title: "5 Seconds", action: nil, keyEquivalent: "")
         timer5sItem.image = NSImage(systemSymbolName: "5.circle", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let timer10sItem = NSMenuItem(title: "10 Seconds", action: nil, keyEquivalent: "")
+        timer10sItem.image = NSImage(systemSymbolName: "10.circle", accessibilityDescription: nil)?.withSymbolConfiguration(config)
         timerPopUp.menu?.addItem(timerNoneItem)
-        timerPopUp.menu?.addItem(timer3sItem)
         timerPopUp.menu?.addItem(timer5sItem)
+        timerPopUp.menu?.addItem(timer10sItem)
         if currentSettings.timer == 0 { timerPopUp.selectItem(at: 0) }
-        else if currentSettings.timer == 3 { timerPopUp.selectItem(at: 1) }
+        else if currentSettings.timer == 5 { timerPopUp.selectItem(at: 1) }
         else { timerPopUp.selectItem(at: 2) }
         timerPopUp.action = #selector(timerChanged(_:))
         timerPopUp.target = self
 
         let settingsPopUp = NSPopUpButton()
         settingsPopUp.translatesAutoresizingMaskIntoConstraints = false
+        settingsPopUp.removeAllItems()
         settingsPopUp.isBordered = false
         settingsPopUp.imagePosition = .imageOnly
         settingsPopUp.pullsDown = true
@@ -794,25 +802,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsPopUp.menu?.addItem(gearItem)
 
         let fpsMenu = NSMenu(title: "Framerate")
-        fpsMenu.addItem(withTitle: "60 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: "").target = self
-        fpsMenu.addItem(withTitle: "30 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: "").target = self
+        let fps60 = fpsMenu.addItem(withTitle: "60 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: ""); fps60.target = self
+        let fps30 = fpsMenu.addItem(withTitle: "30 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: ""); fps30.target = self
+        if currentSettings.fps == 60 { fps60.state = .on } else { fps30.state = .on }
         let fpsItem = NSMenuItem(title: "Framerate", action: nil, keyEquivalent: "")
+        fpsItem.image = NSImage(systemSymbolName: "film", accessibilityDescription: nil)
         fpsItem.submenu = fpsMenu
         settingsPopUp.menu?.addItem(fpsItem)
 
         let resMenu = NSMenu(title: "Resolution")
-        resMenu.addItem(withTitle: "Native", action: #selector(resChanged(_:)), keyEquivalent: "").target = self
-        resMenu.addItem(withTitle: "1080p", action: #selector(resChanged(_:)), keyEquivalent: "").target = self
-        resMenu.addItem(withTitle: "720p", action: #selector(resChanged(_:)), keyEquivalent: "").target = self
+        let resNat = resMenu.addItem(withTitle: "Native", action: #selector(resChanged(_:)), keyEquivalent: ""); resNat.target = self
+        let res1080 = resMenu.addItem(withTitle: "1080p", action: #selector(resChanged(_:)), keyEquivalent: ""); res1080.target = self
+        let res720 = resMenu.addItem(withTitle: "720p", action: #selector(resChanged(_:)), keyEquivalent: ""); res720.target = self
+        if currentSettings.resolution == 0 { resNat.state = .on }
+        else if currentSettings.resolution == 1080 { res1080.state = .on }
+        else { res720.state = .on }
         let resItem = NSMenuItem(title: "Resolution", action: nil, keyEquivalent: "")
+        resItem.image = NSImage(systemSymbolName: "display", accessibilityDescription: nil)
         resItem.submenu = resMenu
         settingsPopUp.menu?.addItem(resItem)
 
         let bitMenu = NSMenu(title: "Bitrate")
-        bitMenu.addItem(withTitle: "High", action: #selector(bitChanged(_:)), keyEquivalent: "").target = self
-        bitMenu.addItem(withTitle: "Medium", action: #selector(bitChanged(_:)), keyEquivalent: "").target = self
-        bitMenu.addItem(withTitle: "Low", action: #selector(bitChanged(_:)), keyEquivalent: "").target = self
+        let bitHigh = bitMenu.addItem(withTitle: "High", action: #selector(bitChanged(_:)), keyEquivalent: ""); bitHigh.target = self
+        let bitMed = bitMenu.addItem(withTitle: "Medium", action: #selector(bitChanged(_:)), keyEquivalent: ""); bitMed.target = self
+        let bitLow = bitMenu.addItem(withTitle: "Low", action: #selector(bitChanged(_:)), keyEquivalent: ""); bitLow.target = self
+        if currentSettings.bitrate == 0 { bitHigh.state = .on }
+        else if currentSettings.bitrate == 1 { bitMed.state = .on }
+        else { bitLow.state = .on }
         let bitItem = NSMenuItem(title: "Bitrate", action: nil, keyEquivalent: "")
+        bitItem.image = NSImage(systemSymbolName: "speedometer", accessibilityDescription: nil)
         bitItem.submenu = bitMenu
         settingsPopUp.menu?.addItem(bitItem)
 
@@ -858,9 +876,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         contentView.addSubview(stackView)
         NSLayoutConstraint.activate([
-            stackView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            stackView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
+            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
+            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16)
         ])
+
+        stackView.layoutSubtreeIfNeeded()
+        let fittingSize = contentView.fittingSize
+        panel.setContentSize(fittingSize)
+        panel.setFrameOrigin(NSPoint(x: (screen.frame.width - fittingSize.width) / 2, y: 100))
 
         panel.makeKeyAndOrderFront(nil)
     }
