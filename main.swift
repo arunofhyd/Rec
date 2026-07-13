@@ -13,15 +13,32 @@ let updateCheckURL = "https://rec-aoh.netlify.app/version.json" // Note: URL poi
 
 // MARK: - Global Settings
 
-struct AppSettings {
+struct AppSettings: Codable {
     var fps: Int = 60
     var resolution: Int = 0
     var bitrate: Int = 0
     var timer: Int = 0
     var audioSource: Int = 0 // 0 = System Audio, 1 = Microphone, 2 = Both, 3 = None
+    var showsClicks: Bool = false
+    var saveDirectory: String = ""
+    var micID: String = ""
+
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(data, forKey: "RecAppSettings")
+        }
+    }
+
+    static func load() -> AppSettings {
+        if let data = UserDefaults.standard.data(forKey: "RecAppSettings"),
+           let settings = try? JSONDecoder().decode(AppSettings.self, from: data) {
+            return settings
+        }
+        return AppSettings()
+    }
 }
 
-var currentSettings = AppSettings()
+var currentSettings = AppSettings.load()
 
 // MARK: - Overlay Window for Region Selection
 
@@ -322,6 +339,11 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         config.queueDepth = 5
         config.capturesAudio = true
         config.showsCursor = true
+        #if compiler(>=5.9)
+        if #available(macOS 14.0, *) {
+            config.capturesMouseClicks = currentSettings.showsClicks
+        }
+        #endif
         config.pixelFormat = kCVPixelFormatType_32BGRA
 
         do {
@@ -384,7 +406,16 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         guard currentSettings.audioSource == 1 || currentSettings.audioSource == 2 else { return }
 
         micSession = AVCaptureSession()
-        guard let mic = AVCaptureDevice.default(for: .audio),
+
+        var selectedMic: AVCaptureDevice? = nil
+        if !currentSettings.micID.isEmpty {
+            selectedMic = AVCaptureDevice(uniqueID: currentSettings.micID)
+        }
+        if selectedMic == nil {
+            selectedMic = AVCaptureDevice.default(for: .audio)
+        }
+
+        guard let mic = selectedMic,
               let input = try? AVCaptureDeviceInput(device: mic) else { return }
 
         if micSession?.canAddInput(input) == true {
@@ -404,8 +435,17 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
         let dateString = formatter.string(from: Date())
-        let downloadsDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
-        let fileURL = downloadsDirectory.appendingPathComponent("Screen Recording \(dateString).mov")
+
+        var directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
+        if !currentSettings.saveDirectory.isEmpty {
+            let customURL = URL(fileURLWithPath: currentSettings.saveDirectory)
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: customURL.path, isDirectory: &isDir), isDir.boolValue {
+                directoryURL = customURL
+            }
+        }
+
+        let fileURL = directoryURL.appendingPathComponent("Screen Recording \(dateString).mov")
         self.outputFile = fileURL
 
         do {
@@ -707,7 +747,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.items.forEach { $0.state = .off }
         sender.state = .on
         let index = menu.index(of: sender)
-        currentSettings.fps = index == 0 ? 60 : 30
+        if index == 0 { currentSettings.fps = 60 }
+        else if index == 1 { currentSettings.fps = 30 }
+        else { currentSettings.fps = 24 }
+        currentSettings.save()
     }
     @objc func resChanged(_ sender: NSMenuItem) {
         guard let menu = sender.menu else { return }
@@ -717,18 +760,64 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if index == 0 { currentSettings.resolution = 0 }
         else if index == 1 { currentSettings.resolution = 1080 }
         else { currentSettings.resolution = 720 }
+        currentSettings.save()
     }
     @objc func bitChanged(_ sender: NSMenuItem) {
         guard let menu = sender.menu else { return }
         menu.items.forEach { $0.state = .off }
         sender.state = .on
         currentSettings.bitrate = menu.index(of: sender)
+        currentSettings.save()
     }
-    @objc func audioChanged(_ sender: NSPopUpButton) { currentSettings.audioSource = sender.indexOfSelectedItem }
+    @objc func audioChanged(_ sender: NSMenuItem) {
+        if sender.parent != nil {
+            // It's a specific microphone selection
+            guard let menu = sender.menu else { return }
+            menu.items.forEach { $0.state = .off }
+            sender.state = .on
+            currentSettings.micID = sender.identifier?.rawValue ?? ""
+        } else {
+            // It's a base audio source (System, Mic, Both, None)
+            guard let menu = sender.menu else { return }
+            menu.items.filter { $0.parent == nil }.forEach { $0.state = .off }
+            sender.state = .on
+            let index = menu.index(of: sender)
+            // Wait, we will structure the menu so the primary items are at top.
+            // 0: System Audio, 1: Mic, 2: System + Mic, 3: None, 4: Separator, 5: Microphones
+            if index < 4 {
+                currentSettings.audioSource = index
+            }
+        }
+        currentSettings.save()
+    }
     @objc func timerChanged(_ sender: NSPopUpButton) {
         if sender.indexOfSelectedItem == 0 { currentSettings.timer = 0 }
         else if sender.indexOfSelectedItem == 1 { currentSettings.timer = 5 }
         else { currentSettings.timer = 10 }
+        currentSettings.save()
+    }
+
+    @objc func toggleMouseClicks(_ sender: NSMenuItem) {
+        currentSettings.showsClicks.toggle()
+        currentSettings.save()
+        sender.state = currentSettings.showsClicks ? .on : .off
+    }
+
+    @objc func chooseSaveLocation(_ sender: NSMenuItem) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Select Save Location"
+
+        // Ensure NSOpenPanel runs properly on main thread
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            if panel.runModal() == .OK, let url = panel.url {
+                currentSettings.saveDirectory = url.path
+                currentSettings.save()
+            }
+        }
     }
 
     func setupUI() {
@@ -763,13 +852,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioBothItem.image = NSImage(systemSymbolName: "mic.and.signal.meter", accessibilityDescription: nil)?.withSymbolConfiguration(config)
         let audioNoneItem = NSMenuItem(title: "None", action: nil, keyEquivalent: "")
         audioNoneItem.image = NSImage(systemSymbolName: "speaker.slash", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        audioSystemItem.target = self
+        audioSystemItem.action = #selector(audioChanged(_:))
+        audioMicItem.target = self
+        audioMicItem.action = #selector(audioChanged(_:))
+        audioBothItem.target = self
+        audioBothItem.action = #selector(audioChanged(_:))
+        audioNoneItem.target = self
+        audioNoneItem.action = #selector(audioChanged(_:))
+
+        if currentSettings.audioSource == 0 { audioSystemItem.state = .on }
+        else if currentSettings.audioSource == 1 { audioMicItem.state = .on }
+        else if currentSettings.audioSource == 2 { audioBothItem.state = .on }
+        else { audioNoneItem.state = .on }
+
         audioPopUp.menu?.addItem(audioSystemItem)
         audioPopUp.menu?.addItem(audioMicItem)
         audioPopUp.menu?.addItem(audioBothItem)
         audioPopUp.menu?.addItem(audioNoneItem)
-        audioPopUp.selectItem(at: currentSettings.audioSource)
-        audioPopUp.action = #selector(audioChanged(_:))
-        audioPopUp.target = self
+
+        audioPopUp.menu?.addItem(NSMenuItem.separator())
+        let micsItem = NSMenuItem(title: "Microphones", action: nil, keyEquivalent: "")
+        micsItem.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil)
+        let micsMenu = NSMenu(title: "Microphones")
+
+        // Find microphones
+        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone], mediaType: .audio, position: .unspecified)
+        for device in session.devices {
+            let item = NSMenuItem(title: device.localizedName, action: #selector(audioChanged(_:)), keyEquivalent: "")
+            item.identifier = NSUserInterfaceItemIdentifier(device.uniqueID)
+            item.target = self
+            if currentSettings.micID == device.uniqueID { item.state = .on }
+            micsMenu.addItem(item)
+        }
+
+        micsItem.submenu = micsMenu
+        audioPopUp.menu?.addItem(micsItem)
 
         let timerPopUp = NSPopUpButton()
         timerPopUp.translatesAutoresizingMaskIntoConstraints = false
@@ -804,7 +922,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let fpsMenu = NSMenu(title: "Framerate")
         let fps60 = fpsMenu.addItem(withTitle: "60 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: ""); fps60.target = self
         let fps30 = fpsMenu.addItem(withTitle: "30 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: ""); fps30.target = self
-        if currentSettings.fps == 60 { fps60.state = .on } else { fps30.state = .on }
+        let fps24 = fpsMenu.addItem(withTitle: "24 FPS", action: #selector(fpsChanged(_:)), keyEquivalent: ""); fps24.target = self
+        if currentSettings.fps == 60 { fps60.state = .on }
+        else if currentSettings.fps == 30 { fps30.state = .on }
+        else { fps24.state = .on }
         let fpsItem = NSMenuItem(title: "Framerate", action: nil, keyEquivalent: "")
         fpsItem.image = NSImage(systemSymbolName: "film", accessibilityDescription: nil)
         fpsItem.submenu = fpsMenu
@@ -833,6 +954,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bitItem.image = NSImage(systemSymbolName: "speedometer", accessibilityDescription: nil)
         bitItem.submenu = bitMenu
         settingsPopUp.menu?.addItem(bitItem)
+
+        settingsPopUp.menu?.addItem(NSMenuItem.separator())
+        let clickItem = NSMenuItem(title: "Show Mouse Clicks", action: #selector(toggleMouseClicks(_:)), keyEquivalent: "")
+        clickItem.image = NSImage(systemSymbolName: "cursorarrow.click.2", accessibilityDescription: nil) ?? NSImage(systemSymbolName: "cursorarrow.click", accessibilityDescription: nil)
+        clickItem.target = self
+        clickItem.state = currentSettings.showsClicks ? .on : .off
+        settingsPopUp.menu?.addItem(clickItem)
+
+        let locationItem = NSMenuItem(title: "Save Location...", action: #selector(chooseSaveLocation(_:)), keyEquivalent: "")
+        locationItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+        locationItem.target = self
+        settingsPopUp.menu?.addItem(locationItem)
 
         closeButton = NSButton()
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -868,7 +1001,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.isBordered = false
         modePopUp.imagePosition = .imageOnly
 
-        let stackView = NSStackView(views: [modePopUp, recordButton, audioPopUp, timerPopUp, settingsPopUp, closeButton])
+        let stackView = NSStackView(views: [closeButton, settingsPopUp, timerPopUp, audioPopUp, modePopUp, recordButton])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.spacing = 16
