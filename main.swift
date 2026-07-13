@@ -126,12 +126,12 @@ class AppSelectionMenuHandler: NSObject {
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { [weak self] content, error in
             guard let self = self, let content = content else { return }
 
-            let myBundleId = Bundle.main.bundleIdentifier
+            let myProcessId = ProcessInfo.processInfo.processIdentifier
             var uniqueApps = [String: SCRunningApplication]()
             for app in content.applications {
                 let name = app.applicationName
                 // Exclude ourselves and empty names
-                if app.bundleIdentifier != myBundleId, !name.isEmpty {
+                if app.processID != myProcessId, !name.isEmpty {
                     // Keep it simple so we don't accidentally filter out everything
                     if !name.hasPrefix("com.apple") {
                         uniqueApps[name] = app
@@ -253,7 +253,8 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             if let app = self.captureApp {
                 filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
             } else {
-                guard let myApp = content?.applications.first(where: { $0.bundleIdentifier == Bundle.main.bundleIdentifier }) else {
+                let myProcessId = ProcessInfo.processInfo.processIdentifier
+                guard let myApp = content?.applications.first(where: { $0.processID == myProcessId }) else {
                     filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
                     self.continueStartingRecording(filter: filter, display: display)
                     return
@@ -541,7 +542,7 @@ class SettingsWindowController: NSWindowController {
 
         let stackView = NSStackView()
         stackView.orientation = .vertical
-        stackView.alignment = .trailing // Align trailing so popups line up
+        stackView.alignment = .leading
         stackView.spacing = 16
         stackView.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
 
@@ -556,15 +557,19 @@ class SettingsWindowController: NSWindowController {
         win.contentView = container
         win.backgroundColor = .windowBackgroundColor
 
+        let iconConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+
+        let fpsIcon = NSImageView(image: NSImage(systemSymbolName: "film", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
         let fpsLabel = NSTextField(labelWithString: "Framerate:")
         let fpsPopUp = NSPopUpButton()
         fpsPopUp.addItems(withTitles: ["60 FPS", "30 FPS"])
         fpsPopUp.selectItem(at: currentSettings.fps == 60 ? 0 : 1)
         fpsPopUp.action = #selector(fpsChanged(_:))
         fpsPopUp.target = self
-        let fpsStack = NSStackView(views: [fpsLabel, fpsPopUp]); fpsStack.spacing = 12
+        let fpsStack = NSStackView(views: [fpsIcon, fpsLabel, fpsPopUp]); fpsStack.spacing = 12
         stackView.addArrangedSubview(fpsStack)
 
+        let resIcon = NSImageView(image: NSImage(systemSymbolName: "display", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
         let resLabel = NSTextField(labelWithString: "Resolution:")
         let resPopUp = NSPopUpButton()
         resPopUp.addItems(withTitles: ["Native", "1080p", "720p"])
@@ -573,29 +578,32 @@ class SettingsWindowController: NSWindowController {
         else { resPopUp.selectItem(at: 2) }
         resPopUp.action = #selector(resChanged(_:))
         resPopUp.target = self
-        let resStack = NSStackView(views: [resLabel, resPopUp]); resStack.spacing = 12
+        let resStack = NSStackView(views: [resIcon, resLabel, resPopUp]); resStack.spacing = 12
         stackView.addArrangedSubview(resStack)
 
+        let bitIcon = NSImageView(image: NSImage(systemSymbolName: "speedometer", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
         let bitLabel = NSTextField(labelWithString: "Bitrate:")
         let bitPopUp = NSPopUpButton()
         bitPopUp.addItems(withTitles: ["High", "Medium", "Low"])
         bitPopUp.selectItem(at: currentSettings.bitrate)
         bitPopUp.action = #selector(bitChanged(_:))
         bitPopUp.target = self
-        let bitStack = NSStackView(views: [bitLabel, bitPopUp]); bitStack.spacing = 12
+        let bitStack = NSStackView(views: [bitIcon, bitLabel, bitPopUp]); bitStack.spacing = 12
         stackView.addArrangedSubview(bitStack)
 
 
         // Audio Source
+        let audioIcon = NSImageView(image: NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
         let audioLabel = NSTextField(labelWithString: "Audio:")
         let audioPopUp = NSPopUpButton()
         audioPopUp.addItems(withTitles: ["System Audio", "Microphone", "System + Mic", "None"])
         audioPopUp.selectItem(at: currentSettings.audioSource)
         audioPopUp.action = #selector(audioChanged(_:))
         audioPopUp.target = self
-        let audioStack = NSStackView(views: [audioLabel, audioPopUp]); audioStack.spacing = 12
+        let audioStack = NSStackView(views: [audioIcon, audioLabel, audioPopUp]); audioStack.spacing = 12
         stackView.addArrangedSubview(audioStack)
 
+        let timerIcon = NSImageView(image: NSImage(systemSymbolName: "timer", accessibilityDescription: nil)!.withSymbolConfiguration(iconConfig)!)
         let timerLabel = NSTextField(labelWithString: "Timer:")
         let timerPopUp = NSPopUpButton()
         timerPopUp.addItems(withTitles: ["None", "3 Seconds", "5 Seconds"])
@@ -604,7 +612,7 @@ class SettingsWindowController: NSWindowController {
         else { timerPopUp.selectItem(at: 2) }
         timerPopUp.action = #selector(timerChanged(_:))
         timerPopUp.target = self
-        let timerStack = NSStackView(views: [timerLabel, timerPopUp]); timerStack.spacing = 12
+        let timerStack = NSStackView(views: [timerIcon, timerLabel, timerPopUp]); timerStack.spacing = 12
         stackView.addArrangedSubview(timerStack)
     }
 
@@ -642,7 +650,26 @@ class AboutWindowController: NSWindowController {
         win.contentView = stackView
 
         let iconView = NSImageView()
-        iconView.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)
+
+        let config = NSImage.SymbolConfiguration(pointSize: 64, weight: .regular)
+        if let baseImage = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+            let size = baseImage.size
+            let customImage = NSImage(size: size)
+            customImage.lockFocus()
+
+            NSColor.white.setStroke()
+            let outerPath = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
+            outerPath.lineWidth = 2
+            outerPath.stroke()
+
+            NSColor.systemRed.setFill()
+            let innerPath = NSBezierPath(ovalIn: NSRect(x: 14, y: 14, width: size.width - 28, height: size.height - 28))
+            innerPath.fill()
+
+            customImage.unlockFocus()
+            iconView.image = customImage
+        }
+
         iconView.imageScaling = .scaleProportionallyUpOrDown
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.widthAnchor.constraint(equalToConstant: 64).isActive = true
@@ -750,12 +777,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "About Rec", action: #selector(showAbout), keyEquivalent: ""))
+        let aboutItem = NSMenuItem(title: "About Rec", action: #selector(showAbout), keyEquivalent: "")
+        aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+        menu.addItem(aboutItem)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Show Controls", action: #selector(showPanel), keyEquivalent: "s"))
-        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ","))
+
+        let showControlsItem = NSMenuItem(title: "Show Controls", action: #selector(showPanel), keyEquivalent: "s")
+        showControlsItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
+        menu.addItem(showControlsItem)
+
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        menu.addItem(settingsItem)
+
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit Rec", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(title: "Quit Rec", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(quitItem)
         statusItem.menu = menu
     }
 
@@ -820,15 +857,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
 
-        let screenItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let screenItem = NSMenuItem(title: "Entire Screen", action: nil, keyEquivalent: "")
         screenItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: "Entire Screen")?.withSymbolConfiguration(config)
         screenItem.toolTip = "Entire Screen"
 
-        let portionItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let portionItem = NSMenuItem(title: "Selected Portion", action: nil, keyEquivalent: "")
         portionItem.image = NSImage(systemSymbolName: "crop", accessibilityDescription: "Selected Portion")?.withSymbolConfiguration(config)
         portionItem.toolTip = "Selected Portion"
 
-        let appItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let appItem = NSMenuItem(title: "Specific App", action: nil, keyEquivalent: "")
         appItem.image = NSImage(systemSymbolName: "macwindow.badge.plus", accessibilityDescription: "Specific App")?.withSymbolConfiguration(config)
         appItem.toolTip = "Specific App"
 
