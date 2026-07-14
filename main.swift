@@ -338,29 +338,22 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         var baseHeight = display.height
 
         if let rect = captureRect, rect != .zero {
-            // ScreenCaptureKit sourceRect uses logical points in the display's coordinate space (origin top-left).
-            // NSWindow / NSEvent gives us coordinates where origin is bottom-left of the main screen.
+            // SCStreamConfiguration width and height are in points * scale factor (pixels).
+            // SCDisplay width and height are in points.
 
-            // 1. Calculate the Y coordinate in top-left origin space
-            // Assuming rect is in global screen coordinates where origin is bottom-left of the main screen
-            // display.frame is in global screen coordinates, where origin is top-left
-            // However, it seems rect is already relative to the primary display's bounds.
-            let mainDisplayHeight = NSScreen.screens.first?.frame.height ?? CGFloat(display.height)
-            let topY = mainDisplayHeight - rect.maxY
+            // NSWindow coordinates have bottom-left origin. SCStream uses top-left origin.
+            let displayHeightPoints = CGFloat(display.height)
+            let mainScreenHeight = NSScreen.screens.first?.frame.height ?? displayHeightPoints
+            let flippedY = mainScreenHeight - rect.maxY
 
-            // 2. Adjust for this specific display's frame (if multiple displays)
-            // If we assume rect is already relative to this display:
-            let flippedY = Int(topY) - Int(display.frame.minY)
-
-            // Clamp mapping to display bounds to prevent SCStream from crashing
-            let x = max(0, min(Int(rect.origin.x) - Int(display.frame.minX), display.width - 2))
-            let y = max(0, min(flippedY, display.height - 2))
+            let x = max(0, min(Int(rect.origin.x), display.width - 2))
+            let y = max(0, min(Int(flippedY), display.height - 2))
             let w = min(Int(rect.width), display.width - x)
             let h = min(Int(rect.height), display.height - y)
 
-            let mappedRect = CGRect(x: x, y: y, width: w, height: h)
+            // sourceRect must be in points, origin top-left.
+            config.sourceRect = CGRect(x: x, y: y, width: w, height: h)
 
-            config.sourceRect = mappedRect
             baseWidth = w
             baseHeight = h
         }
@@ -374,19 +367,21 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             config.width = 1280
             config.height = Int(1280 / ratio)
         } else {
-            // SCStreamConfiguration width and height are in pixels, baseWidth and baseHeight are in points.
-            // When capturing a region, we multiply by scaleFactor to get pixels.
-            // If rect is provided, baseWidth and baseHeight might already be scaled if derived improperly,
-            // but SCDisplay width/height are in points.
-            config.width = Int(CGFloat(baseWidth) * scaleFactor)
-            config.height = Int(CGFloat(baseHeight) * scaleFactor)
+            if captureRect != nil {
+                // ScreenCaptureKit handles region capture correctly when the output config matches the sourceRect exactly.
+                config.width = baseWidth
+                config.height = baseHeight
+            } else {
+                // Full screen capturing needs the pixel dimensions or points, the user's working code used display.width
+                config.width = display.width * Int(scaleFactor)
+                config.height = display.height * Int(scaleFactor)
+            }
         }
 
-        // Clamp to maximum display dimensions to avoid exceeding hardware limits
-        let maxDisplayWidth = Int(CGFloat(display.width) * scaleFactor)
-        let maxDisplayHeight = Int(CGFloat(display.height) * scaleFactor)
-        if config.width > maxDisplayWidth { config.width = maxDisplayWidth }
-        if config.height > maxDisplayHeight { config.height = maxDisplayHeight }
+        let maxDisplayPixelsX = Int(CGFloat(display.width) * scaleFactor)
+        let maxDisplayPixelsY = Int(CGFloat(display.height) * scaleFactor)
+        if config.width > maxDisplayPixelsX { config.width = maxDisplayPixelsX }
+        if config.height > maxDisplayPixelsY { config.height = maxDisplayPixelsY }
 
         // HEVC requires even dimensions
         if config.width % 2 != 0 { config.width += 1 }
@@ -790,6 +785,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit Rec", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
         menu.addItem(quitItem)
         statusItem.menu = menu
     }
