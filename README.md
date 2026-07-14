@@ -1,5 +1,6 @@
 <div align="center">
   <img src="logo.svg" alt="Rec Logo" width="120" height="120">
+  
   <h1>Rec</h1>
   <p><strong>Native Screen & Audio Recorder for macOS</strong></p>
   <p align="center">
