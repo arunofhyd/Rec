@@ -3,7 +3,7 @@ name: Release & Update Homebrew
 on:
   push:
     tags:
-      - 'v*'  # Triggers on v1.0.0, v1.0.1, v2.0.0...
+      - 'v*'
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
         id: vars
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      - name: Build Binary
+      - name: Build Binary (for Release Asset)
         run: |
           swiftc -O -o rec main.swift \
             -framework Cocoa \
@@ -34,18 +34,20 @@ jobs:
           files: rec
           generate_release_notes: true
 
+      - name: Calculate SHA256 (Source Tarball)
+        id: hash
+        run: |
+          TARBALL_URL="https://github.com/arunofhyd/Rec/archive/refs/tags/v${{ steps.vars.outputs.VERSION }}.tar.gz"
+          echo "Downloading $TARBALL_URL"
+          SHA=$(curl -sL "$TARBALL_URL" | shasum -a 256 | cut -d' ' -f1)
+          echo "SHA256=$SHA" >> $GITHUB_OUTPUT
+
       - name: Checkout Homebrew Tap
         uses: actions/checkout@v4
         with:
           repository: arunofhyd/homebrew-rec
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-rec
-
-      - name: Calculate SHA256
-        id: hash
-        run: |
-          SHA=$(shasum -a 256 rec | cut -d' ' -f1)
-          echo "SHA256=$SHA" >> $GITHUB_OUTPUT
 
       - name: Update Formula
         working-directory: homebrew-rec
