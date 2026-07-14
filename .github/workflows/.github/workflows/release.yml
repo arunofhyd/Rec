@@ -1,0 +1,64 @@
+name: Release & Update Homebrew
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on v1.0.0, v1.0.1, v2.0.0...
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-brew:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Determine Version
+        id: vars
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Build Binary
+        run: |
+          swiftc -O -o rec main.swift \
+            -framework Cocoa \
+            -framework ScreenCaptureKit \
+            -framework AVFoundation \
+            -framework VideoToolbox
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: rec
+          generate_release_notes: true
+
+      - name: Checkout Homebrew Tap
+        uses: actions/checkout@v4
+        with:
+          repository: arunofhyd/homebrew-rec
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: homebrew-rec
+
+      - name: Calculate SHA256
+        id: hash
+        run: |
+          SHA=$(shasum -a 256 rec | cut -d' ' -f1)
+          echo "SHA256=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Update Formula
+        working-directory: homebrew-rec
+        run: |
+          sed -i '' "s/version \".*\"/version \"${{ steps.vars.outputs.VERSION }}\"/" Formula/rec.rb
+          sed -i '' "s/sha256 \".*\"/sha256 \"${{ steps.hash.outputs.SHA256 }}\"/" Formula/rec.rb
+          git diff Formula/rec.rb
+
+      - name: Commit & Push Formula
+        working-directory: homebrew-rec
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/rec.rb
+          git commit -m "Brew formula update for v${{ steps.vars.outputs.VERSION }}" || echo "No changes"
+          git push
