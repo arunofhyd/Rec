@@ -1018,18 +1018,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // ---- STACK VIEW ----
-        let stackView = NSStackView(views: [closeButton, settingsPopUp, audioPopUp, modePopUp, recordButton])
+        let stackView = NSStackView(views: [closeButton, settingsPopUp, audioPopUp, modePopUp])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.spacing = 16
         stackView.alignment = .centerY
 
         contentView.addSubview(stackView)
+        contentView.addSubview(recordButton)
         NSLayoutConstraint.activate([
             stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
-            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16)
+            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+
+            recordButton.leadingAnchor.constraint(equalTo: stackView.trailingAnchor, constant: 16),
+            recordButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            recordButton.centerYAnchor.constraint(equalTo: stackView.centerYAnchor)
         ])
 
         stackView.layoutSubtreeIfNeeded()
