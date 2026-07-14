@@ -3,7 +3,7 @@
 To install Rec on a brand new Mac, you can run the following combined command in your Terminal. This will install Homebrew (if you don't already have it), add the custom repository, and install the Rec application:
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && brew tap arunofhyd/rec && brew install --cask rec
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && brew tap arunofhyd/rec && brew trust arunofhyd/rec && brew install --cask rec
 ```
 
 ### Important Note for New Users:
