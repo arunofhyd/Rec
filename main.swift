@@ -17,6 +17,7 @@ struct AppSettings: Codable {
     var showsClicks: Bool = false
     var saveDirectory: String = ""
     var micID: String = ""
+    var recordMode: Int = 0
 
     func save() {
         if let data = try? JSONEncoder().encode(self) {
@@ -823,6 +824,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         currentSettings.save()
     }
 
+    @objc func modeChanged(_ sender: NSMenuItem) {
+        guard let menu = sender.menu else { return }
+        for item in menu.items {
+            item.state = .off
+        }
+        sender.state = .on
+        currentSettings.recordMode = sender.tag
+        currentSettings.save()
+    }
+
     @objc func toggleMouseClicks(_ sender: NSMenuItem) {
         currentSettings.showsClicks.toggle()
         currentSettings.save()
@@ -1011,9 +1022,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("Specific App", "macwindow.badge.plus", 1)
         ]
         for (title, symbol, idx) in modeItems {
-            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            let item = NSMenuItem(title: title, action: #selector(modeChanged(_:)), keyEquivalent: "")
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?.withSymbolConfiguration(config)
             item.tag = idx
+            item.target = self
+            if currentSettings.recordMode == idx { item.state = .on }
             modePopUp.menu?.addItem(item)
         }
 
@@ -1028,8 +1041,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentView.addSubview(recordButton)
         NSLayoutConstraint.activate([
             stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
-            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
 
             recordButton.leadingAnchor.constraint(equalTo: stackView.trailingAnchor, constant: 16),
             recordButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
@@ -1085,10 +1098,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startRecordingProcess() {
-        // pullsDown=true adds a dummy title item at index 0
-        let modeIndex = modePopUp.indexOfSelectedItem
+        let modeIndex = currentSettings.recordMode
 
-        if modeIndex == 2 { // Specific App
+        if modeIndex == 1 { // Specific App
             appSelectionMenu = AppSelectionMenuHandler()
             appSelectionMenu?.onSelect = { [weak self] app in
                 self?.recorder.captureApp = app
@@ -1106,7 +1118,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func updateButtonImage() {
-        let config = NSImage.SymbolConfiguration(pointSize: 24, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
         let symbolName = recorder.isRecording ? "stop.circle.fill" : "record.circle"
         if let systemImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
             let size = systemImage.size
