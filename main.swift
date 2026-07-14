@@ -13,7 +13,6 @@ struct AppSettings: Codable {
     var fps: Int = 60
     var resolution: Int = 0 // 0 = Native, 1080, 720
     var bitrate: Int = 0    // 0 = High, 1 = Med, 2 = Low
-    var timer: Int = 0
     var audioSource: Int = 0 // 0=Sys, 1=Mic, 2=Both, 3=None
     var showsClicks: Bool = false
     var saveDirectory: String = ""
@@ -176,25 +175,10 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     var onRecordingStarted: (() -> Void)?
     var onRecordingStopped: ((URL) -> Void)?
     var onError: ((Error) -> Void)?
-    var onCountdownUpdate: ((Int) -> Void)?
 
     func startRecording() {
         if isRecording { return }
-        if currentSettings.timer > 0 {
-            startCountdown(currentSettings.timer)
-        } else {
-            beginCapture()
-        }
-    }
-
-    private func startCountdown(_ seconds: Int) {
-        var remaining = seconds
-        onCountdownUpdate?(remaining)
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
-            remaining -= 1
-            if remaining > 0 { self?.onCountdownUpdate?(remaining) }
-            else { timer.invalidate(); self?.beginCapture() }
-        }
+        beginCapture()
     }
 
     private func beginCapture() {
@@ -686,8 +670,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var appSelectionMenu: AppSelectionMenuHandler?
     var aboutWC: AboutWindowController?
 
-    var countdownWindow: NSWindow?
-    var countdownLabel: NSTextField?
     var recordingOverlay: RecordingOverlayWindow?
 
     // Track menu items for audio popup to manage state easily
@@ -820,12 +802,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         currentSettings.save()
     }
 
-    @objc func timerChanged(_ sender: NSPopUpButton) {
-        if sender.indexOfSelectedItem == 0 { currentSettings.timer = 0 }
-        else if sender.indexOfSelectedItem == 1 { currentSettings.timer = 5 }
-        else { currentSettings.timer = 10 }
-        currentSettings.save()
-    }
     @objc func toggleMouseClicks(_ sender: NSMenuItem) {
         currentSettings.showsClicks.toggle()
         currentSettings.save()
@@ -919,24 +895,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             currentSettings.save()
         }
 
-        // ---- TIMER POPUP ----
-        let timerPopUp = NSPopUpButton()
-        timerPopUp.translatesAutoresizingMaskIntoConstraints = false
-        timerPopUp.removeAllItems()
-        timerPopUp.isBordered = false
-        timerPopUp.imagePosition = .imageOnly
-        let timerItems = [("None", "timer", 0), ("5 Seconds", "5.circle", 5), ("10 Seconds", "10.circle", 10)]
-        for (title, symbol, val) in timerItems {
-            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
-            item.tag = val
-            timerPopUp.menu?.addItem(item)
-        }
-        if currentSettings.timer == 0 { timerPopUp.selectItem(at: 0) }
-        else if currentSettings.timer == 5 { timerPopUp.selectItem(at: 1) }
-        else { timerPopUp.selectItem(at: 2) }
-        timerPopUp.action = #selector(timerChanged(_:))
-        timerPopUp.target = self
 
         // ---- SETTINGS POPUP ----
         let settingsPopUp = NSPopUpButton()
@@ -1029,7 +987,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // ---- STACK VIEW ----
-        let stackView = NSStackView(views: [closeButton, settingsPopUp, timerPopUp, audioPopUp, modePopUp, recordButton])
+        let stackView = NSStackView(views: [closeButton, settingsPopUp, audioPopUp, modePopUp, recordButton])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.spacing = 16
@@ -1051,9 +1009,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setupRecorder() {
-        recorder.onCountdownUpdate = { [weak self] seconds in self?.showCountdown(seconds) }
         recorder.onRecordingStarted = { [weak self] in
-            self?.hideCountdown()
             self?.updateButtonImage()
             self?.modePopUp.isEnabled = false
             if let rect = self?.recorder.captureRect, rect != .zero, let screen = self?.recorder.captureScreen {
@@ -1076,7 +1032,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         recorder.onError = { [weak self] error in
             self?.recordingOverlay?.close(); self?.recordingOverlay = nil
-            self?.hideCountdown()
             self?.updateButtonImage()
             self?.modePopUp.isEnabled = true
             let alert = NSAlert()
@@ -1087,36 +1042,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func showCountdown(_ seconds: Int) {
-        if countdownWindow == nil {
-            countdownLabel = NSTextField(labelWithString: "")
-            countdownLabel?.font = .systemFont(ofSize: 120, weight: .bold)
-            countdownLabel?.textColor = .white
-            countdownLabel?.backgroundColor = .clear
-            countdownLabel?.drawsBackground = false
-            countdownLabel?.isBordered = false
-            countdownLabel?.alignment = .center
-            countdownLabel?.translatesAutoresizingMaskIntoConstraints = false
 
-            let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 200), styleMask: [.borderless], backing: .buffered, defer: false)
-            win.isOpaque = false; win.backgroundColor = .clear; win.level = .floating
-            win.ignoresMouseEvents = true
-            win.collectionBehavior = [.canJoinAllSpaces, .stationary]
-            win.contentView?.addSubview(countdownLabel!)
-            NSLayoutConstraint.activate([
-                countdownLabel!.centerXAnchor.constraint(equalTo: win.contentView!.centerXAnchor),
-                countdownLabel!.centerYAnchor.constraint(equalTo: win.contentView!.centerYAnchor),
-                countdownLabel!.widthAnchor.constraint(lessThanOrEqualToConstant: 180),
-                countdownLabel!.heightAnchor.constraint(lessThanOrEqualToConstant: 180)
-            ])
-            win.center()
-            countdownWindow = win
-        }
-        countdownLabel?.stringValue = "\(seconds)"
-        countdownWindow?.makeKeyAndOrderFront(nil)
-    }
-
-    func hideCountdown() { countdownWindow?.close(); countdownWindow = nil; countdownLabel = nil }
 
     @objc func toggleRecording() {
         if recorder.isRecording { recorder.stopRecording() }
@@ -1178,7 +1104,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     deinit {
         recordingOverlay?.close()
-        countdownWindow?.close()
     }
 }
 
