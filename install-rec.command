@@ -95,6 +95,18 @@ let top = NSColor(calibratedWhite: 0.2, alpha: 1.0)
 let bot = NSColor(calibratedWhite: 0.1, alpha: 1.0)
 NSGradient(starting: top, ending: bot)?.draw(in: NSRect(x: 0, y: 0, width: px, height: px), angle: -90)
 
+// Shiny edges
+let shineGradient = NSGradient(colorsAndLocations:
+    (NSColor.white.withAlphaComponent(0.6), 0.0),
+    (NSColor.white.withAlphaComponent(0.0), 0.3),
+    (NSColor.white.withAlphaComponent(0.0), 0.7),
+    (NSColor.white.withAlphaComponent(0.6), 1.0)
+)
+let innerRect = NSRect(x: 10, y: 10, width: px - 20, height: px - 20) // approx scale for x=1, rx=26 in 120 viewBox
+let shinePath = NSBezierPath(roundedRect: innerRect, xRadius: 220, yRadius: 220)
+shinePath.lineWidth = 20
+shineGradient?.draw(in: shinePath, angle: -45)
+
 // Record circle glyph, centered
 let cx = px / 2.0
 let cy = px / 2.0

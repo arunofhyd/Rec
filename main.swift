@@ -329,10 +329,12 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         config.queueDepth = 5
         config.capturesAudio = (currentSettings.audioSource == 0 || currentSettings.audioSource == 2)
         config.showsCursor = true
-        let clickKey = "showsClicks"
-        if config.responds(to: Selector(("set\(clickKey.capitalized):"))) {
-            config.setValue(currentSettings.showsClicks, forKey: clickKey)
+
+        let clickSelector = NSSelectorFromString("setShowsClicks:")
+        if config.responds(to: clickSelector) {
+            config.setValue(currentSettings.showsClicks, forKey: "showsClicks")
         }
+
         config.pixelFormat = kCVPixelFormatType_32BGRA
 
         do {
@@ -642,7 +644,7 @@ class AboutWindowController: NSWindowController {
                 do {
                     if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
                        let version = json["version"] as? String {
-                        if version != appVersion {
+                        if version.compare(appVersion, options: .numeric) == .orderedDescending {
                             self?.updateStatus.stringValue = "Update available: v\(version)!"
                             if let dlURL = URL(string: "https://rec-aoh.netlify.app/#installc") {
                                 NSWorkspace.shared.open(dlURL)
@@ -975,9 +977,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         else { (settingsPopUp.menu?.item(withTitle: "Resolution")?.submenu?.item(withTitle: "720p"))?.state = .on }
 
         addSubmenu("Bitrate", "speedometer", [
-            ("High", 0, #selector(bitChanged(_:))),
-            ("Medium", 1, #selector(bitChanged(_:))),
-            ("Low", 2, #selector(bitChanged(_:)))
+            ("Best Quality, Large size", 0, #selector(bitChanged(_:))),
+            ("Balanced Quality & size", 1, #selector(bitChanged(_:))),
+            ("Low Quality, small size", 2, #selector(bitChanged(_:)))
         ])
         (settingsPopUp.menu?.item(withTitle: "Bitrate")?.submenu?.item(at: currentSettings.bitrate))?.state = .on
 
@@ -1060,7 +1062,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.modePopUp.isEnabled = true
             let alert = NSAlert()
             alert.messageText = "Recording Saved"
-            alert.informativeText = "Saved to \(url.lastPathComponent) in Downloads folder."
+            alert.informativeText = "Saved to \(url.lastPathComponent)"
             alert.alertStyle = .informational
             alert.addButton(withTitle: "Show in Finder")
             alert.addButton(withTitle: "OK")
@@ -1139,7 +1141,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func updateButtonImage() {
-        let config = NSImage.SymbolConfiguration(pointSize: 72, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: 32, weight: .regular)
         let symbolName = recorder.isRecording ? "stop.circle.fill" : "record.circle"
         if let systemImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
             let size = systemImage.size
