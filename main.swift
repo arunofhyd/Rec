@@ -877,7 +877,7 @@ class AboutWindowController: NSWindowController {
                        let version = json["version"] as? String {
                         if version != appVersion {
                             self?.updateStatus.stringValue = "Update available: v\(version)!"
-                            if let dlURL = URL(string: "https://github.com/arunofhyd/Rec") {
+                            if let dlURL = URL(string: "https://rec-aoh.netlify.app/#installc") {
                                 NSWorkspace.shared.open(dlURL)
                             }
                         } else {
