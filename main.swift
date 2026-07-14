@@ -1144,7 +1144,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func updateButtonImage() {
-        let config = NSImage.SymbolConfiguration(pointSize: 32, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: 28, weight: .regular)
         let symbolName = recorder.isRecording ? "stop.circle.fill" : "record.circle"
         if let systemImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
             let size = systemImage.size
