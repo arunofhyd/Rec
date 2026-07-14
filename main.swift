@@ -72,8 +72,7 @@ class RecordingOverlayView: NSView {
         dirtyRect.fill()
 
         if window.holeRect != .zero {
-            let windowRect = window.convertFromScreen(NSRect(origin: window.holeRect.origin, size: window.holeRect.size))
-            let localRect = self.convert(windowRect, from: nil)
+            let localRect = window.holeRect
             NSColor.clear.set()
             localRect.fill(using: .sourceOut)
         }
@@ -137,9 +136,12 @@ class RegionSelectionWindow: NSWindow {
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         self.ignoresMouseEvents = false
 
-        selectionView = SelectionView(frame: self.contentView!.bounds)
+        let content = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        self.contentView = content
+
+        selectionView = SelectionView(frame: content.bounds)
         selectionView.autoresizingMask = [.width, .height]
-        self.contentView?.addSubview(selectionView)
+        content.addSubview(selectionView)
 
         let label = NSTextField(labelWithString: "Click and drag to select a recording region. Press Esc to cancel.")
         label.textColor = .white
@@ -147,7 +149,7 @@ class RegionSelectionWindow: NSWindow {
         label.sizeToFit()
         label.frame.origin = CGPoint(x: (screen.frame.width - label.frame.width) / 2, y: screen.frame.height / 2)
         label.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
-        self.contentView?.addSubview(label)
+        content.addSubview(label)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -431,7 +433,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             baseWidth = w
             baseHeight = h
 
-            os_log("Region Capture: ScreenLocalRect=%{public} SourceRect(TopLeft)=%{public} Display=%{public}d", log: log, type: .info,
+            os_log("Region Capture: ScreenLocalRect=%{public}@ SourceRect(TopLeft)=%{public}@ Display=%d", log: log, type: .info,
                    "\(rect)", "\(sourceRect!)", display.displayID)
         }
         // ============================================================
