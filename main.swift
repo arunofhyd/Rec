@@ -5,7 +5,7 @@ import VideoToolbox
 import os.log
 
 // MARK: - Configuration
-let appVersion = "1.0" // version
+let appVersion = "1.2" // Bump version
 let updateCheckURL = "https://rec-aoh.netlify.app/version.json"
 private let log = OSLog(subsystem: "com.rec.app", category: "recorder")
 
@@ -330,9 +330,17 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         config.capturesAudio = (currentSettings.audioSource == 0 || currentSettings.audioSource == 2)
         config.showsCursor = true
 
-        let clickSelector = NSSelectorFromString("setShowsClicks:")
-        if config.responds(to: clickSelector) {
+        if config.responds(to: NSSelectorFromString("setShowsClicks:")) {
             config.setValue(currentSettings.showsClicks, forKey: "showsClicks")
+        }
+        if config.responds(to: NSSelectorFromString("setCapturesMouseClicks:")) {
+            config.setValue(currentSettings.showsClicks, forKey: "capturesMouseClicks")
+        }
+        if config.responds(to: NSSelectorFromString("setShowMouseClicks:")) {
+            config.setValue(currentSettings.showsClicks, forKey: "showMouseClicks")
+        }
+        if config.responds(to: NSSelectorFromString("setShowsMouseClicks:")) {
+            config.setValue(currentSettings.showsClicks, forKey: "showsMouseClicks")
         }
 
         config.pixelFormat = kCVPixelFormatType_32BGRA
@@ -780,36 +788,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let isMainItem = audioMainItems.contains(sender)
         // let isMicItem = audioMicItems.contains(sender) // Implied by !isMainItem
 
-        if isMainItem {
-            // 1. Turn OFF all main items
-            audioMainItems.forEach { $0.state = .off }
-            // 2. Turn OFF all mic items
-            audioMicItems.forEach { $0.state = .off }
-            // 3. Turn ON sender
-            sender.state = .on
+        let index = menu.index(of: sender)
 
-            // 4. Update Settings
-            let index = audioMainItems.firstIndex(of: sender) ?? 0
+        if isMainItem {
+            // It's a base audio source (System, Mic, Both, None)
+            // Only toggle off other base audio source items (index 0 to 3)
+            for i in 0..<4 {
+                if let item = menu.item(at: i) {
+                    item.state = .off
+                }
+            }
+            sender.state = .on
             currentSettings.audioSource = index
-            // If switching to "Microphone" (index 1), ensure a mic is selected (default to first available)
             if index == 1, let firstMic = audioMicItems.first, currentSettings.micID.isEmpty {
                 currentSettings.micID = firstMic.identifier?.rawValue ?? ""
                 firstMic.state = .on
             }
         } else {
-            // Mic Item Selected
-            // 1. Turn OFF all mic items
-            audioMicItems.forEach { $0.state = .off }
-            // 2. Turn OFF all main items
-            audioMainItems.forEach { $0.state = .off }
-            // 3. Turn ON "Microphone" main item (index 1) AND this mic item
+            // It's a specific microphone selection
+            // Turn off all other microphone items
+            for item in audioMicItems {
+                item.state = .off
+            }
             sender.state = .on
             if audioMainItems.indices.contains(1) {
                 audioMainItems[1].state = .on // "Microphone"
             }
-
-            // 4. Update Settings
-            currentSettings.audioSource = 1 // Force Microphone mode
+            currentSettings.audioSource = 1
             currentSettings.micID = sender.identifier?.rawValue ?? ""
         }
         currentSettings.save()
@@ -1087,12 +1092,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             countdownLabel = NSTextField(labelWithString: "")
             countdownLabel?.font = .systemFont(ofSize: 120, weight: .bold)
             countdownLabel?.textColor = .white
-            countdownLabel?.backgroundColor = NSColor.black.withAlphaComponent(0.5)
-            countdownLabel?.drawsBackground = true
+            countdownLabel?.backgroundColor = .clear
+            countdownLabel?.drawsBackground = false
             countdownLabel?.isBordered = false
             countdownLabel?.alignment = .center
-            countdownLabel?.layer?.cornerRadius = 20
-            countdownLabel?.layer?.masksToBounds = true
             countdownLabel?.translatesAutoresizingMaskIntoConstraints = false
 
             let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 200), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -1147,28 +1150,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let size = systemImage.size
             let tintedImage = NSImage(size: size)
             tintedImage.lockFocus()
-            if symbolName == "record.circle" {
-                // Exact proportions from logo.svg
-                // viewBox 120x120. Outer R=30 (1/4 width), Stroke=6 (1/20 width). Inner R=20 (1/6 width).
-                let cx = size.width / 2.0
-                let cy = size.height / 2.0
-                let outerRadius = size.width * (30.0 / 120.0)
-                let innerRadius = size.width * (20.0 / 120.0)
-                let strokeWidth = size.width * (6.0 / 120.0)
 
+            if symbolName == "record.circle" {
+                let scale = size.width / 24.0
+
+                // Draw white outer circle
                 NSColor.white.setStroke()
-                let outerPath = NSBezierPath(ovalIn: NSRect(x: cx - outerRadius, y: cy - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
-                outerPath.lineWidth = strokeWidth
+                let outerPath = NSBezierPath(ovalIn: NSRect(x: 2 * scale, y: 2 * scale, width: size.width - 4 * scale, height: size.height - 4 * scale))
+                outerPath.lineWidth = 2 * scale
                 outerPath.stroke()
 
-                NSColor(calibratedRed: 255.0/255.0, green: 59.0/255.0, blue: 48.0/255.0, alpha: 1.0).setFill() // #FF3B30
-                let innerPath = NSBezierPath(ovalIn: NSRect(x: cx - innerRadius, y: cy - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
+                // Draw red inner dot
+                NSColor.systemRed.setFill()
+                let innerPath = NSBezierPath(ovalIn: NSRect(x: 7 * scale, y: 7 * scale, width: size.width - 14 * scale, height: size.height - 14 * scale))
                 innerPath.fill()
             } else {
+                // For the square stop button, just draw it normally and tint it white
                 systemImage.draw(in: NSRect(origin: .zero, size: size))
                 NSColor.white.set()
                 NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
             }
+
             tintedImage.unlockFocus()
             recordButton.image = tintedImage
         }
