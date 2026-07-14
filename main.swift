@@ -5,7 +5,7 @@ import VideoToolbox
 import os.log
 
 // MARK: - Configuration
-let appVersion = "1.2" // Bump version
+let appVersion = "1.0"
 let updateCheckURL = "https://rec-aoh.netlify.app/version.json"
 private let log = OSLog(subsystem: "com.rec.app", category: "recorder")
 
