@@ -577,12 +577,19 @@ class AboutWindowController: NSWindowController {
         let size = NSSize(width: 64, height: 64)
         let customImage = NSImage(size: size)
         customImage.lockFocus()
+        let cx = size.width / 2.0
+        let cy = size.height / 2.0
+        let outerRadius = size.width * (30.0 / 120.0)
+        let innerRadius = size.width * (20.0 / 120.0)
+        let strokeWidth = size.width * (6.0 / 120.0)
+
         NSColor.white.setStroke()
-        let outerPath = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
-        outerPath.lineWidth = 2
+        let outerPath = NSBezierPath(ovalIn: NSRect(x: cx - outerRadius, y: cy - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
+        outerPath.lineWidth = strokeWidth
         outerPath.stroke()
-        NSColor.systemRed.setFill()
-        let innerPath = NSBezierPath(ovalIn: NSRect(x: 14, y: 14, width: size.width - 28, height: size.height - 28))
+
+        NSColor(calibratedRed: 255.0/255.0, green: 59.0/255.0, blue: 48.0/255.0, alpha: 1.0).setFill() // #FF3B30
+        let innerPath = NSBezierPath(ovalIn: NSRect(x: cx - innerRadius, y: cy - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
         innerPath.fill()
         customImage.unlockFocus()
         iconView.image = customImage
@@ -774,11 +781,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if isMainItem {
             // It's a base audio source (System, Mic, Both, None)
-            // Only toggle off other base audio source items (index 0 to 3)
-            for i in 0..<4 {
-                if let item = menu.item(at: i) {
-                    item.state = .off
-                }
+            for item in audioMainItems {
+                item.state = .off
             }
             sender.state = .on
             currentSettings.audioSource = index
@@ -788,8 +792,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             // It's a specific microphone selection
-            // Turn off all other microphone items
             for item in audioMicItems {
+                item.state = .off
+            }
+            for item in audioMainItems {
                 item.state = .off
             }
             sender.state = .on
@@ -1070,7 +1076,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func updateButtonImage() {
-        let config = NSImage.SymbolConfiguration(pointSize: 28, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: 24, weight: .regular)
         let symbolName = recorder.isRecording ? "stop.circle.fill" : "record.circle"
         if let systemImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
             let size = systemImage.size
@@ -1078,17 +1084,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             tintedImage.lockFocus()
 
             if symbolName == "record.circle" {
-                let scale = size.width / 24.0
-
                 // Draw white outer circle
                 NSColor.white.setStroke()
-                let outerPath = NSBezierPath(ovalIn: NSRect(x: 2 * scale, y: 2 * scale, width: size.width - 4 * scale, height: size.height - 4 * scale))
-                outerPath.lineWidth = 2 * scale
+                let outerPath = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
+                outerPath.lineWidth = 2
                 outerPath.stroke()
 
                 // Draw red inner dot
                 NSColor.systemRed.setFill()
-                let innerPath = NSBezierPath(ovalIn: NSRect(x: 7 * scale, y: 7 * scale, width: size.width - 14 * scale, height: size.height - 14 * scale))
+                let innerPath = NSBezierPath(ovalIn: NSRect(x: 7, y: 7, width: size.width - 14, height: size.height - 14))
                 innerPath.fill()
             } else {
                 // For the square stop button, just draw it normally and tint it white

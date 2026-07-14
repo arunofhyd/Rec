@@ -95,44 +95,20 @@ let top = NSColor(calibratedWhite: 0.2, alpha: 1.0)
 let bot = NSColor(calibratedWhite: 0.1, alpha: 1.0)
 NSGradient(starting: top, ending: bot)?.draw(in: NSRect(x: 0, y: 0, width: px, height: px), angle: -90)
 
-// Shiny edges
-let shineGradient = NSGradient(colors: [
-    NSColor.white.withAlphaComponent(0.6),
-    NSColor.white.withAlphaComponent(0.0),
-    NSColor.white.withAlphaComponent(0.0),
-    NSColor.white.withAlphaComponent(0.6)
-], atLocations: [0.0, 0.3, 0.7, 1.0], colorSpace: .deviceRGB)
-let inset = px * (1.0 / 120.0)
-let shineRect = NSRect(x: inset, y: inset, width: px - 2 * inset, height: px - 2 * inset)
-let shineRadius = px * (26.0 / 120.0)
-let shinePath = NSBezierPath(roundedRect: shineRect, xRadius: shineRadius, yRadius: shineRadius)
-shinePath.lineWidth = px * (2.0 / 120.0)
-
-// To stroke a path with a gradient in AppKit, we create a path representation of the stroke, clip to it, and fill the bounds.
-ctx.saveGState()
-ctx.setLineWidth(px * (2.0 / 120.0))
-let cgPath = CGPath(roundedRect: shineRect, cornerWidth: shineRadius, cornerHeight: shineRadius, transform: nil)
-ctx.addPath(cgPath)
-ctx.replacePathWithStrokedPath()
-ctx.clip()
-shineGradient?.draw(in: shineRect, angle: -45)
-ctx.restoreGState()
-
 // Record circle glyph, centered
-let cx = px / 2.0
-let cy = px / 2.0
-let outerRadius = px * (30.0 / 120.0)
-let innerRadius = px * (20.0 / 120.0)
-let strokeWidth = px * (6.0 / 120.0)
-
-NSColor.white.setStroke()
-let outerPath = NSBezierPath(ovalIn: NSRect(x: cx - outerRadius, y: cy - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
-outerPath.lineWidth = strokeWidth
-outerPath.stroke()
-
-NSColor(calibratedRed: 255.0/255.0, green: 59.0/255.0, blue: 48.0/255.0, alpha: 1.0).setFill() // #FF3B30
-let innerPath = NSBezierPath(ovalIn: NSRect(x: cx - innerRadius, y: cy - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
-innerPath.fill()
+let cfg = NSImage.SymbolConfiguration(pointSize: 560, weight: .regular)
+if let sym = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)?
+        .withSymbolConfiguration(cfg) {
+    let s = sym.size
+    let tinted = NSImage(size: s)
+    tinted.lockFocus()
+    sym.draw(in: NSRect(origin: .zero, size: s))
+    NSColor.systemRed.set()
+    NSRect(origin: .zero, size: s).fill(using: .sourceAtop)
+    tinted.unlockFocus()
+    let rect = NSRect(x: (px - s.width)/2, y: (px - s.height)/2, width: s.width, height: s.height)
+    tinted.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0)
+}
 
 img.unlockFocus()
 if let tiff = img.tiffRepresentation,
