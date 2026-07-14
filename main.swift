@@ -80,8 +80,8 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
     var stream: SCStream?
     var assetWriter: AVAssetWriter?
     var videoInput: AVAssetWriterInput?
-    var audioInput: AVAssetWriterInput? // System Audio
-    var micAudioInput: AVAssetWriterInput? // Microphone Audio
+    var audioInput: AVAssetWriterInput?
+    var micAudioInput: AVAssetWriterInput?
     var isRecording = false
     var outputFile: URL?
 
@@ -181,17 +181,13 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
         var finalHeight = display.height
         
         if settings.mode == .selectedPortion, let sRect = sourceRect {
-            // Clamp source rect to display bounds
             let clampedRect = sRect.intersection(display.frame)
             if !clampedRect.isEmpty {
-                // SCStreamConfiguration's sourceRect expects logical points
-                // We must use KVC since sourceRect might not be available in older SDKs natively without warnings.
                 config.setValue(clampedRect, forKey: "sourceRect")
                 
                 finalWidth = Int(clampedRect.width * scale)
                 finalHeight = Int(clampedRect.height * scale)
 
-                // Show recording indicator
                 DispatchQueue.main.async {
                     guard let screen = NSScreen.main else { return }
                     let indicatorWindow = RecordingIndicatorWindow(screen: screen)
@@ -202,17 +198,14 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
             }
         }
         
-        // Ensure even dimensions for HEVC
         if finalWidth % 2 != 0 { finalWidth -= 1 }
         if finalHeight % 2 != 0 { finalHeight -= 1 }
 
         config.width = finalWidth
         config.height = finalHeight
         
-        // System audio
         config.capturesAudio = (settings.audio == .system || settings.audio == .systemAndMic)
         
-        // Show mouse clicks
         if settings.showMouseClicks {
             config.setValue(true, forKey: "showsMouseClicks")
         }
@@ -220,7 +213,6 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
         do {
             self.setupAssetWriter(config: config, settings: settings)
             
-            // Start microphone capture if needed
             if settings.audio == .microphone || settings.audio == .systemAndMic {
                 self.setupMicrophone(settings: settings)
             }
@@ -293,7 +285,8 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
         let session = AVCaptureSession()
         self.captureSession = session
         
-        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone], mediaType: .audio, position: .unspecified).devices
+        let micType = AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeBuiltInMicrophone")
+        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [micType], mediaType: .audio, position: .unspecified).devices
         
         var device: AVCaptureDevice? = AVCaptureDevice.default(for: .audio)
         if let micID = settings.micID, let d = devices.first(where: { $0.uniqueID == micID }) {
@@ -816,7 +809,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Setup Buttons and Dropdowns
         
-        let config24 = NSImage.SymbolConfiguration(pointSize: 24, weight: .regular)
         let config18 = NSImage.SymbolConfiguration(pointSize: 18, weight: .regular)
 
         closeButton = createIconOnlyButton(symbolName: "xmark.circle.fill", config: config18, action: #selector(NSApplication.terminate(_:)))
@@ -927,8 +919,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 let menu = NSMenu()
                 for app in apps {
-                    // Ignore Finder and system apps generally by ignoring those without a bundle ID or standard Apple ones
-                    guard let bundleID = app.bundleIdentifier, bundleID != Bundle.main.bundleIdentifier, bundleID != "com.apple.finder" else { continue }
+                    let bundleID = app.bundleIdentifier ?? ""
+                    guard bundleID != Bundle.main.bundleIdentifier, bundleID != "com.apple.finder", bundleID != "" else { continue }
                     
                     let item = NSMenuItem(title: app.applicationName, action: #selector(self.appSelected(_:)), keyEquivalent: "")
                     item.target = self
@@ -1098,7 +1090,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(withTitle: "System Audio", action: nil, keyEquivalent: "")
         
-        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone], mediaType: .audio, position: .unspecified).devices
+        let micType = AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeBuiltInMicrophone")
+        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [micType], mediaType: .audio, position: .unspecified).devices
         let micMenu = NSMenu()
         for device in devices {
             let item = NSMenuItem(title: device.localizedName, action: #selector(self.micSelected(_:)), keyEquivalent: "")
