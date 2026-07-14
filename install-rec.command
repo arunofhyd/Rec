@@ -88,27 +88,42 @@ let scale = size / px
 ctx.scaleBy(x: scale, y: scale)
 
 // Dark rounded rect background
-let bg = NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: px, height: px),
-                      xRadius: 230, yRadius: 230)
-bg.addClip()
-let top = NSColor(calibratedWhite: 0.2, alpha: 1.0)
-let bot = NSColor(calibratedWhite: 0.1, alpha: 1.0)
-NSGradient(starting: top, ending: bot)?.draw(in: NSRect(x: 0, y: 0, width: px, height: px), angle: -90)
+let appScale = px / 120.0
+ctx.scaleBy(x: appScale, y: appScale)
 
-// Record circle glyph, centered
-let cfg = NSImage.SymbolConfiguration(pointSize: 560, weight: .regular)
-if let sym = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)?
-        .withSymbolConfiguration(cfg) {
-    let s = sym.size
-    let tinted = NSImage(size: s)
-    tinted.lockFocus()
-    sym.draw(in: NSRect(origin: .zero, size: s))
-    NSColor.systemRed.set()
-    NSRect(origin: .zero, size: s).fill(using: .sourceAtop)
-    tinted.unlockFocus()
-    let rect = NSRect(x: (px - s.width)/2, y: (px - s.height)/2, width: s.width, height: s.height)
-    tinted.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0)
-}
+let bgPath = NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: 120, height: 120), xRadius: 27, yRadius: 27)
+let topColor = NSColor(red: 51/255.0, green: 51/255.0, blue: 51/255.0, alpha: 1.0)
+let botColor = NSColor(red: 26/255.0, green: 26/255.0, blue: 26/255.0, alpha: 1.0)
+bgPath.addClip()
+NSGradient(starting: topColor, ending: botColor)?.draw(in: bgPath, angle: -90)
+
+// Shiny edges
+let shineRect = CGRect(x: 1, y: 1, width: 118, height: 118)
+let cgPath = CGPath(roundedRect: shineRect, cornerWidth: 26, cornerHeight: 26, transform: nil)
+ctx.saveGState()
+ctx.addPath(cgPath)
+ctx.setLineWidth(2)
+ctx.replacePathWithStrokedPath()
+ctx.clip()
+let shineGradient = NSGradient(colors: [
+    NSColor.white.withAlphaComponent(0.6),
+    NSColor.white.withAlphaComponent(0.0),
+    NSColor.white.withAlphaComponent(0.0),
+    NSColor.white.withAlphaComponent(0.6)
+], atLocations: [0.0, 0.3, 0.7, 1.0], colorSpace: .deviceRGB)
+shineGradient?.draw(in: NSRect(x: 0, y: 0, width: 120, height: 120), angle: -45)
+ctx.restoreGState()
+
+// Record Circle Outer
+let outerPath = NSBezierPath(ovalIn: NSRect(x: 30, y: 30, width: 60, height: 60))
+outerPath.lineWidth = 6
+NSColor.white.setStroke()
+outerPath.stroke()
+
+// Record Circle Inner
+let innerPath = NSBezierPath(ovalIn: NSRect(x: 40, y: 40, width: 40, height: 40))
+NSColor(red: 1.0, green: 59/255.0, blue: 48/255.0, alpha: 1.0).setFill()
+innerPath.fill()
 
 img.unlockFocus()
 if let tiff = img.tiffRepresentation,
