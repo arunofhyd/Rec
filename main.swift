@@ -577,20 +577,40 @@ class AboutWindowController: NSWindowController {
         let size = NSSize(width: 64, height: 64)
         let customImage = NSImage(size: size)
         customImage.lockFocus()
-        let cx = size.width / 2.0
-        let cy = size.height / 2.0
-        let outerRadius = size.width * (30.0 / 120.0)
-        let innerRadius = size.width * (20.0 / 120.0)
-        let strokeWidth = size.width * (6.0 / 120.0)
+        if let ctx = NSGraphicsContext.current?.cgContext {
+            let scale = size.width / 120.0
+            ctx.scaleBy(x: scale, y: scale)
 
-        NSColor.white.setStroke()
-        let outerPath = NSBezierPath(ovalIn: NSRect(x: cx - outerRadius, y: cy - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
-        outerPath.lineWidth = strokeWidth
-        outerPath.stroke()
+            let bgPath = NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: 120, height: 120), xRadius: 27, yRadius: 27)
+            let topColor = NSColor(red: 51/255.0, green: 51/255.0, blue: 51/255.0, alpha: 1.0)
+            let botColor = NSColor(red: 26/255.0, green: 26/255.0, blue: 26/255.0, alpha: 1.0)
+            NSGradient(starting: topColor, ending: botColor)?.draw(in: bgPath, angle: -90)
 
-        NSColor(calibratedRed: 255.0/255.0, green: 59.0/255.0, blue: 48.0/255.0, alpha: 1.0).setFill() // #FF3B30
-        let innerPath = NSBezierPath(ovalIn: NSRect(x: cx - innerRadius, y: cy - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
-        innerPath.fill()
+            let shineRect = CGRect(x: 1, y: 1, width: 118, height: 118)
+            let cgPath = CGPath(roundedRect: shineRect, cornerWidth: 26, cornerHeight: 26, transform: nil)
+            ctx.saveGState()
+            ctx.addPath(cgPath)
+            ctx.setLineWidth(2)
+            ctx.replacePathWithStrokedPath()
+            ctx.clip()
+            let shineGradient = NSGradient(colors: [
+    NSColor.white.withAlphaComponent(0.6),
+    NSColor.white.withAlphaComponent(0.0),
+    NSColor.white.withAlphaComponent(0.0),
+    NSColor.white.withAlphaComponent(0.6)
+], atLocations: [0.0, 0.3, 0.7, 1.0], colorSpace: .deviceRGB)
+            shineGradient?.draw(in: NSRect(x: 0, y: 0, width: 120, height: 120), angle: -45)
+            ctx.restoreGState()
+
+            let outerPath = NSBezierPath(ovalIn: NSRect(x: 30, y: 30, width: 60, height: 60))
+            outerPath.lineWidth = 6
+            NSColor.white.setStroke()
+            outerPath.stroke()
+
+            let innerPath = NSBezierPath(ovalIn: NSRect(x: 40, y: 40, width: 40, height: 40))
+            NSColor(red: 1.0, green: 59/255.0, blue: 48/255.0, alpha: 1.0).setFill()
+            innerPath.fill()
+        }
         customImage.unlockFocus()
         iconView.image = customImage
         iconView.imageScaling = .scaleProportionallyUpOrDown
@@ -771,13 +791,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // FIXED: Audio Menu Logic — Mutual Exclusion
     // ============================================================
     @objc func audioChanged(_ sender: NSMenuItem) {
-        guard let menu = sender.menu else { return }
-
         // Determine group by checking our tracked arrays
         let isMainItem = audioMainItems.contains(sender)
-        // let isMicItem = audioMicItems.contains(sender) // Implied by !isMainItem
-
-        let index = menu.index(of: sender)
 
         if isMainItem {
             // It's a base audio source (System, Mic, Both, None)
@@ -785,8 +800,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 item.state = .off
             }
             sender.state = .on
-            currentSettings.audioSource = index
-            if index == 1, let firstMic = audioMicItems.first, currentSettings.micID.isEmpty {
+            currentSettings.audioSource = sender.tag
+            if sender.tag == 1, let firstMic = audioMicItems.first, currentSettings.micID.isEmpty {
                 currentSettings.micID = firstMic.identifier?.rawValue ?? ""
                 firstMic.state = .on
             }
@@ -850,9 +865,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioPopUp.removeAllItems()
         audioPopUp.isBordered = false
         audioPopUp.imagePosition = .imageOnly
+        audioPopUp.pullsDown = true
 
         audioMainItems.removeAll()
         audioMicItems.removeAll()
+
+        let audioGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        audioGearItem.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        audioPopUp.menu?.addItem(audioGearItem)
 
         let audioMainData = [
             ("System Audio", "speaker.wave.2", 0),
@@ -980,6 +1000,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.removeAllItems()
         modePopUp.isBordered = false
         modePopUp.imagePosition = .imageOnly
+        modePopUp.pullsDown = true
+
+        let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        modeGearItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        modePopUp.menu?.addItem(modeGearItem)
 
         let modeItems = [
             ("Entire Screen", "macwindow", 0),
@@ -1056,9 +1081,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startRecordingProcess() {
+        // pullsDown=true adds a dummy title item at index 0
         let modeIndex = modePopUp.indexOfSelectedItem
 
-        if modeIndex == 1 { // Specific App
+        if modeIndex == 2 { // Specific App
             appSelectionMenu = AppSelectionMenuHandler()
             appSelectionMenu?.onSelect = { [weak self] app in
                 self?.recorder.captureApp = app
@@ -1084,16 +1110,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             tintedImage.lockFocus()
 
             if symbolName == "record.circle" {
-                // Draw white outer circle
-                NSColor.white.setStroke()
-                let outerPath = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
-                outerPath.lineWidth = 2
-                outerPath.stroke()
+                if let ctx = NSGraphicsContext.current?.cgContext {
+                    let scale = size.width / 120.0
+                    ctx.scaleBy(x: scale, y: scale)
 
-                // Draw red inner dot
-                NSColor.systemRed.setFill()
-                let innerPath = NSBezierPath(ovalIn: NSRect(x: 7, y: 7, width: size.width - 14, height: size.height - 14))
-                innerPath.fill()
+                    let outerPath = NSBezierPath(ovalIn: NSRect(x: 30, y: 30, width: 60, height: 60))
+                    outerPath.lineWidth = 6
+                    NSColor.white.setStroke()
+                    outerPath.stroke()
+
+                    let innerPath = NSBezierPath(ovalIn: NSRect(x: 40, y: 40, width: 40, height: 40))
+                    NSColor(red: 1.0, green: 59/255.0, blue: 48/255.0, alpha: 1.0).setFill()
+                    innerPath.fill()
+                }
             } else {
                 // For the square stop button, just draw it normally and tint it white
                 systemImage.draw(in: NSRect(origin: .zero, size: size))
