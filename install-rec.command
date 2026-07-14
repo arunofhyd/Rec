@@ -96,16 +96,27 @@ let bot = NSColor(calibratedWhite: 0.1, alpha: 1.0)
 NSGradient(starting: top, ending: bot)?.draw(in: NSRect(x: 0, y: 0, width: px, height: px), angle: -90)
 
 // Shiny edges
-let shineGradient = NSGradient(colorsAndLocations:
-    (NSColor.white.withAlphaComponent(0.6), 0.0),
-    (NSColor.white.withAlphaComponent(0.0), 0.3),
-    (NSColor.white.withAlphaComponent(0.0), 0.7),
-    (NSColor.white.withAlphaComponent(0.6), 1.0)
-)
-let innerRect = NSRect(x: 10, y: 10, width: px - 20, height: px - 20) // approx scale for x=1, rx=26 in 120 viewBox
-let shinePath = NSBezierPath(roundedRect: innerRect, xRadius: 220, yRadius: 220)
-shinePath.lineWidth = 20
-shineGradient?.draw(in: shinePath, angle: -45)
+let shineGradient = NSGradient(colors: [
+    NSColor.white.withAlphaComponent(0.6),
+    NSColor.white.withAlphaComponent(0.0),
+    NSColor.white.withAlphaComponent(0.0),
+    NSColor.white.withAlphaComponent(0.6)
+], atLocations: [0.0, 0.3, 0.7, 1.0], colorSpace: .deviceRGB)
+let inset = px * (1.0 / 120.0)
+let shineRect = NSRect(x: inset, y: inset, width: px - 2 * inset, height: px - 2 * inset)
+let shineRadius = px * (26.0 / 120.0)
+let shinePath = NSBezierPath(roundedRect: shineRect, xRadius: shineRadius, yRadius: shineRadius)
+shinePath.lineWidth = px * (2.0 / 120.0)
+
+// To stroke a path with a gradient in AppKit, we create a path representation of the stroke, clip to it, and fill the bounds.
+ctx.saveGState()
+ctx.setLineWidth(px * (2.0 / 120.0))
+let cgPath = CGPath(roundedRect: shineRect, cornerWidth: shineRadius, cornerHeight: shineRadius, transform: nil)
+ctx.addPath(cgPath)
+ctx.replacePathWithStrokedPath()
+ctx.clip()
+shineGradient?.draw(in: shineRect, angle: -45)
+ctx.restoreGState()
 
 // Record circle glyph, centered
 let cx = px / 2.0
