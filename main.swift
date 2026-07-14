@@ -5,7 +5,7 @@ import VideoToolbox
 import os.log
 
 // MARK: - Configuration
-let appVersion = "1.3" // Version bump
+let appVersion = "1.2" // Bump version
 let updateCheckURL = "https://rec-aoh.netlify.app/version.json"
 private let log = OSLog(subsystem: "com.rec.app", category: "recorder")
 
@@ -36,7 +36,7 @@ struct AppSettings: Codable {
 var currentSettings = AppSettings.load()
 
 // ============================================================
-// Overlay: Recording Indicator (Hole) — FIXED COORDS
+// Overlay: Recording Indicator (Hole)
 // ============================================================
 
 class RecordingOverlayWindow: NSWindow {
@@ -72,8 +72,9 @@ class RecordingOverlayView: NSView {
         dirtyRect.fill()
 
         if window.holeRect != .zero {
-            // FIX: holeRect is already in screen-local coordinates (same as this window's bounds).
-            // No convertFromScreen needed. convertFromScreen expects GLOBAL coords.
+            // holeRect is stored in screen-local coords, which already match
+            // this window's local coordinate space (window covers entire screen).
+            // No global <-> local conversion needed.
             let localRect = window.holeRect
             NSColor.clear.set()
             localRect.fill(using: .sourceOut)
@@ -82,7 +83,7 @@ class RecordingOverlayView: NSView {
 }
 
 // ============================================================
-// Overlay: Region Selection (Multi-Screen) — FIXED CONTENT VIEW
+// Overlay: Region Selection (Multi-Screen) — FIXED COORDS
 // ============================================================
 
 class RegionSelectionManager: NSObject {
@@ -138,7 +139,8 @@ class RegionSelectionWindow: NSWindow {
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         self.ignoresMouseEvents = false
 
-        // FIX: Explicitly create and assign contentView BEFORE accessing it.
+        // FIX: Explicitly create and assign a content view BEFORE using it.
+        // A programmatically created NSWindow has no contentView until assigned.
         let content = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
         self.contentView = content
 
@@ -182,8 +184,8 @@ class RegionSelectionWindow: NSWindow {
         let rect = CGRect(x: x, y: y, width: w, height: h)
 
         if w > 50 && h > 50 {
-            // rect is in Window Coords (Bottom-Left origin, relative to THIS screen's frame origin).
-            // This IS Screen-Local coordinates. Pass directly.
+            // rect is in Window Coords (Bottom-Left origin, relative to THIS screen's frame origin)
+            // This is exactly what we want: Screen-Local Coordinates.
             manager?.selectionCompleted(rect: rect, onScreen: captureScreen)
         } else {
             manager?.selectionCancelled()
@@ -295,7 +297,7 @@ class AppSelectionMenuHandler: NSObject {
 }
 
 // ============================================================
-// Recorder Core — FIXED REGION COORDS & OS_LOG
+// Recorder Core — FIXED REGION COORDINATE CONVERSION
 // ============================================================
 
 class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
@@ -362,6 +364,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                 targetDisplay = display
                 filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
             } else {
+                // Determine Target Display
                 if let screen = self.captureScreen {
                     let screenID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
                     targetDisplay = content.displays.first { $0.displayID == screenID } ?? content.displays.first!
@@ -393,9 +396,10 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         var sourceRect: CGRect? = nil
 
         // ============================================================
-        // REGION LOGIC: Screen-Local (Bottom-Left) -> Display-Local (Top-Left)
+        // REGION LOGIC: Global Screen Coords -> Local Display Coords
         // ============================================================
         if let rect = captureRect, rect != .zero, let screen = captureScreen {
+            // 1. Verify the screen matches the display we are capturing
             let screenDisplayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
             guard screenDisplayID == display.displayID else {
                 DispatchQueue.main.async {
@@ -404,16 +408,21 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                 return
             }
 
-            // rect.origin is relative to screen.frame.origin (Bottom-Left of THIS screen).
-            // SCStream sourceRect expects Top-Left of display (points).
-            let displayHeightPoints = CGFloat(display.height)
-            let flippedY = displayHeightPoints - rect.maxY // maxY = y + h
+            // 2. rect is in SCREEN-LOCAL coordinates (Bottom-Left Origin, 0,0 at screen frame origin of THIS screen).
+            //    SCStreamConfig.sourceRect expects DISPLAY-LOCAL coordinates (Top-Left Origin, 0,0 at display top-left).
+            //    Since NSScreen.frame == Display bounds (in points), width/height match.
+            //    We only need to FLIP Y.
 
+            let displayHeightPoints = CGFloat(display.height) // Points
+            let flippedY = displayHeightPoints - rect.maxY // maxY = y + h (Bottom-Left -> Top-Left)
+
+            // 3. Clamp to display bounds (Points)
             let x = max(0, min(Int(rect.origin.x), display.width - 2))
             let y = max(0, min(Int(flippedY), display.height - 2))
             var w = max(2, min(Int(rect.width), display.width - x))
             var h = max(2, min(Int(rect.height), display.height - y))
 
+            // 4. Ensure Even Dimensions (HEVC Requirement)
             if w % 2 != 0 { w -= 1 }
             if h % 2 != 0 { h -= 1 }
 
@@ -429,12 +438,15 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             baseWidth = w
             baseHeight = h
 
-            // FIX: os_log format specifiers: %{public}@ for String, %d for Int
-            os_log("Region Capture: ScreenLocalRect=%{public}@ SourceRect(TopLeft)=%{public}@ Display=%d", log: log, type: .info,
+            // FIX: Correct os_log format specifiers. Use %{public}@ for String
+            // arguments and %d for the integer display ID.
+            os_log("Region Capture: ScreenLocalRect=%{public}@ SourceRect(TopLeft)=%{public}@ Display=%d",
+                   log: log, type: .info,
                    "\(rect)", "\(sourceRect!)", display.displayID)
         }
         // ============================================================
 
+        // Output Resolution (Pixels)
         if currentSettings.resolution == 1080 {
             let ratio = CGFloat(baseWidth) / CGFloat(baseHeight)
             config.width = 1920
@@ -696,7 +708,7 @@ class FloatingPanel: NSPanel {
     }
 }
 
-// MARK: - About Window — FIXED VERSION COMPARE
+// MARK: - About Window
 class AboutWindowController: NSWindowController {
     var updateButton: NSButton!
     var updateStatus: NSTextField!
@@ -777,17 +789,13 @@ class AboutWindowController: NSWindowController {
                 do {
                     if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
                        let version = json["version"] as? String {
-                        // FIX: Numeric version comparison (1.10 > 1.2)
-                        let result = version.compare(appVersion, options: .numeric)
-                        if result == .orderedDescending {
+                        if version != appVersion {
                             self?.updateStatus.stringValue = "Update available: v\(version)!"
                             if let dlURL = URL(string: "https://rec-aoh.netlify.app/#installc") {
                                 NSWorkspace.shared.open(dlURL)
                             }
-                        } else if result == .orderedSame {
-                            self?.updateStatus.stringValue = "You are on the latest version."
                         } else {
-                            self?.updateStatus.stringValue = "You are on a newer build (v\(appVersion))."
+                            self?.updateStatus.stringValue = "You are on the latest version."
                         }
                     } else {
                         self?.updateStatus.stringValue = "Invalid update data."
@@ -820,6 +828,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var recordingOverlay: RecordingOverlayWindow?
     var regionSelectionManager: RegionSelectionManager?
 
+    // Track menu items for audio popup to manage state easily
     private var audioMainItems: [NSMenuItem] = []
     private var audioMicItems: [NSMenuItem] = []
 
@@ -878,6 +887,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    // MARK: - Settings Actions
     @objc func fpsChanged(_ sender: NSMenuItem) {
         guard let menu = sender.menu else { return }
         menu.items.forEach { $0.state = .off }
@@ -906,28 +916,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         currentSettings.save()
     }
 
-    // FIX: Mutual Exclusion Logic for Audio Menu
+    // ============================================================
+    // FIXED: Audio Menu Logic — Mutual Exclusion
+    // ============================================================
     @objc func audioChanged(_ sender: NSMenuItem) {
         guard let menu = sender.menu else { return }
+
+        // Determine group by checking our tracked arrays
         let isMainItem = audioMainItems.contains(sender)
+        // let isMicItem = audioMicItems.contains(sender) // Implied by !isMainItem
 
         if isMainItem {
+            // 1. Turn OFF all main items
             audioMainItems.forEach { $0.state = .off }
+            // 2. Turn OFF all mic items
             audioMicItems.forEach { $0.state = .off }
+            // 3. Turn ON sender
             sender.state = .on
 
+            // 4. Update Settings
             let index = audioMainItems.firstIndex(of: sender) ?? 0
             currentSettings.audioSource = index
+            // If switching to "Microphone" (index 1), ensure a mic is selected (default to first available)
             if index == 1, let firstMic = audioMicItems.first, currentSettings.micID.isEmpty {
                 currentSettings.micID = firstMic.identifier?.rawValue ?? ""
                 firstMic.state = .on
             }
         } else {
+            // Mic Item Selected
+            // 1. Turn OFF all mic items
             audioMicItems.forEach { $0.state = .off }
+            // 2. Turn OFF all main items
             audioMainItems.forEach { $0.state = .off }
+            // 3. Turn ON "Microphone" main item (index 1) AND this mic item
             sender.state = .on
-            if audioMainItems.indices.contains(1) { audioMainItems[1].state = .on } // "Microphone"
-            currentSettings.audioSource = 1
+            if audioMainItems.indices.contains(1) {
+                audioMainItems[1].state = .on // "Microphone"
+            }
+
+            // 4. Update Settings
+            currentSettings.audioSource = 1 // Force Microphone mode
             currentSettings.micID = sender.identifier?.rawValue ?? ""
         }
         currentSettings.save()
@@ -957,6 +985,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - UI Setup
     func setupUI() {
         guard let screen = NSScreen.main else { return }
         let rect = NSRect(x: screen.frame.width / 2, y: 100, width: 10, height: 10)
@@ -974,7 +1003,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
 
-        // AUDIO POPUP
+        // ---- AUDIO POPUP (FIXED) ----
         let audioPopUp = NSPopUpButton()
         audioPopUp.translatesAutoresizingMaskIntoConstraints = false
         audioPopUp.removeAllItems()
@@ -1000,6 +1029,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         audioPopUp.menu?.addItem(NSMenuItem.separator())
 
+        // Mic List (Modern API)
         let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone], mediaType: .audio, position: .unspecified)
         for device in session.devices {
             let item = NSMenuItem(title: device.localizedName, action: #selector(audioChanged(_:)), keyEquivalent: "")
@@ -1010,13 +1040,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             audioPopUp.menu?.addItem(item)
             audioMicItems.append(item)
         }
+        // If "Microphone" mode (1) is selected but no mic item checked, check first one
         if currentSettings.audioSource == 1, audioMicItems.first?.state == .off, let firstMic = audioMicItems.first {
             firstMic.state = .on
             currentSettings.micID = firstMic.identifier?.rawValue ?? ""
             currentSettings.save()
         }
 
-        // TIMER POPUP
+        // ---- TIMER POPUP ----
         let timerPopUp = NSPopUpButton()
         timerPopUp.translatesAutoresizingMaskIntoConstraints = false
         timerPopUp.removeAllItems()
@@ -1035,7 +1066,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         timerPopUp.action = #selector(timerChanged(_:))
         timerPopUp.target = self
 
-        // SETTINGS POPUP
+        // ---- SETTINGS POPUP ----
         let settingsPopUp = NSPopUpButton()
         settingsPopUp.translatesAutoresizingMaskIntoConstraints = false
         settingsPopUp.removeAllItems()
@@ -1097,7 +1128,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         locationItem.target = self
         settingsPopUp.menu?.addItem(locationItem)
 
-        // CLOSE BUTTON
+        // ---- CLOSE BUTTON ----
         closeButton = NSButton()
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.bezelStyle = .regularSquare
@@ -1107,7 +1138,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         closeButton.target = self
         closeButton.action = #selector(hidePanel)
 
-        // MODE POPUP
+        // ---- MODE POPUP ----
         modePopUp = NSPopUpButton()
         modePopUp.translatesAutoresizingMaskIntoConstraints = false
         modePopUp.removeAllItems()
@@ -1126,7 +1157,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modePopUp.menu?.addItem(item)
         }
 
-        // STACK VIEW
+        // ---- STACK VIEW ----
         let stackView = NSStackView(views: [closeButton, settingsPopUp, timerPopUp, audioPopUp, modePopUp, recordButton])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
@@ -1243,7 +1274,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.panel.makeKeyAndOrderFront(nil)
                 if rect != .zero, let screen = screen {
                     self.recorder.captureApp = nil
-                    self.recorder.captureRect = rect // Screen-Local (Bottom-Left)
+                    self.recorder.captureRect = rect // Screen-Local Coords (Bottom-Left)
                     self.recorder.captureScreen = screen
                     self.recorder.startRecording()
                 }
