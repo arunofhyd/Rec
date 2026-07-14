@@ -96,19 +96,20 @@ let bot = NSColor(calibratedWhite: 0.1, alpha: 1.0)
 NSGradient(starting: top, ending: bot)?.draw(in: NSRect(x: 0, y: 0, width: px, height: px), angle: -90)
 
 // Record circle glyph, centered
-let cfg = NSImage.SymbolConfiguration(pointSize: 560, weight: .regular)
-if let sym = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)?
-        .withSymbolConfiguration(cfg) {
-    let s = sym.size
-    let tinted = NSImage(size: s)
-    tinted.lockFocus()
-    sym.draw(in: NSRect(origin: .zero, size: s))
-    NSColor.systemRed.set()
-    NSRect(origin: .zero, size: s).fill(using: .sourceAtop)
-    tinted.unlockFocus()
-    let rect = NSRect(x: (px - s.width)/2, y: (px - s.height)/2, width: s.width, height: s.height)
-    tinted.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0)
-}
+let cx = px / 2.0
+let cy = px / 2.0
+let outerRadius = px * (30.0 / 120.0)
+let innerRadius = px * (20.0 / 120.0)
+let strokeWidth = px * (6.0 / 120.0)
+
+NSColor.white.setStroke()
+let outerPath = NSBezierPath(ovalIn: NSRect(x: cx - outerRadius, y: cy - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
+outerPath.lineWidth = strokeWidth
+outerPath.stroke()
+
+NSColor(calibratedRed: 255.0/255.0, green: 59.0/255.0, blue: 48.0/255.0, alpha: 1.0).setFill() // #FF3B30
+let innerPath = NSBezierPath(ovalIn: NSRect(x: cx - innerRadius, y: cy - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
+innerPath.fill()
 
 img.unlockFocus()
 if let tiff = img.tiffRepresentation,

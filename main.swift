@@ -82,153 +82,6 @@ class RecordingOverlayView: NSView {
     }
 }
 
-// ============================================================
-// Overlay: Region Selection (Multi-Screen) — FIXED COORDS
-// ============================================================
-
-class RegionSelectionManager: NSObject {
-    private var windows: [RegionSelectionWindow] = []
-    var completion: ((CGRect, NSScreen?) -> Void)?
-
-    func startSelection(completion: @escaping (CGRect, NSScreen?) -> Void) {
-        self.completion = completion
-        windows.removeAll()
-
-        for screen in NSScreen.screens {
-            let win = RegionSelectionWindow(screen: screen, manager: self)
-            win.makeKeyAndOrderFront(nil)
-            windows.append(win)
-        }
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    func cancelAll() {
-        windows.forEach { $0.close() }
-        windows.removeAll()
-    }
-
-    fileprivate func selectionCompleted(rect: CGRect, onScreen screen: NSScreen) {
-        completion?(rect, screen)
-        cleanup()
-    }
-
-    fileprivate func selectionCancelled() {
-        completion?(.zero, nil)
-        cleanup()
-    }
-
-    private func cleanup() {
-        cancelAll()
-        completion = nil
-    }
-}
-
-class RegionSelectionWindow: NSWindow {
-    weak var manager: RegionSelectionManager?
-    var selectionView: SelectionView!
-    let captureScreen: NSScreen
-
-    init(screen: NSScreen, manager: RegionSelectionManager) {
-        self.captureScreen = screen
-        self.manager = manager
-        super.init(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        self.backgroundColor = NSColor.black.withAlphaComponent(0.3)
-        self.isOpaque = false
-        self.hasShadow = false
-        self.level = .floating
-        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        self.ignoresMouseEvents = false
-
-        // FIX: Explicitly create and assign a content view BEFORE using it.
-        // A programmatically created NSWindow has no contentView until assigned.
-        let content = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
-        self.contentView = content
-
-        selectionView = SelectionView(frame: content.bounds)
-        selectionView.autoresizingMask = [.width, .height]
-        content.addSubview(selectionView)
-
-        let label = NSTextField(labelWithString: "Click and drag to select a recording region. Press Esc to cancel.")
-        label.textColor = .white
-        label.font = .systemFont(ofSize: 24, weight: .medium)
-        label.sizeToFit()
-        label.frame.origin = CGPoint(x: (screen.frame.width - label.frame.width) / 2, y: screen.frame.height / 2)
-        label.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
-        content.addSubview(label)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        selectionView.startPoint = event.locationInWindow
-        selectionView.currentRect = .zero
-        selectionView.needsDisplay = true
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let start = selectionView.startPoint else { return }
-        let current = event.locationInWindow
-        let x = min(start.x, current.x)
-        let y = min(start.y, current.y)
-        let w = abs(current.x - start.x)
-        let h = abs(current.y - start.y)
-        selectionView.currentRect = CGRect(x: x, y: y, width: w, height: h)
-        selectionView.needsDisplay = true
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard let start = selectionView.startPoint else { return }
-        let current = event.locationInWindow
-        let x = min(start.x, current.x)
-        let y = min(start.y, current.y)
-        let w = abs(current.x - start.x)
-        let h = abs(current.y - start.y)
-        let rect = CGRect(x: x, y: y, width: w, height: h)
-
-        if w > 50 && h > 50 {
-            // rect is in Window Coords (Bottom-Left origin, relative to THIS screen's frame origin)
-            // This is exactly what we want: Screen-Local Coordinates.
-            manager?.selectionCompleted(rect: rect, onScreen: captureScreen)
-        } else {
-            manager?.selectionCancelled()
-        }
-    }
-
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { manager?.selectionCancelled() }
-    }
-
-    override var canBecomeKey: Bool { return true }
-}
-
-class SelectionView: NSView {
-    var startPoint: CGPoint?
-    var currentRect: CGRect = .zero
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        if currentRect != .zero {
-            NSColor.clear.set()
-            currentRect.fill(using: .sourceOut)
-
-            NSColor.white.setStroke()
-            let path = NSBezierPath(rect: currentRect)
-            path.lineWidth = 2
-            let dash: [CGFloat] = [5.0, 5.0]
-            path.setLineDash(dash, count: 2, phase: 0.0)
-            path.stroke()
-
-            let dims = "\(Int(currentRect.width)) × \(Int(currentRect.height))"
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .medium),
-                .foregroundColor: NSColor.white,
-                .strokeColor: NSColor.black,
-                .strokeWidth: -3.0
-            ]
-            let str = NSAttributedString(string: dims, attributes: attrs)
-            let textRect = CGRect(x: currentRect.midX - 50, y: currentRect.minY - 28, width: 100, height: 24)
-            str.draw(in: textRect)
-        }
-    }
-}
 
 // ============================================================
 // App Selection Menu
@@ -826,7 +679,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var countdownWindow: NSWindow?
     var countdownLabel: NSTextField?
     var recordingOverlay: RecordingOverlayWindow?
-    var regionSelectionManager: RegionSelectionManager?
 
     // Track menu items for audio popup to manage state easily
     private var audioMainItems: [NSMenuItem] = []
@@ -1029,17 +881,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         audioPopUp.menu?.addItem(NSMenuItem.separator())
 
-        // Mic List (Modern API)
-        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone], mediaType: .audio, position: .unspecified)
-        for device in session.devices {
-            let item = NSMenuItem(title: device.localizedName, action: #selector(audioChanged(_:)), keyEquivalent: "")
-            item.identifier = NSUserInterfaceItemIdentifier(device.uniqueID)
-            item.target = self
-            item.indentationLevel = 1
-            if currentSettings.micID == device.uniqueID { item.state = .on }
-            audioPopUp.menu?.addItem(item)
-            audioMicItems.append(item)
+        // Mic List (Modern API with external mic fallback)
+        let micSubmenu = NSMenu()
+        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone, AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeExternalUnknown")], mediaType: .audio, position: .unspecified)
+
+        if session.devices.isEmpty {
+            let emptyItem = NSMenuItem(title: "No Microphones Found", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            micSubmenu.addItem(emptyItem)
+        } else {
+            for device in session.devices {
+                let item = NSMenuItem(title: device.localizedName, action: #selector(audioChanged(_:)), keyEquivalent: "")
+                item.identifier = NSUserInterfaceItemIdentifier(device.uniqueID)
+                item.target = self
+                if currentSettings.micID == device.uniqueID { item.state = .on }
+                micSubmenu.addItem(item)
+                audioMicItems.append(item)
+            }
         }
+
+        // Attach the submenu to the "Microphone" item
+        if audioMainItems.indices.contains(1) {
+            audioMainItems[1].submenu = micSubmenu
+        }
+
         // If "Microphone" mode (1) is selected but no mic item checked, check first one
         if currentSettings.audioSource == 1, audioMicItems.first?.state == .off, let firstMic = audioMicItems.first {
             firstMic.state = .on
@@ -1147,8 +1012,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let modeItems = [
             ("Entire Screen", "macwindow", 0),
-            ("Selected Portion", "crop", 1),
-            ("Specific App", "macwindow.badge.plus", 2)
+            ("Specific App", "macwindow.badge.plus", 1)
         ]
         for (title, symbol, idx) in modeItems {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
@@ -1257,7 +1121,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func startRecordingProcess() {
         let modeIndex = modePopUp.indexOfSelectedItem
 
-        if modeIndex == 2 { // Specific App
+        if modeIndex == 1 { // Specific App
             appSelectionMenu = AppSelectionMenuHandler()
             appSelectionMenu?.onSelect = { [weak self] app in
                 self?.recorder.captureApp = app
@@ -1266,19 +1130,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.recorder.startRecording()
             }
             appSelectionMenu?.showMenu(at: modePopUp)
-        } else if modeIndex == 1 { // Selected Portion
-            self.panel.orderOut(nil)
-            regionSelectionManager = RegionSelectionManager()
-            regionSelectionManager?.startSelection { [weak self] rect, screen in
-                guard let self = self else { return }
-                self.panel.makeKeyAndOrderFront(nil)
-                if rect != .zero, let screen = screen {
-                    self.recorder.captureApp = nil
-                    self.recorder.captureRect = rect // Screen-Local Coords (Bottom-Left)
-                    self.recorder.captureScreen = screen
-                    self.recorder.startRecording()
-                }
-            }
         } else { // Entire Screen
             recorder.captureApp = nil
             recorder.captureRect = nil
@@ -1295,11 +1146,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let tintedImage = NSImage(size: size)
             tintedImage.lockFocus()
             if symbolName == "record.circle" {
+                // Exact proportions from logo.svg
+                // viewBox 120x120. Outer R=30 (1/4 width), Stroke=6 (1/20 width). Inner R=20 (1/6 width).
+                let cx = size.width / 2.0
+                let cy = size.height / 2.0
+                let outerRadius = size.width * (30.0 / 120.0)
+                let innerRadius = size.width * (20.0 / 120.0)
+                let strokeWidth = size.width * (6.0 / 120.0)
+
                 NSColor.white.setStroke()
-                let outerPath = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
-                outerPath.lineWidth = 2; outerPath.stroke()
-                NSColor.systemRed.setFill()
-                let innerPath = NSBezierPath(ovalIn: NSRect(x: 7, y: 7, width: size.width - 14, height: size.height - 14))
+                let outerPath = NSBezierPath(ovalIn: NSRect(x: cx - outerRadius, y: cy - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
+                outerPath.lineWidth = strokeWidth
+                outerPath.stroke()
+
+                NSColor(calibratedRed: 255.0/255.0, green: 59.0/255.0, blue: 48.0/255.0, alpha: 1.0).setFill() // #FF3B30
+                let innerPath = NSBezierPath(ovalIn: NSRect(x: cx - innerRadius, y: cy - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
                 innerPath.fill()
             } else {
                 systemImage.draw(in: NSRect(origin: .zero, size: size))
@@ -1314,7 +1175,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     deinit {
         recordingOverlay?.close()
         countdownWindow?.close()
-        regionSelectionManager = nil
     }
 }
 
