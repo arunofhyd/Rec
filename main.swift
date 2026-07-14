@@ -40,6 +40,53 @@ struct AppSettings: Codable {
 
 var currentSettings = AppSettings.load()
 
+// MARK: - Overlay Window for Active Recording Region
+
+class RecordingOverlayWindow: NSWindow {
+    var holeRect: CGRect = .zero {
+        didSet {
+            self.contentView?.needsDisplay = true
+        }
+    }
+
+    init(screen: NSScreen, holeRect: CGRect) {
+        self.holeRect = holeRect
+        super.init(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.level = .floating
+        self.ignoresMouseEvents = true
+
+        let overlayView = RecordingOverlayView(frame: self.contentView!.bounds)
+        overlayView.windowRef = self
+        self.contentView = overlayView
+    }
+}
+
+class RecordingOverlayView: NSView {
+    weak var windowRef: RecordingOverlayWindow?
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let window = windowRef else { return }
+
+        // Draw grey overlay
+        NSColor.black.withAlphaComponent(0.4).set()
+        dirtyRect.fill()
+
+        // Clear out the selected region
+        if window.holeRect != .zero {
+            // holeRect is in screen coordinates, need to convert to view coordinates
+            let windowRect = window.convertFromScreen(NSRect(origin: window.holeRect.origin, size: window.holeRect.size))
+            let localRect = self.convert(windowRect, from: nil)
+
+            NSColor.clear.set()
+            localRect.fill(using: .sourceOut)
+        }
+    }
+}
+
 // MARK: - Overlay Window for Region Selection
 
 class RegionSelectionWindow: NSWindow {
@@ -293,29 +340,29 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         if let rect = captureRect, rect != .zero {
             // ScreenCaptureKit sourceRect uses logical points in the display's coordinate space (origin top-left).
             // NSWindow / NSEvent gives us coordinates where origin is bottom-left of the main screen.
-            // But we already mapped the selection relative to the NSScreen frame.
 
-            // To be safe with AVAssetWriter HEVC, width/height must be EVEN numbers.
-            let safeWidth = Int(rect.width) % 2 == 0 ? Int(rect.width) : Int(rect.width) + 1
-            let safeHeight = Int(rect.height) % 2 == 0 ? Int(rect.height) : Int(rect.height) + 1
+            // 1. Calculate the Y coordinate in top-left origin space
+            // Assuming rect is in global screen coordinates where origin is bottom-left of the main screen
+            // display.frame is in global screen coordinates, where origin is top-left
+            // However, it seems rect is already relative to the primary display's bounds.
+            let mainDisplayHeight = NSScreen.screens.first?.frame.height ?? CGFloat(display.height)
+            let topY = mainDisplayHeight - rect.maxY
 
-            let flippedY = display.height - Int(rect.origin.y) - safeHeight
+            // 2. Adjust for this specific display's frame (if multiple displays)
+            // If we assume rect is already relative to this display:
+            let flippedY = Int(topY) - Int(display.frame.minY)
 
-            // Clamp mapping to display bounds to prevent SCStream from crashing with out-of-bounds exceptions
-            let x = max(0, min(Int(rect.origin.x), display.width - 2))
+            // Clamp mapping to display bounds to prevent SCStream from crashing
+            let x = max(0, min(Int(rect.origin.x) - Int(display.frame.minX), display.width - 2))
             let y = max(0, min(flippedY, display.height - 2))
-            let clampedWidth = min(safeWidth, display.width - x)
-            let clampedHeight = min(safeHeight, display.height - y)
+            let w = min(Int(rect.width), display.width - x)
+            let h = min(Int(rect.height), display.height - y)
 
-            // Re-enforce even dimensions after clamping
-            let finalWidth = clampedWidth % 2 == 0 ? clampedWidth : clampedWidth - 1
-            let finalHeight = clampedHeight % 2 == 0 ? clampedHeight : clampedHeight - 1
-
-            let mappedRect = CGRect(x: x, y: y, width: finalWidth, height: finalHeight).intersection(CGRect(x: 0, y: 0, width: display.width, height: display.height))
+            let mappedRect = CGRect(x: x, y: y, width: w, height: h)
 
             config.sourceRect = mappedRect
-            baseWidth = finalWidth
-            baseHeight = finalHeight
+            baseWidth = w
+            baseHeight = h
         }
 
         if currentSettings.resolution == 1080 {
@@ -327,9 +374,19 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             config.width = 1280
             config.height = Int(1280 / ratio)
         } else {
+            // SCStreamConfiguration width and height are in pixels, baseWidth and baseHeight are in points.
+            // When capturing a region, we multiply by scaleFactor to get pixels.
+            // If rect is provided, baseWidth and baseHeight might already be scaled if derived improperly,
+            // but SCDisplay width/height are in points.
             config.width = Int(CGFloat(baseWidth) * scaleFactor)
             config.height = Int(CGFloat(baseHeight) * scaleFactor)
         }
+
+        // Clamp to maximum display dimensions to avoid exceeding hardware limits
+        let maxDisplayWidth = Int(CGFloat(display.width) * scaleFactor)
+        let maxDisplayHeight = Int(CGFloat(display.height) * scaleFactor)
+        if config.width > maxDisplayWidth { config.width = maxDisplayWidth }
+        if config.height > maxDisplayHeight { config.height = maxDisplayHeight }
 
         // HEVC requires even dimensions
         if config.width % 2 != 0 { config.width += 1 }
@@ -344,6 +401,12 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         }
         if config.responds(to: Selector(("setCapturesMouseClicks:"))) {
             config.setValue(currentSettings.showsClicks, forKey: "capturesMouseClicks")
+        }
+        if config.responds(to: Selector(("setShowMouseClicks:"))) {
+            config.setValue(currentSettings.showsClicks, forKey: "showMouseClicks")
+        }
+        if config.responds(to: Selector(("setShowsMouseClicks:"))) {
+            config.setValue(currentSettings.showsClicks, forKey: "showsMouseClicks")
         }
         config.pixelFormat = kCVPixelFormatType_32BGRA
 
@@ -696,6 +759,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var aboutWC: AboutWindowController?
 
     var countdownLabel: NSTextField?
+    var recordingOverlay: RecordingOverlayWindow?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         setupMenu()
@@ -771,23 +835,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         currentSettings.save()
     }
     @objc func audioChanged(_ sender: NSMenuItem) {
-        if sender.parent != nil {
-            // It's a specific microphone selection
-            guard let menu = sender.menu else { return }
-            menu.items.forEach { $0.state = .off }
+        guard let menu = sender.menu else { return }
+
+        let index = menu.index(of: sender)
+
+        if index < 4 {
+            // It's a base audio source (System, Mic, Both, None)
+            // Only toggle off other base audio source items (index 0 to 3)
+            for i in 0..<4 {
+                if let item = menu.item(at: i) {
+                    item.state = .off
+                }
+            }
+            sender.state = .on
+            currentSettings.audioSource = index
+        } else {
+            // It's a specific microphone selection (index > 4, accounting for separator)
+            // Turn off all other microphone items
+            for i in 5..<menu.numberOfItems {
+                if let item = menu.item(at: i) {
+                    item.state = .off
+                }
+            }
             sender.state = .on
             currentSettings.micID = sender.identifier?.rawValue ?? ""
-        } else {
-            // It's a base audio source (System, Mic, Both, None)
-            guard let menu = sender.menu else { return }
-            menu.items.filter { $0.parent == nil }.forEach { $0.state = .off }
-            sender.state = .on
-            let index = menu.index(of: sender)
-            // Wait, we will structure the menu so the primary items are at top.
-            // 0: System Audio, 1: Mic, 2: System + Mic, 3: None, 4: Separator, 5: Microphones
-            if index < 4 {
-                currentSettings.audioSource = index
-            }
         }
         currentSettings.save()
     }
@@ -873,9 +944,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioPopUp.menu?.addItem(audioNoneItem)
 
         audioPopUp.menu?.addItem(NSMenuItem.separator())
-        let micsItem = NSMenuItem(title: "Microphones", action: nil, keyEquivalent: "")
-        micsItem.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil)
-        let micsMenu = NSMenu(title: "Microphones")
 
         // Find microphones
         let deviceType = AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeBuiltInMicrophone")
@@ -884,12 +952,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let item = NSMenuItem(title: device.localizedName, action: #selector(audioChanged(_:)), keyEquivalent: "")
             item.identifier = NSUserInterfaceItemIdentifier(device.uniqueID)
             item.target = self
+            item.indentationLevel = 1
             if currentSettings.micID == device.uniqueID { item.state = .on }
-            micsMenu.addItem(item)
+            audioPopUp.menu?.addItem(item)
         }
-
-        micsItem.submenu = micsMenu
-        audioPopUp.menu?.addItem(micsItem)
 
         let timerPopUp = NSPopUpButton()
         timerPopUp.translatesAutoresizingMaskIntoConstraints = false
@@ -1036,9 +1102,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.countdownLabel = nil
             self?.updateButtonImage()
             self?.modePopUp.isEnabled = false
+
+            if let rect = self?.recorder.captureRect, rect != .zero, let screen = NSScreen.main {
+                self?.recordingOverlay = RecordingOverlayWindow(screen: screen, holeRect: rect)
+                self?.recordingOverlay?.makeKeyAndOrderFront(nil)
+            }
         }
 
         recorder.onRecordingStopped = { [weak self] url in
+            self?.recordingOverlay?.close()
+            self?.recordingOverlay = nil
             self?.updateButtonImage()
             self?.modePopUp.isEnabled = true
             let alert = NSAlert()
@@ -1052,6 +1125,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         recorder.onError = { [weak self] error in
+            self?.recordingOverlay?.close()
+            self?.recordingOverlay = nil
             self?.countdownLabel?.window?.close()
             self?.countdownLabel = nil
             self?.updateButtonImage()
