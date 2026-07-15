@@ -692,6 +692,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var recordButton: NSButton!
     var closeButton: NSButton!
     var modePopUp: NSPopUpButton!
+    var audioPopUp: NSPopUpButton!
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
@@ -821,6 +822,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             currentSettings.audioSource = 1
             currentSettings.micID = sender.identifier?.rawValue ?? ""
         }
+
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let initialAudioSymbols = ["speaker.wave.2", "mic", "mic.and.signal.meter", "speaker.slash"]
+        let symbol = (0...3).contains(currentSettings.audioSource) ? initialAudioSymbols[currentSettings.audioSource] : "speaker.wave.2"
+        audioPopUp.menu?.item(at: 0)?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+
         currentSettings.save()
     }
 
@@ -830,6 +837,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             item.state = .off
         }
         sender.state = .on
+
+        modePopUp.menu?.item(at: 0)?.image = sender.image
+
         currentSettings.recordMode = sender.tag
         currentSettings.save()
     }
@@ -871,7 +881,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
 
         // ---- AUDIO POPUP (FIXED) ----
-        let audioPopUp = NSPopUpButton()
+        audioPopUp = NSPopUpButton()
         audioPopUp.translatesAutoresizingMaskIntoConstraints = false
         audioPopUp.removeAllItems()
         audioPopUp.isBordered = false
@@ -882,7 +892,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioMicItems.removeAll()
 
         let audioGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        audioGearItem.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+
+        let initialAudioSymbols = ["speaker.wave.2", "mic", "mic.and.signal.meter", "speaker.slash"]
+        let initialAudioSymbol = (0...3).contains(currentSettings.audioSource) ? initialAudioSymbols[currentSettings.audioSource] : "speaker.wave.2"
+        audioGearItem.image = NSImage(systemSymbolName: initialAudioSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         audioPopUp.menu?.addItem(audioGearItem)
 
         let audioMainData = [
@@ -1014,7 +1027,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.pullsDown = true
 
         let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        modeGearItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+
+        let initialModeSymbols = ["macwindow", "macwindow.badge.plus"]
+        let initialModeSymbol = (0...1).contains(currentSettings.recordMode) ? initialModeSymbols[currentSettings.recordMode] : "macwindow"
+        modeGearItem.image = NSImage(systemSymbolName: initialModeSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         modePopUp.menu?.addItem(modeGearItem)
 
         let modeItems = [
