@@ -826,6 +826,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
         let initialAudioSymbols = ["speaker.wave.2", "mic", "mic.and.signal.meter", "speaker.slash"]
         let symbol = (0...3).contains(currentSettings.audioSource) ? initialAudioSymbols[currentSettings.audioSource] : "speaker.wave.2"
+
+        let transition = CATransition()
+        transition.type = .fade
+        transition.duration = 0.2
+        audioPopUp.layer?.add(transition, forKey: "fade")
         audioPopUp.menu?.item(at: 0)?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
 
         currentSettings.save()
@@ -838,6 +843,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         sender.state = .on
 
+        let transition = CATransition()
+        transition.type = .fade
+        transition.duration = 0.2
+        modePopUp.layer?.add(transition, forKey: "fade")
         modePopUp.menu?.item(at: 0)?.image = sender.image
 
         currentSettings.recordMode = sender.tag
@@ -887,6 +896,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioPopUp.isBordered = false
         audioPopUp.imagePosition = .imageOnly
         audioPopUp.pullsDown = true
+        audioPopUp.wantsLayer = true
+        audioPopUp.widthAnchor.constraint(equalToConstant: 22).isActive = true
+        audioPopUp.heightAnchor.constraint(equalToConstant: 22).isActive = true
 
         audioMainItems.removeAll()
         audioMicItems.removeAll()
@@ -1025,6 +1037,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.isBordered = false
         modePopUp.imagePosition = .imageOnly
         modePopUp.pullsDown = true
+        modePopUp.wantsLayer = true
+        modePopUp.widthAnchor.constraint(equalToConstant: 22).isActive = true
+        modePopUp.heightAnchor.constraint(equalToConstant: 22).isActive = true
 
         let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
 
