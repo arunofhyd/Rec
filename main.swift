@@ -897,8 +897,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioPopUp.imagePosition = .imageOnly
         audioPopUp.pullsDown = true
         audioPopUp.wantsLayer = true
-        audioPopUp.widthAnchor.constraint(equalToConstant: 22).isActive = true
-        audioPopUp.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        audioPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        audioPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         audioMainItems.removeAll()
         audioMicItems.removeAll()
@@ -965,6 +965,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsPopUp.isBordered = false
         settingsPopUp.imagePosition = .imageOnly
         settingsPopUp.pullsDown = true
+        settingsPopUp.wantsLayer = true
+        settingsPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        settingsPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
         let gearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         gearItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config)
         settingsPopUp.menu?.addItem(gearItem)
@@ -1038,8 +1041,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.imagePosition = .imageOnly
         modePopUp.pullsDown = true
         modePopUp.wantsLayer = true
-        modePopUp.widthAnchor.constraint(equalToConstant: 22).isActive = true
-        modePopUp.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        modePopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        modePopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
 
