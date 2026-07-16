@@ -692,6 +692,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var recordButton: NSButton!
     var closeButton: NSButton!
     var modePopUp: NSPopUpButton!
+    var audioPopUp: NSPopUpButton!
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
@@ -821,6 +822,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             currentSettings.audioSource = 1
             currentSettings.micID = sender.identifier?.rawValue ?? ""
         }
+
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let initialAudioSymbols = ["speaker.wave.2", "mic", "mic.and.signal.meter", "speaker.slash"]
+        let symbol = (0...3).contains(currentSettings.audioSource) ? initialAudioSymbols[currentSettings.audioSource] : "speaker.wave.2"
+
+        let transition = CATransition()
+        transition.type = .fade
+        transition.duration = 0.2
+        audioPopUp.layer?.add(transition, forKey: "fade")
+        audioPopUp.menu?.item(at: 0)?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+
         currentSettings.save()
     }
 
@@ -830,6 +842,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             item.state = .off
         }
         sender.state = .on
+
+        let transition = CATransition()
+        transition.type = .fade
+        transition.duration = 0.2
+        modePopUp.layer?.add(transition, forKey: "fade")
+        modePopUp.menu?.item(at: 0)?.image = sender.image
+
         currentSettings.recordMode = sender.tag
         currentSettings.save()
     }
@@ -871,18 +890,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
 
         // ---- AUDIO POPUP (FIXED) ----
-        let audioPopUp = NSPopUpButton()
+        audioPopUp = NSPopUpButton()
         audioPopUp.translatesAutoresizingMaskIntoConstraints = false
         audioPopUp.removeAllItems()
         audioPopUp.isBordered = false
         audioPopUp.imagePosition = .imageOnly
         audioPopUp.pullsDown = true
+        audioPopUp.wantsLayer = true
+        audioPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        audioPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         audioMainItems.removeAll()
         audioMicItems.removeAll()
 
         let audioGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        audioGearItem.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+
+        let initialAudioSymbols = ["speaker.wave.2", "mic", "mic.and.signal.meter", "speaker.slash"]
+        let initialAudioSymbol = (0...3).contains(currentSettings.audioSource) ? initialAudioSymbols[currentSettings.audioSource] : "speaker.wave.2"
+        audioGearItem.image = NSImage(systemSymbolName: initialAudioSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         audioPopUp.menu?.addItem(audioGearItem)
 
         let audioMainData = [
@@ -940,6 +965,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsPopUp.isBordered = false
         settingsPopUp.imagePosition = .imageOnly
         settingsPopUp.pullsDown = true
+        settingsPopUp.wantsLayer = true
+        settingsPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        settingsPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
         let gearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         gearItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config)
         settingsPopUp.menu?.addItem(gearItem)
@@ -1012,9 +1040,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.isBordered = false
         modePopUp.imagePosition = .imageOnly
         modePopUp.pullsDown = true
+        modePopUp.wantsLayer = true
+        modePopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        modePopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        modeGearItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+
+        let initialModeSymbols = ["macwindow", "macwindow.badge.plus"]
+        let initialModeSymbol = (0...1).contains(currentSettings.recordMode) ? initialModeSymbols[currentSettings.recordMode] : "macwindow"
+        modeGearItem.image = NSImage(systemSymbolName: initialModeSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         modePopUp.menu?.addItem(modeGearItem)
 
         let modeItems = [
