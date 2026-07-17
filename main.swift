@@ -18,6 +18,8 @@ struct AppSettings: Codable {
     var saveDirectory: String = ""
     var micID: String = ""
     var recordMode: Int = 0
+    var timer: Int = 0
+
 
     func save() {
         if let data = try? JSONEncoder().encode(self) {
@@ -82,6 +84,109 @@ class RecordingOverlayView: NSView {
     }
 }
 
+
+// ============================================================
+// Region Selection & Countdown UI
+// ============================================================
+
+class RegionSelectionWindow: NSWindow {
+    init(screen: NSScreen) {
+        super.init(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.level = .screenSaver
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+
+        let selectionView = RegionSelectionView(frame: self.contentView?.bounds ?? .zero)
+        selectionView.autoresizingMask = [.width, .height]
+        self.contentView = selectionView
+    }
+}
+
+class RegionSelectionView: NSView {
+    var startPoint: NSPoint?
+    var currentRect: NSRect = .zero
+    var onSelectionComplete: ((NSRect) -> Void)?
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        NSColor.black.withAlphaComponent(0.4).set()
+        dirtyRect.fill()
+
+        if currentRect != .zero {
+            NSColor.clear.set()
+            currentRect.fill(using: .sourceOut)
+            NSColor.white.setStroke()
+            let path = NSBezierPath(rect: currentRect)
+            path.lineWidth = 2.0
+            path.stroke()
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        startPoint = convert(event.locationInWindow, from: nil)
+        currentRect = .zero
+        needsDisplay = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = startPoint else { return }
+        let currentPoint = convert(event.locationInWindow, from: nil)
+        currentRect = NSRect(
+            x: min(start.x, currentPoint.x),
+            y: min(start.y, currentPoint.y),
+            width: abs(currentPoint.x - start.x),
+            height: abs(currentPoint.y - start.y)
+        )
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        onSelectionComplete?(currentRect)
+    }
+}
+
+class CountdownWindow: NSWindow {
+    var label: NSTextField!
+
+    init(screen: NSScreen) {
+        let size: CGFloat = 200
+        let rect = NSRect(x: screen.frame.midX - size/2, y: screen.frame.midY - size/2, width: size, height: size)
+        super.init(contentRect: rect, styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = NSColor.black.withAlphaComponent(0.6)
+        self.isOpaque = false
+        self.hasShadow = true
+        self.level = .popUpMenu
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.ignoresMouseEvents = true
+
+        let visualEffectView = NSVisualEffectView()
+        visualEffectView.material = .hudWindow
+        visualEffectView.state = .active
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.wantsLayer = true
+        visualEffectView.layer?.cornerRadius = 24
+        visualEffectView.layer?.masksToBounds = true
+        self.contentView = visualEffectView
+
+        label = NSTextField(labelWithString: "")
+        label.font = .systemFont(ofSize: 100, weight: .bold)
+        label.textColor = .white
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: visualEffectView.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: visualEffectView.centerYAnchor)
+        ])
+    }
+
+    func updateText(_ text: String) {
+        label.stringValue = text
+    }
+}
 
 // ============================================================
 // App Selection Menu
@@ -701,6 +806,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var recordingOverlay: RecordingOverlayWindow?
 
+    var regionSelectionWindows: [RegionSelectionWindow] = []
+    var countdownTimer: Timer?
+    var countdownWindow: CountdownWindow?
+
     // Track menu items for audio popup to manage state easily
     private var audioMainItems: [NSMenuItem] = []
     private var audioMicItems: [NSMenuItem] = []
@@ -786,6 +895,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.items.forEach { $0.state = .off }
         sender.state = .on
         currentSettings.bitrate = menu.index(of: sender)
+        currentSettings.save()
+    }
+    @objc func timerChanged(_ sender: NSMenuItem) {
+        guard let menu = sender.menu else { return }
+        menu.items.forEach { $0.state = .off }
+        sender.state = .on
+        let index = menu.index(of: sender)
+        if index == 0 { currentSettings.timer = 0 }
+        else if index == 1 { currentSettings.timer = 5 }
+        else { currentSettings.timer = 10 }
         currentSettings.save()
     }
 
@@ -1011,6 +1130,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ])
         (settingsPopUp.menu?.item(withTitle: "Bitrate")?.submenu?.item(at: currentSettings.bitrate))?.state = .on
 
+        addSubmenu("Timer", "timer", [
+            ("None", 0, #selector(timerChanged(_:))),
+            ("5 Seconds", 1, #selector(timerChanged(_:))),
+            ("10 Seconds", 2, #selector(timerChanged(_:)))
+        ])
+        if currentSettings.timer == 0 { (settingsPopUp.menu?.item(withTitle: "Timer")?.submenu?.item(withTitle: "None"))?.state = .on }
+        else if currentSettings.timer == 5 { (settingsPopUp.menu?.item(withTitle: "Timer")?.submenu?.item(withTitle: "5 Seconds"))?.state = .on }
+        else { (settingsPopUp.menu?.item(withTitle: "Timer")?.submenu?.item(withTitle: "10 Seconds"))?.state = .on }
+
         settingsPopUp.menu?.addItem(NSMenuItem.separator())
         let clickItem = NSMenuItem(title: "Show Mouse Clicks", action: #selector(toggleMouseClicks(_:)), keyEquivalent: "")
         clickItem.image = NSImage(systemSymbolName: "cursorarrow.click.2", accessibilityDescription: nil) ?? NSImage(systemSymbolName: "cursorarrow.click", accessibilityDescription: nil)
@@ -1046,14 +1174,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
 
-        let initialModeSymbols = ["macwindow", "macwindow.badge.plus"]
-        let initialModeSymbol = (0...1).contains(currentSettings.recordMode) ? initialModeSymbols[currentSettings.recordMode] : "macwindow"
+        let initialModeSymbols = ["macwindow", "macwindow.badge.plus", "crop"]
+        let initialModeSymbol = (0...2).contains(currentSettings.recordMode) ? initialModeSymbols[currentSettings.recordMode] : "macwindow"
         modeGearItem.image = NSImage(systemSymbolName: initialModeSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         modePopUp.menu?.addItem(modeGearItem)
 
         let modeItems = [
             ("Entire Screen", "macwindow", 0),
-            ("Specific App", "macwindow.badge.plus", 1)
+            ("Specific App", "macwindow.badge.plus", 1),
+            ("Select Area", "crop", 2)
         ]
         for (title, symbol, idx) in modeItems {
             let item = NSMenuItem(title: title, action: #selector(modeChanged(_:)), keyEquivalent: "")
@@ -1127,6 +1256,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 
     @objc func toggleRecording() {
+        if !regionSelectionWindows.isEmpty {
+            for window in regionSelectionWindows { window.close() }
+            regionSelectionWindows.removeAll()
+            return
+        }
+        if let timer = countdownTimer, timer.isValid {
+            timer.invalidate()
+            countdownWindow?.close()
+            countdownWindow = nil
+            return
+        }
         if recorder.isRecording { recorder.stopRecording() }
         else { startRecordingProcess() }
     }
@@ -1140,14 +1280,74 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.recorder.captureApp = app
                 self?.recorder.captureRect = nil
                 self?.recorder.captureScreen = nil
-                self?.recorder.startRecording()
+                self?.startCountdownAndRecord()
             }
             appSelectionMenu?.showMenu(at: modePopUp)
+        } else if modeIndex == 2 { // Select Area
+            for window in regionSelectionWindows { window.close() }
+            regionSelectionWindows.removeAll()
+
+            for screen in NSScreen.screens {
+                let window = RegionSelectionWindow(screen: screen)
+                if let view = window.contentView as? RegionSelectionView {
+                    view.onSelectionComplete = { [weak self] rect in
+                        guard let self = self else { return }
+                        self.recorder.captureApp = nil
+                        self.recorder.captureRect = rect
+                        self.recorder.captureScreen = screen
+                        
+                        for w in self.regionSelectionWindows { w.close() }
+                        self.regionSelectionWindows.removeAll()
+                        
+                        self.startCountdownAndRecord()
+                    }
+                }
+                regionSelectionWindows.append(window)
+                window.makeKeyAndOrderFront(nil)
+            }
+            NSApp.activate(ignoringOtherApps: true)
         } else { // Entire Screen
             recorder.captureApp = nil
             recorder.captureRect = nil
             recorder.captureScreen = NSScreen.main
+            startCountdownAndRecord()
+        }
+    }
+
+    func startCountdownAndRecord() {
+        if currentSettings.timer > 0 {
+            startCountdown(seconds: currentSettings.timer) { [weak self] in
+                self?.recorder.startRecording()
+            }
+        } else {
             recorder.startRecording()
+        }
+    }
+
+    func startCountdown(seconds: Int, completion: @escaping () -> Void) {
+        countdownTimer?.invalidate()
+        countdownWindow?.close()
+
+        guard let screen = NSScreen.main else {
+            completion()
+            return
+        }
+
+        countdownWindow = CountdownWindow(screen: screen)
+        countdownWindow?.makeKeyAndOrderFront(nil)
+        countdownWindow?.updateText("\(seconds)")
+
+        var remaining = seconds
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            remaining -= 1
+            if remaining > 0 {
+                self?.countdownWindow?.updateText("\(remaining)")
+            } else {
+                timer.invalidate()
+                self?.countdownWindow?.close()
+                self?.countdownWindow = nil
+                completion()
+            }
         }
     }
 
