@@ -72,3 +72,45 @@ jobs:
             --title "v${{ env.VERSION }}" \
             --notes "${{ env.CHANGELOG }}" \
             --target "$GITHUB_SHA"
+
+      - name: Calculate SHA256
+        if: env.skip == 'false'
+        id: calc_sha
+        run: |
+          SHA256=$(shasum -a 256 Rec.zip | awk '{ print $1 }')
+          echo "SHA256=$SHA256" >> $GITHUB_ENV
+          echo "Computed SHA256: $SHA256"
+
+      - name: Checkout Homebrew Tap
+        if: env.skip == 'false'
+        uses: actions/checkout@v4
+        with:
+          repository: arunofhyd/homebrew-rec
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-rec
+
+      - name: Update Formula
+        if: env.skip == 'false'
+        run: |
+          cd homebrew-rec
+          # Update version
+          sed -i '' -e "s/version \".*\"/version \"${{ env.VERSION }}\"/" Casks/rec.rb
+          # Update sha256
+          sed -i '' -e "s/sha256 \".*\"/sha256 \"${{ env.SHA256 }}\"/" Casks/rec.rb
+          
+          git diff
+
+      - name: Commit and Push Homebrew Tap
+        if: env.skip == 'false'
+        run: |
+          cd homebrew-rec
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/rec.rb
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update Rec to v${{ env.VERSION }}"
+            git push
+          fi
