@@ -722,7 +722,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         
         guard recording else { return }
         guard !paused else { return }
-        guard let assetWriter = assetWriter else { return }
+        guard assetWriter != nil else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         guard CMTimeGetSeconds(pts) > 0 else { return }
 
@@ -1469,7 +1469,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cameraItems.append(noCamItem)
         cameraPopUp.menu?.addItem(noCamItem)
         
-        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .externalUnknown], mediaType: .video, position: .unspecified).devices
+        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .external], mediaType: .video, position: .unspecified).devices
         for dev in devices {
             let item = NSMenuItem(title: dev.localizedName, action: #selector(cameraChanged(_:)), keyEquivalent: "")
             item.identifier = NSUserInterfaceItemIdentifier(dev.uniqueID)
