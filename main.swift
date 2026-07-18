@@ -402,6 +402,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     var onRecordingStarted: (() -> Void)?
     var onRecordingStopped: ((URL) -> Void)?
     var onError: ((Error) -> Void)?
+    var onMicAudioLevel: ((Float) -> Void)?
 
     func startRecording() {
         if isRecording { return }
@@ -427,14 +428,14 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
             let filter: SCContentFilter
             let targetDisplay: SCDisplay
-
             var excepting = [SCWindow]()
-            if let camWinID = self.cameraWindowID, let scWin = content.windows.first(where: { $0.windowID == CGWindowID(camWinID) }) {
-                excepting.append(scWin)
-            }
-            if let cursorWinID = self.cursorWindowID, let scWin = content.windows.first(where: { $0.windowID == CGWindowID(cursorWinID) }) {
-                excepting.append(scWin)
-            }
+
+            let myProcessId = ProcessInfo.processInfo.processIdentifier
+            var exceptingAppWindows = content.windows.filter { $0.owningApplication?.processID == myProcessId }
+            
+            if let camWinID = self.cameraWindowID { exceptingAppWindows.removeAll(where: { $0.windowID == CGWindowID(camWinID) }) }
+            if let cursorWinID = self.cursorWindowID { exceptingAppWindows.removeAll(where: { $0.windowID == CGWindowID(cursorWinID) }) }
+            excepting.append(contentsOf: exceptingAppWindows)
 
             if let app = self.captureApp {
                 guard let display = content.displays.first else {
@@ -449,15 +450,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                 } else {
                     targetDisplay = content.displays.first!
                 }
-
-                let myProcessId = ProcessInfo.processInfo.processIdentifier
-                let myApp = content.applications.first(where: { $0.processID == myProcessId })
-
-                if let myApp = myApp {
-                    filter = SCContentFilter(display: targetDisplay, excludingApplications: [myApp], exceptingWindows: excepting)
-                } else {
-                    filter = SCContentFilter(display: targetDisplay, excludingApplications: [], exceptingWindows: excepting)
-                }
+                filter = SCContentFilter(display: targetDisplay, excludingApplications: [], exceptingWindows: excepting)
             }
 
             self.continueStartingRecording(filter: filter, display: targetDisplay)
@@ -779,6 +772,11 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
         if sessionStartTime != .invalid {
             if let micInput = micInput, micInput.isReadyForMoreMediaData { micInput.append(adjustedBuffer) }
+        }
+        
+        if let channel = connection.audioChannels.first {
+            let level = channel.averagePowerLevel
+            DispatchQueue.main.async { self.onMicAudioLevel?(level) }
         }
     }
 
@@ -1660,6 +1658,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .critical
             alert.runModal()
+        }
+        
+        var isMicActive = false
+        recorder.onMicAudioLevel = { [weak self] level in
+            guard let self = self else { return }
+            let isActive = level > -35.0
+            if isActive != isMicActive {
+                isMicActive = isActive
+                let baseSymbol: String
+                switch currentSettings.audioSource {
+                case 0: baseSymbol = "speaker.wave.2"
+                case 1: baseSymbol = "mic"
+                case 2: baseSymbol = "mic.and.signal.meter"
+                case 3: baseSymbol = "speaker.slash"
+                default: baseSymbol = "speaker.wave.2"
+                }
+                
+                let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+                guard let img = NSImage(systemSymbolName: baseSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return }
+                
+                if isActive && (currentSettings.audioSource == 1 || currentSettings.audioSource == 2) {
+                    let size = img.size
+                    let tinted = NSImage(size: size)
+                    tinted.lockFocus()
+                    img.draw(in: NSRect(origin: .zero, size: size))
+                    NSColor.systemGreen.set()
+                    NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
+                    tinted.unlockFocus()
+                    self.audioPopUp.menu?.item(at: 0)?.image = tinted
+                } else {
+                    self.audioPopUp.menu?.item(at: 0)?.image = img
+                }
+            }
         }
     }
 
