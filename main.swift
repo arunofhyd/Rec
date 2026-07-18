@@ -5,7 +5,7 @@ import VideoToolbox
 import os.log
 
 // MARK: - Configuration
-let appVersion = "1.0.0"
+let appVersion = "1.1.0"
 let updateCheckURL = "https://rec-aoh.netlify.app/version.json"
 private let log = OSLog(subsystem: "com.rec.app", category: "recorder")
 
@@ -19,6 +19,8 @@ struct AppSettings: Codable {
     var micID: String = ""
     var recordMode: Int = 0
     var timer: Int = 0
+    var cameraID: String = "None"
+    var highlightCursor: Bool = false
 
 
     func save() {
@@ -89,6 +91,64 @@ class RecordingOverlayView: NSView {
 // ============================================================
 // Region Selection & Countdown UI
 // ============================================================
+
+class CameraOverlayWindow: NSWindow {
+    let previewLayer = AVCaptureVideoPreviewLayer()
+    var captureSession: AVCaptureSession?
+    
+    init() {
+        let size: CGFloat = 200
+        let frame = NSRect(x: 50, y: 50, width: size, height: size)
+        super.init(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = true
+        self.level = .floating
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        self.isReleasedWhenClosed = false
+        self.isMovableByWindowBackground = true
+        
+        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        containerView.wantsLayer = true
+        containerView.layer?.cornerRadius = size / 2
+        containerView.layer?.masksToBounds = true
+        containerView.layer?.borderWidth = 2
+        containerView.layer?.borderColor = NSColor.white.cgColor
+        
+        previewLayer.frame = containerView.bounds
+        previewLayer.videoGravity = .resizeAspectFill
+        containerView.layer?.addSublayer(previewLayer)
+        self.contentView = containerView
+    }
+    
+    func startCamera(deviceID: String) {
+        captureSession?.stopRunning()
+        captureSession = AVCaptureSession()
+        guard let session = captureSession else { return }
+        session.sessionPreset = .high
+        
+        let device: AVCaptureDevice?
+        if deviceID.isEmpty || deviceID == "None" {
+            device = AVCaptureDevice.default(for: .video)
+        } else {
+            device = AVCaptureDevice(uniqueID: deviceID)
+        }
+        
+        guard let device = device,
+              let input = try? AVCaptureDeviceInput(device: device) else { return }
+              
+        if session.canAddInput(input) {
+            session.addInput(input)
+        }
+        previewLayer.session = session
+        session.startRunning()
+    }
+    
+    func stopCamera() {
+        captureSession?.stopRunning()
+        captureSession = nil
+    }
+}
 
 class RegionSelectionWindow: NSWindow {
     init(screen: NSScreen) {
@@ -274,6 +334,9 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     var audioInput: AVAssetWriterInput?
     var micInput: AVAssetWriterInput?
     var isRecording = false
+    var isPaused = false
+    var totalPausedDuration: CMTime = .zero
+    var pauseStartTime: CMTime = .invalid
     var outputFile: URL?
 
     var sessionStartTime: CMTime = .invalid
@@ -283,6 +346,9 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     var captureRect: CGRect?          // Screen-Local Coords (Bottom-Left Origin)
     var captureScreen: NSScreen?      // The screen the rect belongs to
     var captureApp: SCRunningApplication?
+
+    var cameraWindowID: Int?
+    var cursorWindowID: Int?
     
     private var targetScreenID: CGDirectDisplayID?
     private var targetScaleFactor: CGFloat = 1.0
@@ -293,6 +359,9 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
     func startRecording() {
         if isRecording { return }
+        isPaused = false
+        totalPausedDuration = .zero
+        pauseStartTime = .invalid
         
         let screen = captureScreen ?? NSScreen.main
         targetScreenID = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
@@ -313,15 +382,22 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             let filter: SCContentFilter
             let targetDisplay: SCDisplay
 
+            var excepting = [SCWindow]()
+            if let camWinID = self.cameraWindowID, let scWin = content.windows.first(where: { $0.windowID == CGWindowID(camWinID) }) {
+                excepting.append(scWin)
+            }
+            if let cursorWinID = self.cursorWindowID, let scWin = content.windows.first(where: { $0.windowID == CGWindowID(cursorWinID) }) {
+                excepting.append(scWin)
+            }
+
             if let app = self.captureApp {
                 guard let display = content.displays.first else {
                     DispatchQueue.main.async { self.onError?(NSError(domain: "RecorderError", code: 1, userInfo: [NSLocalizedDescriptionKey: "No display found for app"])) }
                     return
                 }
                 targetDisplay = display
-                filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
+                filter = SCContentFilter(display: display, including: [app], exceptingWindows: excepting)
             } else {
-                // Determine Target Display
                 if let sID = self.targetScreenID {
                     targetDisplay = content.displays.first { $0.displayID == sID } ?? content.displays.first!
                 } else {
@@ -329,12 +405,13 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                 }
 
                 let myProcessId = ProcessInfo.processInfo.processIdentifier
-                guard let myApp = content.applications.first(where: { $0.processID == myProcessId }) else {
-                    filter = SCContentFilter(display: targetDisplay, excludingApplications: [], exceptingWindows: [])
-                    self.continueStartingRecording(filter: filter, display: targetDisplay)
-                    return
+                let myApp = content.applications.first(where: { $0.processID == myProcessId })
+
+                if let myApp = myApp {
+                    filter = SCContentFilter(display: targetDisplay, excludingApplications: [myApp], exceptingWindows: excepting)
+                } else {
+                    filter = SCContentFilter(display: targetDisplay, excludingApplications: [], exceptingWindows: excepting)
                 }
-                filter = SCContentFilter(display: targetDisplay, excludingApplications: [myApp], exceptingWindows: [])
             }
 
             self.continueStartingRecording(filter: filter, display: targetDisplay)
@@ -549,35 +626,85 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             throw NSError(domain: "RecorderError", code: -3, userInfo: [NSLocalizedDescriptionKey: "AssetWriter failed to start writing."])
         }
     }
+    func togglePause() {
+        writerLock.lock()
+        defer { writerLock.unlock() }
+        guard isRecording else { return }
+        
+        if isPaused {
+            isPaused = false
+            let now = CMClockGetTime(CMClockGetHostTimeClock())
+            if pauseStartTime != .invalid {
+                let pausedDuration = CMTimeSubtract(now, pauseStartTime)
+                totalPausedDuration = CMTimeAdd(totalPausedDuration, pausedDuration)
+                pauseStartTime = .invalid
+            }
+        } else {
+            isPaused = true
+            pauseStartTime = CMClockGetTime(CMClockGetHostTimeClock())
+        }
+    }
+
+    private func adjustSampleBuffer(_ sampleBuffer: CMSampleBuffer, offset: CMTime) -> CMSampleBuffer? {
+        if offset == .zero { return sampleBuffer }
+        
+        var count: CMItemCount = 0
+        CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &count)
+        guard count > 0 else { return sampleBuffer }
+        
+        var timingInfos = [CMSampleTimingInfo](repeating: CMSampleTimingInfo(), count: Int(count))
+        CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: count, arrayToFill: &timingInfos, entriesNeededOut: &count)
+        
+        for i in 0..<Int(count) {
+            timingInfos[i].presentationTimeStamp = CMTimeSubtract(timingInfos[i].presentationTimeStamp, offset)
+            if timingInfos[i].decodeTimeStamp != .invalid {
+                timingInfos[i].decodeTimeStamp = CMTimeSubtract(timingInfos[i].decodeTimeStamp, offset)
+            }
+        }
+        
+        var newSampleBuffer: CMSampleBuffer?
+        CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault,
+                                              sampleBuffer: sampleBuffer,
+                                              sampleTimingEntryCount: count,
+                                              sampleTimingArray: &timingInfos,
+                                              sampleBufferOut: &newSampleBuffer)
+        return newSampleBuffer ?? sampleBuffer
+    }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         writerLock.lock()
         let recording = isRecording
+        let paused = isPaused
+        let pausedOffset = totalPausedDuration
         writerLock.unlock()
+        
         guard recording else { return }
-
+        guard !paused else { return }
         guard let assetWriter = assetWriter else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         guard CMTimeGetSeconds(pts) > 0 else { return }
+
+        guard let adjustedBuffer = adjustSampleBuffer(sampleBuffer, offset: pausedOffset) else { return }
+        let adjustedPTS = CMSampleBufferGetPresentationTimeStamp(adjustedBuffer)
 
         writerLock.lock()
         defer { writerLock.unlock() }
 
         if sessionStartTime == .invalid {
             if type == .screen {
-                sessionStartTime = pts
+                sessionStartTime = adjustedPTS
                 assetWriter.startSession(atSourceTime: sessionStartTime)
                 os_log("Session Started at PTS: %{public}f", log: log, type: .info, CMTimeGetSeconds(sessionStartTime))
             } else { return }
         }
 
-        if CMTimeCompare(pts, sessionStartTime) < 0 { return }
+        if CMTimeCompare(adjustedPTS, sessionStartTime) < 0 { return }
 
         if type == .screen {
-            guard CMSampleBufferGetImageBuffer(sampleBuffer) != nil else { return }
-            if let videoInput = videoInput, videoInput.isReadyForMoreMediaData { videoInput.append(sampleBuffer) }
+            guard CMSampleBufferGetImageBuffer(adjustedBuffer) != nil else { return }
+            if let videoInput = videoInput, videoInput.isReadyForMoreMediaData { videoInput.append(adjustedBuffer) }
         } else if type == .audio {
-            if let audioInput = audioInput, audioInput.isReadyForMoreMediaData { audioInput.append(sampleBuffer) }
+            if let audioInput = audioInput, audioInput.isReadyForMoreMediaData { audioInput.append(adjustedBuffer) }
         }
     }
 
@@ -589,18 +716,23 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         writerLock.lock()
         let recording = isRecording
+        let paused = isPaused
+        let pausedOffset = totalPausedDuration
         writerLock.unlock()
+        
         guard recording else { return }
-
-        guard assetWriter != nil else { return }
+        guard !paused else { return }
+        guard let assetWriter = assetWriter else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         guard CMTimeGetSeconds(pts) > 0 else { return }
+
+        guard let adjustedBuffer = adjustSampleBuffer(sampleBuffer, offset: pausedOffset) else { return }
 
         writerLock.lock()
         defer { writerLock.unlock() }
 
         if sessionStartTime != .invalid {
-            if let micInput = micInput, micInput.isReadyForMoreMediaData { micInput.append(sampleBuffer) }
+            if let micInput = micInput, micInput.isReadyForMoreMediaData { micInput.append(adjustedBuffer) }
         }
     }
 
@@ -678,7 +810,7 @@ class AboutWindowController: NSWindowController {
     var updateStatus: NSTextField!
 
     convenience init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 260), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 320), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = "About Rec"
         win.center()
         self.init(window: win)
@@ -750,6 +882,16 @@ class AboutWindowController: NSWindowController {
         desc.preferredMaxLayoutWidth = 260
         stackView.addArrangedSubview(desc)
 
+        let desc2 = NSTextField(labelWithString: "Completely free and open-source.")
+        desc2.alignment = .center
+        desc2.textColor = .secondaryLabelColor
+        stackView.addArrangedSubview(desc2)
+
+        let githubButton = NSButton(title: " GitHub Repository", target: self, action: #selector(openGitHub))
+        githubButton.bezelStyle = .rounded
+        githubButton.image = NSImage(systemSymbolName: "chevron.left.forwardslash.chevron.right", accessibilityDescription: nil)
+        stackView.addArrangedSubview(githubButton)
+
         updateButton = NSButton(title: "Check for Updates", target: self, action: #selector(checkForUpdates))
         updateButton.bezelStyle = .rounded
         stackView.addArrangedSubview(updateButton)
@@ -758,6 +900,12 @@ class AboutWindowController: NSWindowController {
         updateStatus.textColor = .secondaryLabelColor
         updateStatus.font = .systemFont(ofSize: 11)
         stackView.addArrangedSubview(updateStatus)
+    }
+
+    @objc func openGitHub() {
+        if let url = URL(string: "https://github.com/arunofhyd/Rec") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc func checkForUpdates() {
@@ -806,15 +954,19 @@ class AboutWindowController: NSWindowController {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: FloatingPanel!
     var recordButton: NSButton!
+    var pauseButton: NSButton!
     var closeButton: NSButton!
     var modePopUp: NSPopUpButton!
     var audioPopUp: NSPopUpButton!
     var timerPopUp: NSPopUpButton!
+    var cameraPopUp: NSPopUpButton!
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
     var appSelectionMenu: AppSelectionMenuHandler?
     var aboutWC: AboutWindowController?
+
+    var cameraWindow: CameraOverlayWindow?
 
     var recordingOverlay: RecordingOverlayWindow?
 
@@ -825,12 +977,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Track menu items for audio popup to manage state easily
     private var audioMainItems: [NSMenuItem] = []
     private var audioMicItems: [NSMenuItem] = []
+    private var cameraItems: [NSMenuItem] = []
+
+    var globalEventMonitor: Any?
+    var localEventMonitor: Any?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         setupMenu()
         setupUI()
         setupRecorder()
+        setupShortcuts()
         checkPermissions()
+        setupCameraIfNeeded()
+    }
+
+    func setupCameraIfNeeded() {
+        if currentSettings.cameraID != "None" && !currentSettings.cameraID.isEmpty {
+            cameraWindow = CameraOverlayWindow()
+            cameraWindow?.makeKeyAndOrderFront(nil)
+            recorder.cameraWindowID = cameraWindow?.windowNumber
+            cameraWindow?.startCamera(deviceID: currentSettings.cameraID)
+        }
+    }
+
+    func setupShortcuts() {
+        let handler: (NSEvent) -> Void = { [weak self] event in
+            // Cmd + Shift + R -> 15
+            // Cmd + Shift + P -> 35
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags == [.command, .shift] {
+                if event.keyCode == 15 {
+                    DispatchQueue.main.async { self?.toggleRecording() }
+                } else if event.keyCode == 35 {
+                    DispatchQueue.main.async { self?.togglePause() }
+                }
+            }
+        }
+        
+        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        let accessEnabled = AXIsProcessTrustedWithOptions(options)
+        
+        if accessEnabled {
+            globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: handler)
+        }
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            handler(event)
+            return event
+        }
     }
 
     func checkPermissions() {
@@ -965,6 +1158,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioPopUp.menu?.item(at: 0)?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
 
         currentSettings.save()
+    }
+
+    @objc func cameraChanged(_ sender: NSMenuItem) {
+        for item in cameraItems { item.state = .off }
+        sender.state = .on
+        
+        let deviceID = sender.identifier?.rawValue ?? "None"
+        currentSettings.cameraID = deviceID
+        currentSettings.save()
+        
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let symbol = deviceID == "None" ? "video.slash" : "video.fill"
+        cameraPopUp.menu?.item(at: 0)?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        
+        if deviceID == "None" {
+            cameraWindow?.close()
+            cameraWindow = nil
+            recorder.cameraWindowID = nil
+        } else {
+            if cameraWindow == nil {
+                cameraWindow = CameraOverlayWindow()
+                cameraWindow?.makeKeyAndOrderFront(nil)
+                recorder.cameraWindowID = cameraWindow?.windowNumber
+            }
+            cameraWindow?.startCamera(deviceID: deviceID)
+        }
     }
 
     @objc func modeChanged(_ sender: NSMenuItem) {
@@ -1225,23 +1444,75 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             timerPopUp.menu?.addItem(item)
         }
 
+        // ---- CAMERA POPUP ----
+        cameraPopUp = NSPopUpButton()
+        cameraPopUp.translatesAutoresizingMaskIntoConstraints = false
+        cameraPopUp.removeAllItems()
+        cameraPopUp.isBordered = false
+        cameraPopUp.imagePosition = .imageOnly
+        cameraPopUp.pullsDown = true
+        cameraPopUp.wantsLayer = true
+        cameraPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        cameraPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        let cameraGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let camSymbol = currentSettings.cameraID == "None" ? "video.slash" : "video.fill"
+        cameraGearItem.image = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        cameraPopUp.menu?.addItem(cameraGearItem)
+
+        let noCamItem = NSMenuItem(title: "None", action: #selector(cameraChanged(_:)), keyEquivalent: "")
+        noCamItem.target = self
+        noCamItem.identifier = NSUserInterfaceItemIdentifier("None")
+        if currentSettings.cameraID == "None" || currentSettings.cameraID.isEmpty {
+            noCamItem.state = .on
+        }
+        cameraItems.append(noCamItem)
+        cameraPopUp.menu?.addItem(noCamItem)
+        
+        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .externalUnknown], mediaType: .video, position: .unspecified).devices
+        for dev in devices {
+            let item = NSMenuItem(title: dev.localizedName, action: #selector(cameraChanged(_:)), keyEquivalent: "")
+            item.identifier = NSUserInterfaceItemIdentifier(dev.uniqueID)
+            item.target = self
+            if currentSettings.cameraID == dev.uniqueID { item.state = .on }
+            cameraItems.append(item)
+            cameraPopUp.menu?.addItem(item)
+        }
+
+        // ---- PAUSE BUTTON ----
+        pauseButton = NSButton()
+        pauseButton.translatesAutoresizingMaskIntoConstraints = false
+        pauseButton.bezelStyle = .regularSquare
+        pauseButton.isBordered = false
+        pauseButton.imagePosition = .imageOnly
+        pauseButton.image = NSImage(systemSymbolName: "pause.circle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 26, weight: .regular))
+        pauseButton.target = self
+        pauseButton.action = #selector(togglePause)
+        pauseButton.isHidden = true // Only visible when recording
+
         // ---- STACK VIEW ----
-        let stackView = NSStackView(views: [closeButton, settingsPopUp, audioPopUp, timerPopUp, modePopUp])
+        let stackView = NSStackView(views: [closeButton, settingsPopUp, cameraPopUp, audioPopUp, timerPopUp, modePopUp])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.spacing = 16
         stackView.alignment = .centerY
 
+        let actionStackView = NSStackView(views: [pauseButton, recordButton])
+        actionStackView.translatesAutoresizingMaskIntoConstraints = false
+        actionStackView.orientation = .horizontal
+        actionStackView.spacing = 12
+        actionStackView.alignment = .centerY
+
         contentView.addSubview(stackView)
-        contentView.addSubview(recordButton)
+        contentView.addSubview(actionStackView)
         NSLayoutConstraint.activate([
             stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
             stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
 
-            recordButton.leadingAnchor.constraint(equalTo: stackView.trailingAnchor, constant: 16),
-            recordButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            recordButton.centerYAnchor.constraint(equalTo: stackView.centerYAnchor)
+            actionStackView.leadingAnchor.constraint(equalTo: stackView.trailingAnchor, constant: 16),
+            actionStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            actionStackView.centerYAnchor.constraint(equalTo: stackView.centerYAnchor)
         ])
 
         stackView.layoutSubtreeIfNeeded()
@@ -1286,6 +1557,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
 
+
+    @objc func togglePause() {
+        recorder.togglePause()
+        updateButtonImage()
+    }
 
     @objc func toggleRecording() {
         if !regionSelectionWindows.isEmpty {
@@ -1384,6 +1660,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func updateButtonImage() {
+        pauseButton.isHidden = !recorder.isRecording
+        
+        let pauseSymbol = recorder.isPaused ? "play.circle.fill" : "pause.circle.fill"
+        let pauseConfig = NSImage.SymbolConfiguration(pointSize: 26, weight: .regular)
+        if let pauseImg = NSImage(systemSymbolName: pauseSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(pauseConfig) {
+            let size = pauseImg.size
+            let tinted = NSImage(size: size)
+            tinted.lockFocus()
+            pauseImg.draw(in: NSRect(origin: .zero, size: size))
+            NSColor.white.set()
+            NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
+            tinted.unlockFocus()
+            pauseButton.image = tinted
+        }
+
         let config = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
         let symbolName = recorder.isRecording ? "stop.circle.fill" : "record.circle"
         if let systemImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
