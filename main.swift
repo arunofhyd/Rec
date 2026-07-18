@@ -55,6 +55,7 @@ class RecordingOverlayWindow: NSWindow {
         self.level = .floating
         self.ignoresMouseEvents = true
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.isReleasedWhenClosed = false
 
         let overlayView = RecordingOverlayView(frame: self.contentView?.bounds ?? .zero)
         overlayView.windowRef = self
@@ -97,6 +98,7 @@ class RegionSelectionWindow: NSWindow {
         self.hasShadow = false
         self.level = .screenSaver
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.isReleasedWhenClosed = false
 
         let selectionView = RegionSelectionView(frame: self.contentView?.bounds ?? .zero)
         selectionView.autoresizingMask = [.width, .height]
@@ -160,6 +162,7 @@ class CountdownWindow: NSWindow {
         self.level = .popUpMenu
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         self.ignoresMouseEvents = true
+        self.isReleasedWhenClosed = false
 
         let containerView = NSView()
         self.contentView = containerView
