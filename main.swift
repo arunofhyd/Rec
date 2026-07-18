@@ -1094,6 +1094,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 cameraWindow?.startCamera(deviceID: devID)
             }
         }
+        updateButtonImage()
     }
 
     func setupShortcuts() {
@@ -1933,8 +1934,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         let camConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
-        let camSymbol = (cameraWindow != nil && cameraWindow!.isVisible) ? "video.fill" : "video.slash"
+        let camIsActive = (cameraWindow != nil && cameraWindow!.isVisible)
+        let camSymbol = camIsActive ? "video.fill" : "video.slash"
         cameraRecordButton.image = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(camConfig)
+        cameraRecordButton.contentTintColor = camIsActive ? .systemGreen : .labelColor
         cameraPopUp.menu?.item(at: 0)?.image = cameraRecordButton.image
 
         // Handle Cursor Highlighter lifecycle
