@@ -1034,6 +1034,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var audioPopUp: NSPopUpButton!
     var timerPopUp: NSPopUpButton!
     var cameraPopUp: NSPopUpButton!
+    var cameraRecordButton: NSButton!
     var settingsPopUp: NSPopUpButton!
     let recorder = Recorder()
 
@@ -1643,9 +1644,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pauseButton.target = self
         pauseButton.action = #selector(togglePause)
         pauseButton.isHidden = true // Only visible when recording
+        
+        cameraRecordButton = NSButton()
+        cameraRecordButton.translatesAutoresizingMaskIntoConstraints = false
+        cameraRecordButton.isBordered = false
+        cameraRecordButton.imagePosition = .imageOnly
+        cameraRecordButton.target = self
+        cameraRecordButton.action = #selector(toggleCameraHotkey)
+        cameraRecordButton.isHidden = true
+        cameraRecordButton.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        cameraRecordButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         // ---- STACK VIEW ----
-        let stackView = NSStackView(views: [closeButton, settingsPopUp, cameraPopUp, audioPopUp, timerPopUp, modePopUp])
+        let stackView = NSStackView(views: [closeButton, settingsPopUp, cameraRecordButton, cameraPopUp, audioPopUp, timerPopUp, modePopUp])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.spacing = 16
@@ -1683,8 +1694,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.modePopUp.isEnabled = false
             self?.audioPopUp.isEnabled = false
             self?.timerPopUp.isEnabled = false
-            self?.cameraPopUp.isEnabled = false
             self?.settingsPopUp.isEnabled = false
+            self?.cameraPopUp.isHidden = true
+            self?.cameraRecordButton.isHidden = false
             if let rect = self?.recorder.captureRect, rect != .zero, let screen = self?.recorder.captureScreen {
                 self?.recordingOverlay = RecordingOverlayWindow(screen: screen, holeRect: rect)
                 self?.recordingOverlay?.makeKeyAndOrderFront(nil)
@@ -1696,8 +1708,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.modePopUp.isEnabled = true
             self?.audioPopUp.isEnabled = true
             self?.timerPopUp.isEnabled = true
-            self?.cameraPopUp.isEnabled = true
             self?.settingsPopUp.isEnabled = true
+            self?.cameraPopUp.isHidden = false
+            self?.cameraRecordButton.isHidden = true
             let alert = NSAlert()
             alert.messageText = "Recording Saved"
             alert.informativeText = "Saved to \(url.lastPathComponent)"
@@ -1713,8 +1726,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.modePopUp.isEnabled = true
             self?.audioPopUp.isEnabled = true
             self?.timerPopUp.isEnabled = true
-            self?.cameraPopUp.isEnabled = true
             self?.settingsPopUp.isEnabled = true
+            self?.cameraPopUp.isHidden = false
+            self?.cameraRecordButton.isHidden = true
             let alert = NSAlert()
             alert.messageText = "Recording Error"
             alert.informativeText = error.localizedDescription
@@ -1918,6 +1932,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         
+        let camConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let camSymbol = (cameraWindow != nil && cameraWindow!.isVisible) ? "video.fill" : "video.slash"
+        cameraRecordButton.image = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(camConfig)
+        cameraPopUp.menu?.item(at: 0)?.image = cameraRecordButton.image
+
         // Handle Cursor Highlighter lifecycle
         if recorder.isRecording && currentSettings.highlightCursor {
             if highlighterWindow == nil {
