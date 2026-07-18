@@ -21,8 +21,8 @@ struct AppSettings: Codable {
     var timer: Int = 0
     var cameraID: String = "None"
     var highlightCursor: Bool = false
-
-
+    var cursorColor: Int = 0
+    var mirrorCamera: Bool = true
     func save() {
         if let data = try? JSONEncoder().encode(self) {
             UserDefaults.standard.set(data, forKey: "RecAppSettings")
@@ -141,12 +141,58 @@ class CameraOverlayWindow: NSWindow {
             session.addInput(input)
         }
         previewLayer.session = session
+        
+        if let connection = previewLayer.connection, connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = currentSettings.mirrorCamera
+        }
+        
         session.startRunning()
     }
     
     func stopCamera() {
         captureSession?.stopRunning()
         captureSession = nil
+    }
+}
+class CursorHighlighterWindow: NSWindow {
+    var circleView: NSView!
+    
+    init() {
+        let size: CGFloat = 40
+        super.init(contentRect: NSRect(x: 0, y: 0, width: size, height: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.level = .screenSaver
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.ignoresMouseEvents = true
+        self.isReleasedWhenClosed = false
+        
+        circleView = NSView(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        circleView.wantsLayer = true
+        circleView.layer?.cornerRadius = size / 2
+        circleView.layer?.masksToBounds = true
+        self.contentView = circleView
+        
+        updateColor()
+    }
+    
+    func updateColor() {
+        let alpha: CGFloat = 0.5
+        switch currentSettings.cursorColor {
+        case 0: circleView.layer?.backgroundColor = NSColor.systemYellow.withAlphaComponent(alpha).cgColor
+        case 1: circleView.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(alpha).cgColor
+        case 2: circleView.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(alpha).cgColor
+        case 3: circleView.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(alpha).cgColor
+        default: circleView.layer?.backgroundColor = NSColor.systemYellow.withAlphaComponent(alpha).cgColor
+        }
+    }
+    
+    func moveTo(point: NSPoint) {
+        let size = self.frame.size
+        // NSPoint is lower-left origin, so center the window around the mouse
+        self.setFrameOrigin(NSPoint(x: point.x - size.width/2, y: point.y - size.height/2))
     }
 }
 
@@ -972,6 +1018,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var regionSelectionWindows: [RegionSelectionWindow] = []
     var countdownTimer: Timer?
+    var highlighterWindow: CursorHighlighterWindow?
+    var highlighterTimer: Timer?
     var countdownWindow: CountdownWindow?
 
     // Track menu items for audio popup to manage state easily
@@ -1208,6 +1256,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         currentSettings.save()
         sender.state = currentSettings.showsClicks ? .on : .off
     }
+
+    @objc func toggleCursorHighlight(_ sender: NSMenuItem) {
+        currentSettings.highlightCursor.toggle()
+        currentSettings.save()
+        sender.state = currentSettings.highlightCursor ? .on : .off
+    }
+
+    @objc func cursorColorChanged(_ sender: NSMenuItem) {
+        guard let menu = sender.menu else { return }
+        for item in menu.items { item.state = .off }
+        sender.state = .on
+        currentSettings.cursorColor = sender.tag
+        currentSettings.save()
+        highlighterWindow?.updateColor()
+    }
+
+    @objc func toggleMirrorCamera(_ sender: NSMenuItem) {
+        currentSettings.mirrorCamera.toggle()
+        currentSettings.save()
+        sender.state = currentSettings.mirrorCamera ? .on : .off
+        
+        if let window = cameraWindow {
+            let shouldMirror = currentSettings.mirrorCamera
+            window.previewLayer.connection?.isVideoMirrored = shouldMirror
+        }
+    }
     @objc func chooseSaveLocation(_ sender: NSMenuItem) {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
@@ -1363,11 +1437,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 
         settingsPopUp.menu?.addItem(NSMenuItem.separator())
-        let clickItem = NSMenuItem(title: "Show Mouse Clicks", action: #selector(toggleMouseClicks(_:)), keyEquivalent: "")
-        clickItem.image = NSImage(systemSymbolName: "cursorarrow.click.2", accessibilityDescription: nil) ?? NSImage(systemSymbolName: "cursorarrow.click", accessibilityDescription: nil)
-        clickItem.target = self
-        clickItem.state = currentSettings.showsClicks ? .on : .off
-        settingsPopUp.menu?.addItem(clickItem)
+        
+        let cursorMenu = NSMenu()
+        let nativeClickItem = NSMenuItem(title: "Show Native Clicks", action: #selector(toggleMouseClicks(_:)), keyEquivalent: "")
+        nativeClickItem.target = self
+        nativeClickItem.state = currentSettings.showsClicks ? .on : .off
+        cursorMenu.addItem(nativeClickItem)
+        
+        let highlightItem = NSMenuItem(title: "Highlight Cursor", action: #selector(toggleCursorHighlight(_:)), keyEquivalent: "")
+        highlightItem.target = self
+        highlightItem.state = currentSettings.highlightCursor ? .on : .off
+        cursorMenu.addItem(highlightItem)
+        
+        cursorMenu.addItem(NSMenuItem.separator())
+        
+        let colorMenu = NSMenu()
+        let colors = ["Yellow", "Red", "Green", "Blue"]
+        for (idx, colorName) in colors.enumerated() {
+            let item = NSMenuItem(title: colorName, action: #selector(cursorColorChanged(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = idx
+            if currentSettings.cursorColor == idx { item.state = .on }
+            colorMenu.addItem(item)
+        }
+        let colorSubItem = NSMenuItem(title: "Highlight Color", action: nil, keyEquivalent: "")
+        colorSubItem.submenu = colorMenu
+        cursorMenu.addItem(colorSubItem)
+        
+        let cursorParent = NSMenuItem(title: "Cursor Settings", action: nil, keyEquivalent: "")
+        cursorParent.image = NSImage(systemSymbolName: "cursorarrow.click.2", accessibilityDescription: nil) ?? NSImage(systemSymbolName: "cursorarrow.click", accessibilityDescription: nil)
+        cursorParent.submenu = cursorMenu
+        settingsPopUp.menu?.addItem(cursorParent)
 
         let locationItem = NSMenuItem(title: "Save Location...", action: #selector(chooseSaveLocation(_:)), keyEquivalent: "")
         locationItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
@@ -1478,6 +1578,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             cameraItems.append(item)
             cameraPopUp.menu?.addItem(item)
         }
+        
+        cameraPopUp.menu?.addItem(NSMenuItem.separator())
+        let mirrorItem = NSMenuItem(title: "Mirror Camera", action: #selector(toggleMirrorCamera(_:)), keyEquivalent: "")
+        mirrorItem.target = self
+        mirrorItem.state = currentSettings.mirrorCamera ? .on : .off
+        cameraPopUp.menu?.addItem(mirrorItem)
 
         // ---- PAUSE BUTTON ----
         pauseButton = NSButton()
@@ -1706,6 +1812,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             tintedImage.unlockFocus()
             recordButton.image = tintedImage
+        }
+        
+        // Re-layout panel to fix UI gap when pause button is hidden
+        if let contentView = panel.contentView {
+            contentView.layoutSubtreeIfNeeded()
+            let newSize = contentView.fittingSize
+            if panel.frame.size != newSize {
+                var newFrame = panel.frame
+                newFrame.size = newSize
+                panel.setFrame(newFrame, display: true, animate: true)
+            }
+        }
+        
+        // Handle Cursor Highlighter lifecycle
+        if recorder.isRecording && currentSettings.highlightCursor {
+            if highlighterWindow == nil {
+                highlighterWindow = CursorHighlighterWindow()
+                highlighterWindow?.makeKeyAndOrderFront(nil)
+                highlighterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+                    let mouseLoc = NSEvent.mouseLocation
+                    self?.highlighterWindow?.moveTo(point: mouseLoc)
+                }
+            }
+        } else {
+            highlighterTimer?.invalidate()
+            highlighterTimer = nil
+            highlighterWindow?.close()
+            highlighterWindow = nil
         }
     }
 
