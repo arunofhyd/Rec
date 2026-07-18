@@ -1027,9 +1027,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bg.blendingMode = .behindWindow
         bg.state = .active
         let icon = NSImageView(frame: NSRect(x: (width - 72)/2, y: height - 100, width: 72, height: 72))
-        let config = NSImage.SymbolConfiguration(pointSize: 64, weight: .regular)
-        icon.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)?.withSymbolConfiguration(config)
-        icon.contentTintColor = .systemRed
+        icon.image = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
         icon.imageScaling = .scaleProportionallyUpOrDown
         bg.addSubview(icon)
 
@@ -1214,15 +1212,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         NSApp.activate(ignoringOtherApps: true)
         
-        if let img = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 48, weight: .regular)) {
-            let tinted = NSImage(size: img.size)
-            tinted.lockFocus()
-            NSColor.systemRed.set()
-            NSRect(origin: .zero, size: img.size).fill()
-            img.draw(at: .zero, from: .zero, operation: .destinationIn, fraction: 1.0)
-            tinted.unlockFocus()
-            alert.icon = tinted
-        }
+        alert.icon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
         if newer, let remote = remote {
             alert.messageText = "Rec \(remote) is available"
             alert.informativeText = "You have v\(appVersion). Here's what's new:"
