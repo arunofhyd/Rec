@@ -1027,20 +1027,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bg.blendingMode = .behindWindow
         bg.state = .active
         let icon = NSImageView(frame: NSRect(x: (width - 72)/2, y: height - 100, width: 72, height: 72))
-        let redIcon = NSImage(size: NSSize(width: 72, height: 72))
-        redIcon.lockFocus()
-        if let ctx = NSGraphicsContext.current?.cgContext {
-            let outerRect = CGRect(x: 8, y: 8, width: 56, height: 56)
-            ctx.setStrokeColor(NSColor.white.cgColor)
-            ctx.setLineWidth(4.5)
-            ctx.strokeEllipse(in: outerRect)
-            
-            let innerRect = CGRect(x: 18, y: 18, width: 36, height: 36)
-            ctx.setFillColor(NSColor.systemRed.cgColor)
-            ctx.fillEllipse(in: innerRect)
-        }
-        redIcon.unlockFocus()
-        icon.image = NSImage(named: "AppIcon") ?? redIcon
+        let config = NSImage.SymbolConfiguration(pointSize: 64, weight: .regular)
+        icon.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        icon.contentTintColor = .systemRed
         icon.imageScaling = .scaleProportionallyUpOrDown
         bg.addSubview(icon)
 
@@ -1224,6 +1213,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func showUpdateResult(_ remote: String?, changelog: String, newer: Bool, downloadURL: String = "https://github.com/arunofhyd/Rec/releases/latest") {
         let alert = NSAlert()
         NSApp.activate(ignoringOtherApps: true)
+        
+        if let img = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 48, weight: .regular)) {
+            let tinted = NSImage(size: img.size)
+            tinted.lockFocus()
+            NSColor.systemRed.set()
+            NSRect(origin: .zero, size: img.size).fill()
+            img.draw(at: .zero, from: .zero, operation: .destinationIn, fraction: 1.0)
+            tinted.unlockFocus()
+            alert.icon = tinted
+        }
         if newer, let remote = remote {
             alert.messageText = "Rec \(remote) is available"
             alert.informativeText = "You have v\(appVersion). Here's what's new:"
