@@ -1177,7 +1177,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 return
             }
-            let dl = (json["downloadURL"] as? String) ?? "https://github.com/arunofhyd/Rec/releases/latest"
+            let dl = (json["downloadURL"] as? String) ?? "https://rec-aoh.netlify.app/#install"
             var notes = ""
             if let logs = json["changelog"] as? [[String: Any]],
                let entry = logs.first(where: { ($0["version"] as? String) == remote }),
@@ -1208,7 +1208,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    func showUpdateResult(_ remote: String?, changelog: String, newer: Bool, downloadURL: String = "https://github.com/arunofhyd/Rec/releases/latest") {
+    func showUpdateResult(_ remote: String?, changelog: String, newer: Bool, downloadURL: String = "https://rec-aoh.netlify.app/#install") {
         let alert = NSAlert()
         NSApp.activate(ignoringOtherApps: true)
         
