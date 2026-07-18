@@ -1046,17 +1046,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             cameraWindow?.startCamera(deviceID: currentSettings.cameraID)
         }
     }
+    
+    @objc func toggleCameraHotkey() {
+        if let window = cameraWindow, window.isVisible {
+            window.stopCamera()
+            window.orderOut(nil)
+            cameraWindow = nil
+        } else {
+            let devID = (currentSettings.cameraID == "None" || currentSettings.cameraID.isEmpty) ? AVCaptureDevice.default(for: .video)?.uniqueID ?? "" : currentSettings.cameraID
+            if !devID.isEmpty && devID != "None" {
+                if cameraWindow == nil {
+                    cameraWindow = CameraOverlayWindow()
+                    recorder.cameraWindowID = cameraWindow?.windowNumber
+                }
+                cameraWindow?.makeKeyAndOrderFront(nil)
+                cameraWindow?.startCamera(deviceID: devID)
+            }
+        }
+    }
 
     func setupShortcuts() {
         let handler: (NSEvent) -> Void = { [weak self] event in
             // Cmd + Shift + R -> 15
             // Cmd + Shift + P -> 35
+            // Cmd + Shift + C -> 8
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if flags == [.command, .shift] {
                 if event.keyCode == 15 {
                     DispatchQueue.main.async { self?.toggleRecording() }
                 } else if event.keyCode == 35 {
                     DispatchQueue.main.async { self?.togglePause() }
+                } else if event.keyCode == 8 {
+                    DispatchQueue.main.async { self?.toggleCameraHotkey() }
                 }
             }
         }
