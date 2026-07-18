@@ -1135,9 +1135,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         else { (settingsPopUp.menu?.item(withTitle: "Resolution")?.submenu?.item(withTitle: "720p"))?.state = .on }
 
         addSubmenu("Bitrate", "speedometer", [
-            ("Best Quality, Large size", 0, #selector(bitChanged(_:))),
-            ("Balanced Quality & size", 1, #selector(bitChanged(_:))),
-            ("Low Quality, small size", 2, #selector(bitChanged(_:)))
+            ("High (Best Quality)", 0, #selector(bitChanged(_:))),
+            ("Medium (Balanced)", 1, #selector(bitChanged(_:))),
+            ("Low (Space Saver)", 2, #selector(bitChanged(_:)))
         ])
         (settingsPopUp.menu?.item(withTitle: "Bitrate")?.submenu?.item(at: currentSettings.bitrate))?.state = .on
 
