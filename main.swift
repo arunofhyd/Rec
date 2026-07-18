@@ -154,32 +154,35 @@ class CountdownWindow: NSWindow {
         let size: CGFloat = 200
         let rect = NSRect(x: screen.frame.midX - size/2, y: screen.frame.midY - size/2, width: size, height: size)
         super.init(contentRect: rect, styleMask: [.borderless], backing: .buffered, defer: false)
-        self.backgroundColor = NSColor.black.withAlphaComponent(0.6)
+        self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = true
         self.level = .popUpMenu
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         self.ignoresMouseEvents = true
 
-        let visualEffectView = NSVisualEffectView()
-        visualEffectView.material = .hudWindow
-        visualEffectView.state = .active
-        visualEffectView.blendingMode = .behindWindow
-        visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 24
-        visualEffectView.layer?.masksToBounds = true
-        self.contentView = visualEffectView
+        let containerView = NSView()
+        self.contentView = containerView
 
         label = NSTextField(labelWithString: "")
         label.font = .systemFont(ofSize: 100, weight: .bold)
         label.textColor = .white
         label.alignment = .center
+        label.isBordered = false
+        label.drawsBackground = false
+        
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.8)
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        shadow.shadowBlurRadius = 4
+        label.shadow = shadow
+        
         label.translatesAutoresizingMaskIntoConstraints = false
-        visualEffectView.addSubview(label)
+        containerView.addSubview(label)
 
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: visualEffectView.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: visualEffectView.centerYAnchor)
+            label.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: containerView.centerYAnchor)
         ])
     }
 
@@ -277,6 +280,9 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     var captureRect: CGRect?          // Screen-Local Coords (Bottom-Left Origin)
     var captureScreen: NSScreen?      // The screen the rect belongs to
     var captureApp: SCRunningApplication?
+    
+    private var targetScreenID: CGDirectDisplayID?
+    private var targetScaleFactor: CGFloat = 1.0
 
     var onRecordingStarted: (() -> Void)?
     var onRecordingStopped: ((URL) -> Void)?
@@ -284,6 +290,11 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
     func startRecording() {
         if isRecording { return }
+        
+        let screen = captureScreen ?? NSScreen.main
+        targetScreenID = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+        targetScaleFactor = screen?.backingScaleFactor ?? 1.0
+        
         beginCapture()
     }
 
@@ -308,13 +319,10 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                 filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
             } else {
                 // Determine Target Display
-                if let screen = self.captureScreen {
-                    let screenID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
-                    targetDisplay = content.displays.first { $0.displayID == screenID } ?? content.displays.first!
+                if let sID = self.targetScreenID {
+                    targetDisplay = content.displays.first { $0.displayID == sID } ?? content.displays.first!
                 } else {
-                    let mainScreen = NSScreen.main
-                    let mainID = mainScreen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
-                    targetDisplay = content.displays.first { $0.displayID == mainID } ?? content.displays.first!
+                    targetDisplay = content.displays.first!
                 }
 
                 let myProcessId = ProcessInfo.processInfo.processIdentifier
@@ -332,7 +340,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
     private func continueStartingRecording(filter: SCContentFilter, display: SCDisplay) {
         let config = SCStreamConfiguration()
-        let scaleFactor = captureScreen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1.0
+        let scaleFactor = targetScaleFactor
 
         var baseWidth = display.width
         var baseHeight = display.height
@@ -341,9 +349,9 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         // ============================================================
         // REGION LOGIC: Global Screen Coords -> Local Display Coords
         // ============================================================
-        if let rect = captureRect, rect != .zero, let screen = captureScreen {
+        if let rect = captureRect, rect != .zero {
             // 1. Verify the screen matches the display we are capturing
-            let screenDisplayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+            let screenDisplayID = targetScreenID
             guard screenDisplayID == display.displayID else {
                 DispatchQueue.main.async {
                     self.onError?(NSError(domain: "RecorderError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Selected region screen mismatch. Try selecting region again."]))
@@ -581,7 +589,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         writerLock.unlock()
         guard recording else { return }
 
-        guard let assetWriter = assetWriter else { return }
+        guard assetWriter != nil else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         guard CMTimeGetSeconds(pts) > 0 else { return }
 
@@ -1047,7 +1055,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Mic List (Modern API with external mic fallback)
         let micSubmenu = NSMenu()
-        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone, AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeExternalUnknown")], mediaType: .audio, position: .unspecified)
+        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeExternalUnknown")], mediaType: .audio, position: .unspecified)
 
         if session.devices.isEmpty {
             let emptyItem = NSMenuItem(title: "No Microphones Found", action: nil, keyEquivalent: "")
@@ -1091,7 +1099,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         gearItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config)
         settingsPopUp.menu?.addItem(gearItem)
 
-        let addSubmenu = { (title: String, symbol: String, items: [(String, Int, Selector)]) -> NSMenuItem in
+        let addSubmenu = { (title: String, symbol: String, items: [(String, Int, Selector)]) -> Void in
             let sub = NSMenu()
             for (t, tag, action) in items {
                 let i = NSMenuItem(title: t, action: action, keyEquivalent: "")
@@ -1102,7 +1110,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             parent.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             parent.submenu = sub
             settingsPopUp.menu?.addItem(parent)
-            return parent
         }
 
         addSubmenu("Framerate", "film", [
