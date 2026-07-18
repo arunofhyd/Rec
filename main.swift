@@ -1235,7 +1235,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         recordButton.imagePosition = .imageOnly
         recordButton.target = self
         recordButton.action = #selector(toggleRecording)
-        updateButtonImage()
+        recordButton.action = #selector(toggleRecording)
 
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
 
@@ -1516,6 +1516,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ])
 
         stackView.layoutSubtreeIfNeeded()
+        updateButtonImage()
         let fittingSize = contentView.fittingSize
         panel.setContentSize(fittingSize)
         panel.setFrameOrigin(NSPoint(x: (screen.frame.width - fittingSize.width) / 2, y: 100))
