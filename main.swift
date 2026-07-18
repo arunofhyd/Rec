@@ -809,6 +809,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var closeButton: NSButton!
     var modePopUp: NSPopUpButton!
     var audioPopUp: NSPopUpButton!
+    var timerPopUp: NSPopUpButton!
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
@@ -1140,14 +1141,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ])
         (settingsPopUp.menu?.item(withTitle: "Bitrate")?.submenu?.item(at: currentSettings.bitrate))?.state = .on
 
-        addSubmenu("Timer", "timer", [
-            ("None", 0, #selector(timerChanged(_:))),
-            ("5 Seconds", 1, #selector(timerChanged(_:))),
-            ("10 Seconds", 2, #selector(timerChanged(_:)))
-        ])
-        if currentSettings.timer == 0 { (settingsPopUp.menu?.item(withTitle: "Timer")?.submenu?.item(withTitle: "None"))?.state = .on }
-        else if currentSettings.timer == 5 { (settingsPopUp.menu?.item(withTitle: "Timer")?.submenu?.item(withTitle: "5 Seconds"))?.state = .on }
-        else { (settingsPopUp.menu?.item(withTitle: "Timer")?.submenu?.item(withTitle: "10 Seconds"))?.state = .on }
+
 
         settingsPopUp.menu?.addItem(NSMenuItem.separator())
         let clickItem = NSMenuItem(title: "Show Mouse Clicks", action: #selector(toggleMouseClicks(_:)), keyEquivalent: "")
@@ -1203,8 +1197,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modePopUp.menu?.addItem(item)
         }
 
+        // ---- TIMER POPUP ----
+        timerPopUp = NSPopUpButton()
+        timerPopUp.translatesAutoresizingMaskIntoConstraints = false
+        timerPopUp.removeAllItems()
+        timerPopUp.isBordered = false
+        timerPopUp.imagePosition = .imageOnly
+        timerPopUp.pullsDown = true
+        timerPopUp.wantsLayer = true
+        timerPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        timerPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        let timerGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        timerGearItem.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        timerPopUp.menu?.addItem(timerGearItem)
+
+        let timerItems = [
+            ("None", 0),
+            ("5 Seconds", 1),
+            ("10 Seconds", 2)
+        ]
+        for (title, idx) in timerItems {
+            let item = NSMenuItem(title: title, action: #selector(timerChanged(_:)), keyEquivalent: "")
+            item.tag = idx
+            item.target = self
+            if currentSettings.timer == (idx == 0 ? 0 : (idx == 1 ? 5 : 10)) { item.state = .on }
+            timerPopUp.menu?.addItem(item)
+        }
+
         // ---- STACK VIEW ----
-        let stackView = NSStackView(views: [closeButton, settingsPopUp, audioPopUp, modePopUp])
+        let stackView = NSStackView(views: [closeButton, settingsPopUp, audioPopUp, timerPopUp, modePopUp])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.spacing = 16
