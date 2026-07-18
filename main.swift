@@ -5,7 +5,7 @@ import VideoToolbox
 import os.log
 
 // MARK: - Configuration
-let appVersion = "1.1.2"
+let appVersion = "1.1.3"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.rec.app", category: "recorder")
 
