@@ -18,6 +18,8 @@ struct AppSettings: Codable {
     var saveDirectory: String = ""
     var micID: String = ""
     var recordMode: Int = 0
+    var timer: Int = 0
+
 
     func save() {
         if let data = try? JSONEncoder().encode(self) {
@@ -53,6 +55,7 @@ class RecordingOverlayWindow: NSWindow {
         self.level = .floating
         self.ignoresMouseEvents = true
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.isReleasedWhenClosed = false
 
         let overlayView = RecordingOverlayView(frame: self.contentView?.bounds ?? .zero)
         overlayView.windowRef = self
@@ -82,6 +85,114 @@ class RecordingOverlayView: NSView {
     }
 }
 
+
+// ============================================================
+// Region Selection & Countdown UI
+// ============================================================
+
+class RegionSelectionWindow: NSWindow {
+    init(screen: NSScreen) {
+        super.init(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.level = .screenSaver
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.isReleasedWhenClosed = false
+
+        let selectionView = RegionSelectionView(frame: self.contentView?.bounds ?? .zero)
+        selectionView.autoresizingMask = [.width, .height]
+        self.contentView = selectionView
+    }
+}
+
+class RegionSelectionView: NSView {
+    var startPoint: NSPoint?
+    var currentRect: NSRect = .zero
+    var onSelectionComplete: ((NSRect) -> Void)?
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        NSColor.black.withAlphaComponent(0.4).set()
+        dirtyRect.fill()
+
+        if currentRect != .zero {
+            NSColor.clear.set()
+            currentRect.fill(using: .sourceOut)
+            NSColor.white.setStroke()
+            let path = NSBezierPath(rect: currentRect)
+            path.lineWidth = 2.0
+            path.stroke()
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        startPoint = convert(event.locationInWindow, from: nil)
+        currentRect = .zero
+        needsDisplay = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = startPoint else { return }
+        let currentPoint = convert(event.locationInWindow, from: nil)
+        currentRect = NSRect(
+            x: min(start.x, currentPoint.x),
+            y: min(start.y, currentPoint.y),
+            width: abs(currentPoint.x - start.x),
+            height: abs(currentPoint.y - start.y)
+        )
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        onSelectionComplete?(currentRect)
+    }
+}
+
+class CountdownWindow: NSWindow {
+    var label: NSTextField!
+
+    init(screen: NSScreen) {
+        let size: CGFloat = 200
+        let rect = NSRect(x: screen.frame.midX - size/2, y: screen.frame.midY - size/2, width: size, height: size)
+        super.init(contentRect: rect, styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = true
+        self.level = .popUpMenu
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.ignoresMouseEvents = true
+        self.isReleasedWhenClosed = false
+
+        let containerView = NSView()
+        self.contentView = containerView
+
+        label = NSTextField(labelWithString: "")
+        label.font = .systemFont(ofSize: 100, weight: .bold)
+        label.textColor = .white
+        label.alignment = .center
+        label.isBordered = false
+        label.drawsBackground = false
+        
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.8)
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        shadow.shadowBlurRadius = 4
+        label.shadow = shadow
+        
+        label.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: containerView.centerYAnchor)
+        ])
+    }
+
+    func updateText(_ text: String) {
+        label.stringValue = text
+    }
+}
 
 // ============================================================
 // App Selection Menu
@@ -172,6 +283,9 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     var captureRect: CGRect?          // Screen-Local Coords (Bottom-Left Origin)
     var captureScreen: NSScreen?      // The screen the rect belongs to
     var captureApp: SCRunningApplication?
+    
+    private var targetScreenID: CGDirectDisplayID?
+    private var targetScaleFactor: CGFloat = 1.0
 
     var onRecordingStarted: (() -> Void)?
     var onRecordingStopped: ((URL) -> Void)?
@@ -179,6 +293,11 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
     func startRecording() {
         if isRecording { return }
+        
+        let screen = captureScreen ?? NSScreen.main
+        targetScreenID = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+        targetScaleFactor = screen?.backingScaleFactor ?? 1.0
+        
         beginCapture()
     }
 
@@ -203,13 +322,10 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                 filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
             } else {
                 // Determine Target Display
-                if let screen = self.captureScreen {
-                    let screenID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
-                    targetDisplay = content.displays.first { $0.displayID == screenID } ?? content.displays.first!
+                if let sID = self.targetScreenID {
+                    targetDisplay = content.displays.first { $0.displayID == sID } ?? content.displays.first!
                 } else {
-                    let mainScreen = NSScreen.main
-                    let mainID = mainScreen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
-                    targetDisplay = content.displays.first { $0.displayID == mainID } ?? content.displays.first!
+                    targetDisplay = content.displays.first!
                 }
 
                 let myProcessId = ProcessInfo.processInfo.processIdentifier
@@ -227,7 +343,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
     private func continueStartingRecording(filter: SCContentFilter, display: SCDisplay) {
         let config = SCStreamConfiguration()
-        let scaleFactor = captureScreen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1.0
+        let scaleFactor = targetScaleFactor
 
         var baseWidth = display.width
         var baseHeight = display.height
@@ -236,9 +352,9 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         // ============================================================
         // REGION LOGIC: Global Screen Coords -> Local Display Coords
         // ============================================================
-        if let rect = captureRect, rect != .zero, let screen = captureScreen {
+        if let rect = captureRect, rect != .zero {
             // 1. Verify the screen matches the display we are capturing
-            let screenDisplayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+            let screenDisplayID = targetScreenID
             guard screenDisplayID == display.displayID else {
                 DispatchQueue.main.async {
                     self.onError?(NSError(domain: "RecorderError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Selected region screen mismatch. Try selecting region again."]))
@@ -476,7 +592,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         writerLock.unlock()
         guard recording else { return }
 
-        guard let assetWriter = assetWriter else { return }
+        guard assetWriter != nil else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         guard CMTimeGetSeconds(pts) > 0 else { return }
 
@@ -693,6 +809,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var closeButton: NSButton!
     var modePopUp: NSPopUpButton!
     var audioPopUp: NSPopUpButton!
+    var timerPopUp: NSPopUpButton!
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
@@ -700,6 +817,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var aboutWC: AboutWindowController?
 
     var recordingOverlay: RecordingOverlayWindow?
+
+    var regionSelectionWindows: [RegionSelectionWindow] = []
+    var countdownTimer: Timer?
+    var countdownWindow: CountdownWindow?
 
     // Track menu items for audio popup to manage state easily
     private var audioMainItems: [NSMenuItem] = []
@@ -786,6 +907,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.items.forEach { $0.state = .off }
         sender.state = .on
         currentSettings.bitrate = menu.index(of: sender)
+        currentSettings.save()
+    }
+    @objc func timerChanged(_ sender: NSMenuItem) {
+        guard let menu = sender.menu else { return }
+        menu.items.forEach { $0.state = .off }
+        sender.state = .on
+        let index = menu.index(of: sender)
+        if index == 0 { currentSettings.timer = 0 }
+        else if index == 1 { currentSettings.timer = 5 }
+        else { currentSettings.timer = 10 }
         currentSettings.save()
     }
 
@@ -928,7 +1059,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Mic List (Modern API with external mic fallback)
         let micSubmenu = NSMenu()
-        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone, AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeExternalUnknown")], mediaType: .audio, position: .unspecified)
+        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeExternalUnknown")], mediaType: .audio, position: .unspecified)
 
         if session.devices.isEmpty {
             let emptyItem = NSMenuItem(title: "No Microphones Found", action: nil, keyEquivalent: "")
@@ -972,7 +1103,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         gearItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config)
         settingsPopUp.menu?.addItem(gearItem)
 
-        let addSubmenu = { (title: String, symbol: String, items: [(String, Int, Selector)]) -> NSMenuItem in
+        let addSubmenu = { (title: String, symbol: String, items: [(String, Int, Selector)]) -> Void in
             let sub = NSMenu()
             for (t, tag, action) in items {
                 let i = NSMenuItem(title: t, action: action, keyEquivalent: "")
@@ -983,7 +1114,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             parent.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             parent.submenu = sub
             settingsPopUp.menu?.addItem(parent)
-            return parent
         }
 
         addSubmenu("Framerate", "film", [
@@ -1010,6 +1140,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("Low Quality, small size", 2, #selector(bitChanged(_:)))
         ])
         (settingsPopUp.menu?.item(withTitle: "Bitrate")?.submenu?.item(at: currentSettings.bitrate))?.state = .on
+
+
 
         settingsPopUp.menu?.addItem(NSMenuItem.separator())
         let clickItem = NSMenuItem(title: "Show Mouse Clicks", action: #selector(toggleMouseClicks(_:)), keyEquivalent: "")
@@ -1046,14 +1178,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
 
-        let initialModeSymbols = ["macwindow", "macwindow.badge.plus"]
-        let initialModeSymbol = (0...1).contains(currentSettings.recordMode) ? initialModeSymbols[currentSettings.recordMode] : "macwindow"
+        let initialModeSymbols = ["macwindow", "macwindow.badge.plus", "crop"]
+        let initialModeSymbol = (0...2).contains(currentSettings.recordMode) ? initialModeSymbols[currentSettings.recordMode] : "macwindow"
         modeGearItem.image = NSImage(systemSymbolName: initialModeSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         modePopUp.menu?.addItem(modeGearItem)
 
         let modeItems = [
             ("Entire Screen", "macwindow", 0),
-            ("Specific App", "macwindow.badge.plus", 1)
+            ("Specific App", "macwindow.badge.plus", 1),
+            ("Select Area", "crop", 2)
         ]
         for (title, symbol, idx) in modeItems {
             let item = NSMenuItem(title: title, action: #selector(modeChanged(_:)), keyEquivalent: "")
@@ -1064,8 +1197,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modePopUp.menu?.addItem(item)
         }
 
+        // ---- TIMER POPUP ----
+        timerPopUp = NSPopUpButton()
+        timerPopUp.translatesAutoresizingMaskIntoConstraints = false
+        timerPopUp.removeAllItems()
+        timerPopUp.isBordered = false
+        timerPopUp.imagePosition = .imageOnly
+        timerPopUp.pullsDown = true
+        timerPopUp.wantsLayer = true
+        timerPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        timerPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        let timerGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        timerGearItem.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        timerPopUp.menu?.addItem(timerGearItem)
+
+        let timerItems = [
+            ("None", 0),
+            ("5 Seconds", 1),
+            ("10 Seconds", 2)
+        ]
+        for (title, idx) in timerItems {
+            let item = NSMenuItem(title: title, action: #selector(timerChanged(_:)), keyEquivalent: "")
+            item.tag = idx
+            item.target = self
+            if currentSettings.timer == (idx == 0 ? 0 : (idx == 1 ? 5 : 10)) { item.state = .on }
+            timerPopUp.menu?.addItem(item)
+        }
+
         // ---- STACK VIEW ----
-        let stackView = NSStackView(views: [closeButton, settingsPopUp, audioPopUp, modePopUp])
+        let stackView = NSStackView(views: [closeButton, settingsPopUp, audioPopUp, timerPopUp, modePopUp])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.spacing = 16
@@ -1127,6 +1288,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 
     @objc func toggleRecording() {
+        if !regionSelectionWindows.isEmpty {
+            for window in regionSelectionWindows { window.close() }
+            regionSelectionWindows.removeAll()
+            return
+        }
+        if let timer = countdownTimer, timer.isValid {
+            timer.invalidate()
+            countdownWindow?.close()
+            countdownWindow = nil
+            return
+        }
         if recorder.isRecording { recorder.stopRecording() }
         else { startRecordingProcess() }
     }
@@ -1140,14 +1312,74 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.recorder.captureApp = app
                 self?.recorder.captureRect = nil
                 self?.recorder.captureScreen = nil
-                self?.recorder.startRecording()
+                self?.startCountdownAndRecord()
             }
             appSelectionMenu?.showMenu(at: modePopUp)
+        } else if modeIndex == 2 { // Select Area
+            for window in regionSelectionWindows { window.close() }
+            regionSelectionWindows.removeAll()
+
+            for screen in NSScreen.screens {
+                let window = RegionSelectionWindow(screen: screen)
+                if let view = window.contentView as? RegionSelectionView {
+                    view.onSelectionComplete = { [weak self] rect in
+                        guard let self = self else { return }
+                        self.recorder.captureApp = nil
+                        self.recorder.captureRect = rect
+                        self.recorder.captureScreen = screen
+                        
+                        for w in self.regionSelectionWindows { w.close() }
+                        self.regionSelectionWindows.removeAll()
+                        
+                        self.startCountdownAndRecord()
+                    }
+                }
+                regionSelectionWindows.append(window)
+                window.makeKeyAndOrderFront(nil)
+            }
+            NSApp.activate(ignoringOtherApps: true)
         } else { // Entire Screen
             recorder.captureApp = nil
             recorder.captureRect = nil
             recorder.captureScreen = NSScreen.main
+            startCountdownAndRecord()
+        }
+    }
+
+    func startCountdownAndRecord() {
+        if currentSettings.timer > 0 {
+            startCountdown(seconds: currentSettings.timer) { [weak self] in
+                self?.recorder.startRecording()
+            }
+        } else {
             recorder.startRecording()
+        }
+    }
+
+    func startCountdown(seconds: Int, completion: @escaping () -> Void) {
+        countdownTimer?.invalidate()
+        countdownWindow?.close()
+
+        guard let screen = NSScreen.main else {
+            completion()
+            return
+        }
+
+        countdownWindow = CountdownWindow(screen: screen)
+        countdownWindow?.makeKeyAndOrderFront(nil)
+        countdownWindow?.updateText("\(seconds)")
+
+        var remaining = seconds
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            remaining -= 1
+            if remaining > 0 {
+                self?.countdownWindow?.updateText("\(remaining)")
+            } else {
+                timer.invalidate()
+                self?.countdownWindow?.close()
+                self?.countdownWindow = nil
+                completion()
+            }
         }
     }
 
