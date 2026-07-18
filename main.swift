@@ -854,20 +854,36 @@ class AboutWindowController: NSWindowController {
     var updateStatus: NSTextField!
 
     convenience init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 420), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        win.title = "About Rec"
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 480), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+        win.titlebarAppearsTransparent = true
+        win.title = ""
+        win.isMovableByWindowBackground = true
         win.center()
         self.init(window: win)
+
+        let effectView = NSVisualEffectView()
+        effectView.material = .popover
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        win.contentView = effectView
 
         let stackView = NSStackView()
         stackView.orientation = .vertical
         stackView.alignment = .centerX
-        stackView.spacing = 10
-        stackView.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        win.contentView = stackView
+        stackView.spacing = 12
+        stackView.edgeInsets = NSEdgeInsets(top: 10, left: 24, bottom: 24, right: 24)
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        effectView.addSubview(stackView)
+        
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
+            stackView.topAnchor.constraint(equalTo: effectView.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: effectView.bottomAnchor)
+        ])
 
         let iconView = NSImageView()
-        let size = NSSize(width: 64, height: 64)
+        let size = NSSize(width: 96, height: 96)
         let customImage = NSImage(size: size)
         customImage.lockFocus()
         if let ctx = NSGraphicsContext.current?.cgContext {
@@ -875,9 +891,13 @@ class AboutWindowController: NSWindowController {
             ctx.scaleBy(x: scale, y: scale)
 
             let bgPath = NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: 120, height: 120), xRadius: 27, yRadius: 27)
-            let topColor = NSColor(red: 51/255.0, green: 51/255.0, blue: 51/255.0, alpha: 1.0)
-            let botColor = NSColor(red: 26/255.0, green: 26/255.0, blue: 26/255.0, alpha: 1.0)
+            let topColor = NSColor(red: 60/255.0, green: 60/255.0, blue: 60/255.0, alpha: 1.0)
+            let botColor = NSColor(red: 20/255.0, green: 20/255.0, blue: 20/255.0, alpha: 1.0)
+            
+            // Drop shadow for icon
+            ctx.setShadow(offset: CGSize(width: 0, height: -10), blur: 15, color: NSColor.black.withAlphaComponent(0.4).cgColor)
             NSGradient(starting: topColor, ending: botColor)?.draw(in: bgPath, angle: -90)
+            ctx.setShadow(offset: .zero, blur: 0, color: nil) // reset shadow
 
             let shineRect = CGRect(x: 1, y: 1, width: 118, height: 118)
             let cgPath = CGPath(roundedRect: shineRect, cornerWidth: 26, cornerHeight: 26, transform: nil)
@@ -887,11 +907,11 @@ class AboutWindowController: NSWindowController {
             ctx.replacePathWithStrokedPath()
             ctx.clip()
             let shineGradient = NSGradient(colors: [
-    NSColor.white.withAlphaComponent(0.6),
-    NSColor.white.withAlphaComponent(0.0),
-    NSColor.white.withAlphaComponent(0.0),
-    NSColor.white.withAlphaComponent(0.6)
-], atLocations: [0.0, 0.3, 0.7, 1.0], colorSpace: .deviceRGB)
+                NSColor.white.withAlphaComponent(0.6),
+                NSColor.white.withAlphaComponent(0.0),
+                NSColor.white.withAlphaComponent(0.0),
+                NSColor.white.withAlphaComponent(0.6)
+            ], atLocations: [0.0, 0.3, 0.7, 1.0], colorSpace: .deviceRGB)
             shineGradient?.draw(in: NSRect(x: 0, y: 0, width: 120, height: 120), angle: -45)
             ctx.restoreGState()
 
@@ -908,52 +928,82 @@ class AboutWindowController: NSWindowController {
         iconView.image = customImage
         iconView.imageScaling = .scaleProportionallyUpOrDown
         iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.widthAnchor.constraint(equalToConstant: 64).isActive = true
-        iconView.heightAnchor.constraint(equalToConstant: 64).isActive = true
+        iconView.widthAnchor.constraint(equalToConstant: 96).isActive = true
+        iconView.heightAnchor.constraint(equalToConstant: 96).isActive = true
+        
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+        shadow.shadowBlurRadius = 15
+        shadow.shadowOffset = NSSize(width: 0, height: -10)
+        iconView.shadow = shadow
         stackView.addArrangedSubview(iconView)
 
         let title = NSTextField(labelWithString: "Rec")
-        title.font = .boldSystemFont(ofSize: 24)
+        title.font = .systemFont(ofSize: 32, weight: .heavy)
         stackView.addArrangedSubview(title)
 
         let ver = NSTextField(labelWithString: "Version \(appVersion)")
-        ver.textColor = .secondaryLabelColor
+        ver.textColor = .tertiaryLabelColor
+        ver.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         stackView.addArrangedSubview(ver)
 
         let desc = NSTextField(labelWithString: "A clean, native screen and internal audio recorder.")
         desc.alignment = .center
         desc.lineBreakMode = .byWordWrapping
         desc.preferredMaxLayoutWidth = 260
+        desc.font = .systemFont(ofSize: 13, weight: .medium)
         stackView.addArrangedSubview(desc)
 
         let desc2 = NSTextField(labelWithString: "Completely free and open-source.")
         desc2.alignment = .center
         desc2.textColor = .secondaryLabelColor
+        desc2.font = .systemFont(ofSize: 11)
         stackView.addArrangedSubview(desc2)
+        
+        stackView.setCustomSpacing(20, after: desc2)
 
-        let githubButton = NSButton(title: " GitHub Repository", target: self, action: #selector(openGitHub))
+        let buttonStack = NSStackView()
+        buttonStack.orientation = .horizontal
+        buttonStack.spacing = 10
+        
+        let githubButton = NSButton(title: " GitHub", target: self, action: #selector(openGitHub))
         githubButton.bezelStyle = .rounded
         githubButton.image = NSImage(systemSymbolName: "chevron.left.forwardslash.chevron.right", accessibilityDescription: nil)
-        stackView.addArrangedSubview(githubButton)
+        buttonStack.addArrangedSubview(githubButton)
 
         updateButton = NSButton(title: "Check for Updates", target: self, action: #selector(checkForUpdates))
         updateButton.bezelStyle = .rounded
-        stackView.addArrangedSubview(updateButton)
+        buttonStack.addArrangedSubview(updateButton)
+        stackView.addArrangedSubview(buttonStack)
 
         updateStatus = NSTextField(labelWithString: "")
         updateStatus.textColor = .secondaryLabelColor
         updateStatus.font = .systemFont(ofSize: 11)
         stackView.addArrangedSubview(updateStatus)
+        
+        stackView.setCustomSpacing(15, after: updateStatus)
 
-        let sep = NSBox()
-        sep.boxType = .separator
-        sep.translatesAutoresizingMaskIntoConstraints = false
-        sep.widthAnchor.constraint(equalToConstant: 240).isActive = true
-        stackView.addArrangedSubview(sep)
+        // Premium Shortcuts Box
+        let box = NSBox()
+        box.boxType = .custom
+        box.borderWidth = 1
+        box.borderColor = NSColor.separatorColor.withAlphaComponent(0.2)
+        box.fillColor = NSColor.textBackgroundColor.withAlphaComponent(0.1)
+        box.cornerRadius = 12
+        box.translatesAutoresizingMaskIntoConstraints = false
+        
+        let innerStack = NSStackView()
+        innerStack.orientation = .vertical
+        innerStack.spacing = 8
+        innerStack.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 16, right: 20)
+        innerStack.translatesAutoresizingMaskIntoConstraints = false
+        box.contentView = innerStack
         
         let shortcutsTitle = NSTextField(labelWithString: "Global Shortcuts")
-        shortcutsTitle.font = .boldSystemFont(ofSize: 12)
-        stackView.addArrangedSubview(shortcutsTitle)
+        shortcutsTitle.font = .systemFont(ofSize: 11, weight: .semibold)
+        shortcutsTitle.textColor = .secondaryLabelColor
+        innerStack.addArrangedSubview(shortcutsTitle)
+        innerStack.setCustomSpacing(12, after: shortcutsTitle)
         
         let shortcutsGrid = NSGridView(views: [
             [NSTextField(labelWithString: "Record / Stop:"), NSTextField(labelWithString: "⌘ ⇧ R")],
@@ -966,14 +1016,21 @@ class AboutWindowController: NSWindowController {
         for row in 0..<shortcutsGrid.numberOfRows {
             if let label = shortcutsGrid.cell(atColumnIndex: 0, rowIndex: row).contentView as? NSTextField {
                 label.textColor = .secondaryLabelColor
-                label.font = .systemFont(ofSize: 11)
+                label.font = .systemFont(ofSize: 12)
             }
             if let tf = shortcutsGrid.cell(atColumnIndex: 1, rowIndex: row).contentView as? NSTextField {
                 tf.textColor = .labelColor
-                tf.font = .monospacedSystemFont(ofSize: 11, weight: .semibold)
+                tf.font = .monospacedSystemFont(ofSize: 12, weight: .bold)
+                
+                // Add a cute little visual background to the key combo
+                tf.drawsBackground = true
+                tf.backgroundColor = NSColor.controlColor.withAlphaComponent(0.5)
+                tf.isBordered = true
             }
         }
-        stackView.addArrangedSubview(shortcutsGrid)
+        innerStack.addArrangedSubview(shortcutsGrid)
+        
+        stackView.addArrangedSubview(box)
     }
 
     @objc func openGitHub() {
