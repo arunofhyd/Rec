@@ -833,6 +833,8 @@ class FloatingPanel: NSPanel {
         self.titleVisibility = .hidden
         self.isMovableByWindowBackground = true
         self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = true
         self.standardWindowButton(.closeButton)?.isHidden = true
         self.standardWindowButton(.miniaturizeButton)?.isHidden = true
         self.standardWindowButton(.zoomButton)?.isHidden = true
