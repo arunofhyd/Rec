@@ -1106,11 +1106,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contact.frame = NSRect(x: startX, y: buttonsY, width: contactW, height: 32)
         contact.isBordered = false
         contact.wantsLayer = true
-        contact.layer?.backgroundColor = NSColor.controlColor.cgColor
+        contact.layer?.backgroundColor = NSColor.white.cgColor
         contact.layer?.cornerRadius = 16
         contact.layer?.masksToBounds = true
         contact.attributedTitle = NSAttributedString(string: "Contact", attributes: [
-            .foregroundColor: NSColor.labelColor,
+            .foregroundColor: NSColor.black,
             .font: NSFont.systemFont(ofSize: 13, weight: .medium)
         ])
         bg.addSubview(contact)
