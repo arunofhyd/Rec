@@ -5,7 +5,8 @@
       "version": "1.1.1",
       "date": "2026-07-19",
       "changes": [
-        "Fixed crash when using camera overlay (missing NSCameraUsageDescription)."
+        "Fixed crash when using camera overlay (missing NSCameraUsageDescription).",
+        "Fixed CI build pipeline."
       ]
     },
     {
