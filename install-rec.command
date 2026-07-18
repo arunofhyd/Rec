@@ -187,6 +187,11 @@ codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 ok "App built."
 printf "\n"
 
+if [ "$CI" = "true" ]; then
+    ok "CI mode detected. App built successfully at $BUILD_DIR/$APP"
+    exit 0
+fi
+
 # ---- Step 5: Build the drag-to-Applications installer window -------------
 step "Preparing installer window…"
 

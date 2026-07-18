@@ -1,0 +1,74 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+      - feature/select-area-and-timer
+    paths:
+      - 'version.json'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Version from version.json
+        id: get_version
+        run: |
+          VERSION=$(jq -r '.version' version.json)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Extract Changelog
+        id: get_changelog
+        run: |
+          # Extract the changes array for the current version and format as a bulleted list
+          CHANGELOG=$(jq -r --arg v "$VERSION" '.changelog[] | select(.version == $v) | .changes[] | "- " + .' version.json)
+          
+          # Use EOF for multi-line GitHub Actions environment variable
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          echo "$CHANGELOG" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Check if Release Exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v${{ env.VERSION }}" > /dev/null 2>&1; then
+            echo "Release v${{ env.VERSION }} already exists. Skipping build and release."
+            echo "skip=true" >> $GITHUB_ENV
+          else
+            echo "skip=false" >> $GITHUB_ENV
+          fi
+
+      - name: Build App (CI Mode)
+        if: env.skip == 'false'
+        env:
+          CI: "true"
+        run: |
+          chmod +x install-rec.command
+          ./install-rec.command
+
+      - name: Zip the App
+        if: env.skip == 'false'
+        run: |
+          # The script builds to 'Build/Rec.app'
+          cd Build
+          zip -r ../Rec.zip "Rec.app"
+          cd ..
+
+      - name: Create Release
+        if: env.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ env.VERSION }}" Rec.zip \
+            --title "v${{ env.VERSION }}" \
+            --notes "${{ env.CHANGELOG }}" \
+            --target "$GITHUB_SHA"
