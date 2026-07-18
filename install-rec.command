@@ -173,6 +173,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <string>This app requires screen capture access to record your screen.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>This app needs access to the microphone and internal audio to record sound.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>This app needs camera access to show a camera overlay during screen recording.</string>
 </dict>
 </plist>
 PLIST
