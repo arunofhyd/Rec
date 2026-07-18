@@ -854,7 +854,7 @@ class AboutWindowController: NSWindowController {
     var updateStatus: NSTextField!
 
     convenience init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 320), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 420), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = "About Rec"
         win.center()
         self.init(window: win)
@@ -944,6 +944,36 @@ class AboutWindowController: NSWindowController {
         updateStatus.textColor = .secondaryLabelColor
         updateStatus.font = .systemFont(ofSize: 11)
         stackView.addArrangedSubview(updateStatus)
+
+        let sep = NSBox()
+        sep.boxType = .separator
+        sep.translatesAutoresizingMaskIntoConstraints = false
+        sep.widthAnchor.constraint(equalToConstant: 240).isActive = true
+        stackView.addArrangedSubview(sep)
+        
+        let shortcutsTitle = NSTextField(labelWithString: "Global Shortcuts")
+        shortcutsTitle.font = .boldSystemFont(ofSize: 12)
+        stackView.addArrangedSubview(shortcutsTitle)
+        
+        let shortcutsGrid = NSGridView(views: [
+            [NSTextField(labelWithString: "Record / Stop:"), NSTextField(labelWithString: "⌘ ⇧ R")],
+            [NSTextField(labelWithString: "Pause / Resume:"), NSTextField(labelWithString: "⌘ ⇧ P")],
+            [NSTextField(labelWithString: "Toggle Camera:"), NSTextField(labelWithString: "⌘ ⇧ C")]
+        ])
+        shortcutsGrid.rowAlignment = .lastBaseline
+        shortcutsGrid.column(at: 0).xPlacement = .trailing
+        shortcutsGrid.column(at: 1).xPlacement = .leading
+        for row in 0..<shortcutsGrid.numberOfRows {
+            if let label = shortcutsGrid.cell(atColumnIndex: 0, rowIndex: row).contentView as? NSTextField {
+                label.textColor = .secondaryLabelColor
+                label.font = .systemFont(ofSize: 11)
+            }
+            if let tf = shortcutsGrid.cell(atColumnIndex: 1, rowIndex: row).contentView as? NSTextField {
+                tf.textColor = .labelColor
+                tf.font = .monospacedSystemFont(ofSize: 11, weight: .semibold)
+            }
+        }
+        stackView.addArrangedSubview(shortcutsGrid)
     }
 
     @objc func openGitHub() {
