@@ -1004,6 +1004,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var audioPopUp: NSPopUpButton!
     var timerPopUp: NSPopUpButton!
     var cameraPopUp: NSPopUpButton!
+    var settingsPopUp: NSPopUpButton!
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
@@ -1152,10 +1153,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let menu = sender.menu else { return }
         menu.items.forEach { $0.state = .off }
         sender.state = .on
-        let index = menu.index(of: sender)
-        if index == 0 { currentSettings.timer = 0 }
-        else if index == 1 { currentSettings.timer = 5 }
-        else { currentSettings.timer = 10 }
+        let val = sender.tag
+        currentSettings.timer = (val == 0 ? 0 : (val == 1 ? 5 : 10))
         currentSettings.save()
     }
 
@@ -1380,8 +1379,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
 
-        // ---- SETTINGS POPUP ----
-        let settingsPopUp = NSPopUpButton()
+        // ---- SETTINGS (GEAR) ----
+        settingsPopUp = NSPopUpButton()
         settingsPopUp.translatesAutoresizingMaskIntoConstraints = false
         settingsPopUp.removeAllItems()
         settingsPopUp.isBordered = false
@@ -1394,7 +1393,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         gearItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config)
         settingsPopUp.menu?.addItem(gearItem)
 
-        let addSubmenu = { (title: String, symbol: String, items: [(String, Int, Selector)]) -> Void in
+        let addSubmenu = { [weak self] (title: String, symbol: String, items: [(String, Int, Selector)]) -> Void in
             let sub = NSMenu()
             for (t, tag, action) in items {
                 let i = NSMenuItem(title: t, action: action, keyEquivalent: "")
@@ -1404,7 +1403,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             parent.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             parent.submenu = sub
-            settingsPopUp.menu?.addItem(parent)
+            self?.settingsPopUp.menu?.addItem(parent)
         }
 
         addSubmenu("Framerate", "film", [
@@ -1631,6 +1630,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         recorder.onRecordingStarted = { [weak self] in
             self?.updateButtonImage()
             self?.modePopUp.isEnabled = false
+            self?.audioPopUp.isEnabled = false
+            self?.timerPopUp.isEnabled = false
+            self?.cameraPopUp.isEnabled = false
+            self?.settingsPopUp.isEnabled = false
             if let rect = self?.recorder.captureRect, rect != .zero, let screen = self?.recorder.captureScreen {
                 self?.recordingOverlay = RecordingOverlayWindow(screen: screen, holeRect: rect)
                 self?.recordingOverlay?.makeKeyAndOrderFront(nil)
@@ -1640,6 +1643,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.recordingOverlay?.close(); self?.recordingOverlay = nil
             self?.updateButtonImage()
             self?.modePopUp.isEnabled = true
+            self?.audioPopUp.isEnabled = true
+            self?.timerPopUp.isEnabled = true
+            self?.cameraPopUp.isEnabled = true
+            self?.settingsPopUp.isEnabled = true
             let alert = NSAlert()
             alert.messageText = "Recording Saved"
             alert.informativeText = "Saved to \(url.lastPathComponent)"
@@ -1653,6 +1660,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.recordingOverlay?.close(); self?.recordingOverlay = nil
             self?.updateButtonImage()
             self?.modePopUp.isEnabled = true
+            self?.audioPopUp.isEnabled = true
+            self?.timerPopUp.isEnabled = true
+            self?.cameraPopUp.isEnabled = true
+            self?.settingsPopUp.isEnabled = true
             let alert = NSAlert()
             alert.messageText = "Recording Error"
             alert.informativeText = error.localizedDescription
