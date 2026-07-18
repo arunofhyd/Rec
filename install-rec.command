@@ -190,7 +190,9 @@ ok "App built."
 printf "\n"
 
 if [ "$CI" = "true" ]; then
-    ok "CI mode detected. App built successfully at $BUILD_DIR/$APP"
+    mkdir -p "$OLDPWD/Build"
+    cp -R "$APP" "$OLDPWD/Build/"
+    ok "CI mode detected. App copied to Build/$APP"
     exit 0
 fi
 
