@@ -6,7 +6,7 @@ import os.log
 
 // MARK: - Configuration
 let appVersion = "1.1.0"
-let updateCheckURL = "https://rec-aoh.netlify.app/version.json"
+let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.rec.app", category: "recorder")
 
 struct AppSettings: Codable {
@@ -848,235 +848,6 @@ class FloatingPanel: NSPanel {
     }
 }
 
-// MARK: - About Window
-class AboutWindowController: NSWindowController {
-    var updateButton: NSButton!
-    var updateStatus: NSTextField!
-
-    convenience init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 480), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-        win.titlebarAppearsTransparent = true
-        win.title = ""
-        win.isMovableByWindowBackground = true
-        win.center()
-        self.init(window: win)
-
-        let effectView = NSVisualEffectView()
-        effectView.material = .popover
-        effectView.blendingMode = .behindWindow
-        effectView.state = .active
-        win.contentView = effectView
-
-        let stackView = NSStackView()
-        stackView.orientation = .vertical
-        stackView.alignment = .centerX
-        stackView.spacing = 12
-        stackView.edgeInsets = NSEdgeInsets(top: 10, left: 24, bottom: 24, right: 24)
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        effectView.addSubview(stackView)
-        
-        NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
-            stackView.topAnchor.constraint(equalTo: effectView.topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: effectView.bottomAnchor)
-        ])
-
-        let iconView = NSImageView()
-        let size = NSSize(width: 96, height: 96)
-        let customImage = NSImage(size: size)
-        customImage.lockFocus()
-        if let ctx = NSGraphicsContext.current?.cgContext {
-            let scale = size.width / 120.0
-            ctx.scaleBy(x: scale, y: scale)
-
-            let bgPath = NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: 120, height: 120), xRadius: 27, yRadius: 27)
-            let topColor = NSColor(red: 60/255.0, green: 60/255.0, blue: 60/255.0, alpha: 1.0)
-            let botColor = NSColor(red: 20/255.0, green: 20/255.0, blue: 20/255.0, alpha: 1.0)
-            
-            // Drop shadow for icon
-            ctx.setShadow(offset: CGSize(width: 0, height: -10), blur: 15, color: NSColor.black.withAlphaComponent(0.4).cgColor)
-            NSGradient(starting: topColor, ending: botColor)?.draw(in: bgPath, angle: -90)
-            ctx.setShadow(offset: .zero, blur: 0, color: nil) // reset shadow
-
-            let shineRect = CGRect(x: 1, y: 1, width: 118, height: 118)
-            let cgPath = CGPath(roundedRect: shineRect, cornerWidth: 26, cornerHeight: 26, transform: nil)
-            ctx.saveGState()
-            ctx.addPath(cgPath)
-            ctx.setLineWidth(2)
-            ctx.replacePathWithStrokedPath()
-            ctx.clip()
-            let shineGradient = NSGradient(colors: [
-                NSColor.white.withAlphaComponent(0.6),
-                NSColor.white.withAlphaComponent(0.0),
-                NSColor.white.withAlphaComponent(0.0),
-                NSColor.white.withAlphaComponent(0.6)
-            ], atLocations: [0.0, 0.3, 0.7, 1.0], colorSpace: .deviceRGB)
-            shineGradient?.draw(in: NSRect(x: 0, y: 0, width: 120, height: 120), angle: -45)
-            ctx.restoreGState()
-
-            let outerPath = NSBezierPath(ovalIn: NSRect(x: 30, y: 30, width: 60, height: 60))
-            outerPath.lineWidth = 6
-            NSColor.white.setStroke()
-            outerPath.stroke()
-
-            let innerPath = NSBezierPath(ovalIn: NSRect(x: 40, y: 40, width: 40, height: 40))
-            NSColor(red: 1.0, green: 59/255.0, blue: 48/255.0, alpha: 1.0).setFill()
-            innerPath.fill()
-        }
-        customImage.unlockFocus()
-        iconView.image = customImage
-        iconView.imageScaling = .scaleProportionallyUpOrDown
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.widthAnchor.constraint(equalToConstant: 96).isActive = true
-        iconView.heightAnchor.constraint(equalToConstant: 96).isActive = true
-        
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
-        shadow.shadowBlurRadius = 15
-        shadow.shadowOffset = NSSize(width: 0, height: -10)
-        iconView.shadow = shadow
-        stackView.addArrangedSubview(iconView)
-
-        let title = NSTextField(labelWithString: "Rec")
-        title.font = .systemFont(ofSize: 32, weight: .heavy)
-        stackView.addArrangedSubview(title)
-
-        let ver = NSTextField(labelWithString: "Version \(appVersion)")
-        ver.textColor = .tertiaryLabelColor
-        ver.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-        stackView.addArrangedSubview(ver)
-
-        let desc = NSTextField(labelWithString: "A clean, native screen and internal audio recorder.")
-        desc.alignment = .center
-        desc.lineBreakMode = .byWordWrapping
-        desc.preferredMaxLayoutWidth = 260
-        desc.font = .systemFont(ofSize: 13, weight: .medium)
-        stackView.addArrangedSubview(desc)
-
-        let desc2 = NSTextField(labelWithString: "Completely free and open-source.")
-        desc2.alignment = .center
-        desc2.textColor = .secondaryLabelColor
-        desc2.font = .systemFont(ofSize: 11)
-        stackView.addArrangedSubview(desc2)
-        
-        stackView.setCustomSpacing(20, after: desc2)
-
-        let buttonStack = NSStackView()
-        buttonStack.orientation = .horizontal
-        buttonStack.spacing = 10
-        
-        let githubButton = NSButton(title: " GitHub", target: self, action: #selector(openGitHub))
-        githubButton.bezelStyle = .rounded
-        githubButton.image = NSImage(systemSymbolName: "chevron.left.forwardslash.chevron.right", accessibilityDescription: nil)
-        buttonStack.addArrangedSubview(githubButton)
-
-        updateButton = NSButton(title: "Check for Updates", target: self, action: #selector(checkForUpdates))
-        updateButton.bezelStyle = .rounded
-        buttonStack.addArrangedSubview(updateButton)
-        stackView.addArrangedSubview(buttonStack)
-
-        updateStatus = NSTextField(labelWithString: "")
-        updateStatus.textColor = .secondaryLabelColor
-        updateStatus.font = .systemFont(ofSize: 11)
-        stackView.addArrangedSubview(updateStatus)
-        
-        stackView.setCustomSpacing(15, after: updateStatus)
-
-        // Premium Shortcuts Box
-        let box = NSBox()
-        box.boxType = .custom
-        box.borderWidth = 1
-        box.borderColor = NSColor.separatorColor.withAlphaComponent(0.2)
-        box.fillColor = NSColor.textBackgroundColor.withAlphaComponent(0.1)
-        box.cornerRadius = 12
-        box.translatesAutoresizingMaskIntoConstraints = false
-        
-        let innerStack = NSStackView()
-        innerStack.orientation = .vertical
-        innerStack.spacing = 8
-        innerStack.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 16, right: 20)
-        innerStack.translatesAutoresizingMaskIntoConstraints = false
-        box.contentView = innerStack
-        
-        let shortcutsTitle = NSTextField(labelWithString: "Global Shortcuts")
-        shortcutsTitle.font = .systemFont(ofSize: 11, weight: .semibold)
-        shortcutsTitle.textColor = .secondaryLabelColor
-        innerStack.addArrangedSubview(shortcutsTitle)
-        innerStack.setCustomSpacing(12, after: shortcutsTitle)
-        
-        let shortcutsGrid = NSGridView(views: [
-            [NSTextField(labelWithString: "Record / Stop:"), NSTextField(labelWithString: "⌘ ⇧ R")],
-            [NSTextField(labelWithString: "Pause / Resume:"), NSTextField(labelWithString: "⌘ ⇧ P")],
-            [NSTextField(labelWithString: "Toggle Camera:"), NSTextField(labelWithString: "⌘ ⇧ C")]
-        ])
-        shortcutsGrid.rowAlignment = .lastBaseline
-        shortcutsGrid.column(at: 0).xPlacement = .trailing
-        shortcutsGrid.column(at: 1).xPlacement = .leading
-        for row in 0..<shortcutsGrid.numberOfRows {
-            if let label = shortcutsGrid.cell(atColumnIndex: 0, rowIndex: row).contentView as? NSTextField {
-                label.textColor = .secondaryLabelColor
-                label.font = .systemFont(ofSize: 12)
-            }
-            if let tf = shortcutsGrid.cell(atColumnIndex: 1, rowIndex: row).contentView as? NSTextField {
-                tf.textColor = .labelColor
-                tf.font = .monospacedSystemFont(ofSize: 12, weight: .bold)
-                
-                // Add a cute little visual background to the key combo
-                tf.drawsBackground = true
-                tf.backgroundColor = NSColor.controlColor.withAlphaComponent(0.5)
-                tf.isBordered = true
-            }
-        }
-        innerStack.addArrangedSubview(shortcutsGrid)
-        
-        stackView.addArrangedSubview(box)
-    }
-
-    @objc func openGitHub() {
-        if let url = URL(string: "https://github.com/arunofhyd/Rec") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    @objc func checkForUpdates() {
-        updateButton.isEnabled = false
-        updateStatus.stringValue = "Checking..."
-
-        guard let url = URL(string: updateCheckURL) else { return }
-
-        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                self?.updateButton.isEnabled = true
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                    self?.updateStatus.stringValue = "Update server unreachable (\(httpResponse.statusCode))."
-                    return
-                }
-                guard let data = data, error == nil else {
-                    self?.updateStatus.stringValue = "Failed to check for updates."
-                    return
-                }
-                do {
-                    if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-                       let version = json["version"] as? String {
-                        if version.compare(appVersion, options: .numeric) == .orderedDescending {
-                            self?.updateStatus.stringValue = "Update available: v\(version)!"
-                            if let dlURL = URL(string: "https://rec-aoh.netlify.app/#installc") {
-                                NSWorkspace.shared.open(dlURL)
-                            }
-                        } else {
-                            self?.updateStatus.stringValue = "You are on the latest version."
-                        }
-                    } else {
-                        self?.updateStatus.stringValue = "Invalid update data."
-                    }
-                } catch {
-                    self?.updateStatus.stringValue = "Failed to parse update info."
-                }
-            }
-        }.resume()
-    }
-}
 
 // ============================================================
 // App Delegate — FIXED AUDIO MENU LOGIC
@@ -1097,7 +868,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var statusItem: NSStatusItem!
     var appSelectionMenu: AppSelectionMenuHandler?
-    var aboutWC: AboutWindowController?
+    var aboutWindow: NSWindow?
 
     var cameraWindow: CameraOverlayWindow?
 
@@ -1207,9 +978,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
-        let aboutItem = NSMenuItem(title: "About Rec", action: #selector(showAbout), keyEquivalent: "")
+        let aboutItem = NSMenuItem(title: "About Rec", action: #selector(showAboutAction), keyEquivalent: "")
         aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
         menu.addItem(aboutItem)
+        
+        let update = NSMenuItem(title: "Check for Updates...", action: #selector(manualUpdateCheck), keyEquivalent: "")
+        update.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
+        update.target = self
+        menu.addItem(update)
+        
         menu.addItem(NSMenuItem.separator())
 
         let showControlsItem = NSMenuItem(title: "Show Controls", action: #selector(showPanel), keyEquivalent: "s")
@@ -1225,10 +1002,258 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showPanel() { panel.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc func hidePanel() { panel.orderOut(nil) }
-    @objc func showAbout() {
-        if aboutWC == nil { aboutWC = AboutWindowController() }
-        aboutWC?.showWindow(nil)
+    @objc func showAboutAction() { showAbout(onLaunch: false) }
+    func showAbout(onLaunch: Bool) {
+        if aboutWindow != nil {
+            aboutWindow?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let width: CGFloat = 460
+        let height: CGFloat = 540
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+                           styleMask: [.titled, .closable, .fullSizeContentView],
+                           backing: .buffered, defer: false)
+        win.titleVisibility = .hidden
+        win.titlebarAppearsTransparent = true
+        win.isMovableByWindowBackground = true
+        win.center()
+        win.isReleasedWhenClosed = false
+        win.level = .floating
+
+        let bg = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        bg.material = .popover
+        bg.blendingMode = .behindWindow
+        bg.state = .active
+        let icon = NSImageView(frame: NSRect(x: (width - 72)/2, y: height - 100, width: 72, height: 72))
+        let redIcon = NSImage(size: NSSize(width: 72, height: 72))
+        redIcon.lockFocus()
+        if let ctx = NSGraphicsContext.current?.cgContext {
+            let outerRect = CGRect(x: 8, y: 8, width: 56, height: 56)
+            ctx.setStrokeColor(NSColor.white.cgColor)
+            ctx.setLineWidth(4.5)
+            ctx.strokeEllipse(in: outerRect)
+            
+            let innerRect = CGRect(x: 18, y: 18, width: 36, height: 36)
+            ctx.setFillColor(NSColor.systemRed.cgColor)
+            ctx.fillEllipse(in: innerRect)
+        }
+        redIcon.unlockFocus()
+        icon.image = NSImage(named: "AppIcon") ?? redIcon
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        bg.addSubview(icon)
+
+        let title = NSTextField(labelWithString: "Rec")
+        title.font = NSFont.systemFont(ofSize: 28, weight: .bold)
+        title.alignment = .center
+        title.frame = NSRect(x: 0, y: icon.frame.minY - 36, width: width, height: 32)
+        bg.addSubview(title)
+
+        let ver = NSTextField(labelWithString: "Version \(appVersion)")
+        ver.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        ver.textColor = .tertiaryLabelColor
+        ver.alignment = .center
+        ver.frame = NSRect(x: 0, y: title.frame.minY - 18, width: width, height: 16)
+        bg.addSubview(ver)
+        
+        let sub = NSTextField(labelWithString: "A clean, native screen and internal audio recorder.")
+        sub.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        sub.textColor = .secondaryLabelColor
+        sub.alignment = .center
+        sub.frame = NSRect(x: 0, y: ver.frame.minY - 24, width: width, height: 18)
+        bg.addSubview(sub)
+
+        let features: [(String, String, String)] = [
+            ("record.circle", "Native Screen Capture", "Records screen & internal audio using ScreenCaptureKit."),
+            ("speaker.wave.3", "Internal Audio", "No loopback drivers needed."),
+            ("bolt.fill", "Fast & Lightweight", "Hardware-accelerated encoding directly to .mov."),
+            ("chevron.left.forwardslash.chevron.right", "Free & Open Source", "Rec is completely free and open source. Check out the code on GitHub.")
+        ]
+
+        let bodyWidth = width - 80
+        var currentY = sub.frame.minY - 32
+
+        for (sym, head, desc) in features {
+            let rowH: CGFloat = 52
+            currentY -= rowH
+
+            let symSize: CGFloat = 24
+            let symView = NSImageView(frame: NSRect(x: 40, y: currentY + (rowH - symSize)/2 + 2, width: symSize, height: symSize))
+            let symCfg = NSImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+            symView.image = NSImage(systemSymbolName: sym, accessibilityDescription: nil)?.withSymbolConfiguration(symCfg)
+            symView.contentTintColor = .systemRed
+            bg.addSubview(symView)
+
+            let hLabel = NSTextField(labelWithString: head)
+            hLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+            hLabel.frame = NSRect(x: 80, y: currentY + 24, width: bodyWidth - 40, height: 18)
+            bg.addSubview(hLabel)
+
+            let dLabel = NSTextField(labelWithString: desc)
+            dLabel.font = NSFont.systemFont(ofSize: 12)
+            dLabel.textColor = .secondaryLabelColor
+            dLabel.lineBreakMode = .byWordWrapping
+            dLabel.frame = NSRect(x: 80, y: currentY - 4, width: bodyWidth - 40, height: 26)
+            bg.addSubview(dLabel)
+            
+            currentY -= 6
+        }
+
+        let credit = NSTextField(labelWithString: "Built by Arun Thomas")
+        credit.frame = NSRect(x: 0, y: currentY - 30, width: width, height: 18)
+        credit.alignment = .center
+        credit.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        credit.textColor = .secondaryLabelColor
+        bg.addSubview(credit)
+
+        let buttonsY = credit.frame.minY - 48
+        
+        let contactW: CGFloat = 100
+        let gitW: CGFloat = 100
+        let spacing: CGFloat = 16
+        let totalW = contactW + gitW + spacing
+        let startX = (width - totalW) / 2
+        
+        let contact = NSButton(title: "Contact", target: self, action: #selector(contactDeveloper))
+        contact.frame = NSRect(x: startX, y: buttonsY, width: contactW, height: 32)
+        contact.isBordered = false
+        contact.wantsLayer = true
+        contact.layer?.backgroundColor = NSColor.controlColor.cgColor
+        contact.layer?.cornerRadius = 16
+        contact.layer?.masksToBounds = true
+        contact.attributedTitle = NSAttributedString(string: "Contact", attributes: [
+            .foregroundColor: NSColor.labelColor,
+            .font: NSFont.systemFont(ofSize: 13, weight: .medium)
+        ])
+        bg.addSubview(contact)
+
+        let github = NSButton(title: "GitHub", target: self, action: #selector(openGitHub))
+        github.frame = NSRect(x: startX + contactW + spacing, y: buttonsY, width: gitW, height: 32)
+        github.isBordered = false
+        github.wantsLayer = true
+        github.layer?.backgroundColor = NSColor.black.cgColor
+        github.layer?.cornerRadius = 16
+        github.layer?.masksToBounds = true
+        github.attributedTitle = NSAttributedString(string: "GitHub", attributes: [
+            .foregroundColor: NSColor.white,
+            .font: NSFont.systemFont(ofSize: 13, weight: .medium)
+        ])
+        bg.addSubview(github)
+
+        win.contentView = bg
+        win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        self.aboutWindow = win
+    }
+
+
+    @objc func toggleHideAbout(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: "hideAbout")
+    }
+
+    @objc func contactDeveloper() {
+        let subject = "Rec feedback"
+        let encoded = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? subject
+        if let url = URL(string: "mailto:arunthomas04042001@gmail.com?subject=\(encoded)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc func openGitHub() {
+        if let url = URL(string: "https://github.com/arunofhyd/Rec") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc func closeAbout() { 
+        aboutWindow?.close()
+        aboutWindow = nil 
+        if let button = statusItem?.button {
+            button.performClick(nil)
+        }
+    }
+
+    @objc func manualUpdateCheck() { checkForUpdates(silentIfCurrent: false) }
+
+    func checkForUpdates(silentIfCurrent: Bool) {
+        guard let url = URL(string: updateCheckURL) else { return }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+            guard let self = self else { return }
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let remote = json["version"] as? String else {
+                if !silentIfCurrent {
+                    DispatchQueue.main.async { self.showUpdateResult(nil, changelog: "", newer: false) }
+                }
+                return
+            }
+            let dl = (json["downloadURL"] as? String) ?? "https://github.com/arunofhyd/Rec/releases/latest"
+            var notes = ""
+            if let logs = json["changelog"] as? [[String: Any]],
+               let entry = logs.first(where: { ($0["version"] as? String) == remote }),
+               let changes = entry["changes"] as? [String] {
+                notes = changes.map { "•  \($0)" }.joined(separator: "\n")
+            }
+            let newer = self.isNewer(remote, than: appVersion)
+            DispatchQueue.main.async {
+                if newer {
+                    self.showUpdateResult(remote, changelog: notes, newer: true, downloadURL: dl)
+                } else if !silentIfCurrent {
+                    self.showUpdateResult(remote, changelog: notes, newer: false)
+                }
+            }
+        }
+        task.resume()
+    }
+
+    func isNewer(_ remote: String, than current: String) -> Bool {
+        let r = remote.split(separator: ".").compactMap { Int($0) }
+        let c = current.split(separator: ".").compactMap { Int($0) }
+        for i in 0..<max(r.count, c.count) {
+            let rv = i < r.count ? r[i] : 0
+            let cv = i < c.count ? c[i] : 0
+            if rv > cv { return true }
+            if rv < cv { return false }
+        }
+        return false
+    }
+
+    func showUpdateResult(_ remote: String?, changelog: String, newer: Bool, downloadURL: String = "https://github.com/arunofhyd/Rec/releases/latest") {
+        let alert = NSAlert()
+        NSApp.activate(ignoringOtherApps: true)
+        if newer, let remote = remote {
+            alert.messageText = "Rec \(remote) is available"
+            alert.informativeText = "You have v\(appVersion). Here's what's new:"
+            if !changelog.isEmpty {
+                let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: 340, height: 130))
+                tv.isEditable = false; tv.drawsBackground = false
+                tv.font = NSFont.systemFont(ofSize: 12)
+                tv.string = changelog
+                let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 340, height: 130))
+                scroll.hasVerticalScroller = true; scroll.drawsBackground = false
+                scroll.documentView = tv
+                alert.accessoryView = scroll
+            }
+            alert.addButton(withTitle: "Download")
+            alert.addButton(withTitle: "Later")
+            if alert.runModal() == .alertFirstButtonReturn,
+               let url = URL(string: downloadURL) {
+                NSWorkspace.shared.open(url)
+            }
+        } else if remote != nil {
+            alert.messageText = "You're up to date"
+            alert.informativeText = "Rec v\(appVersion) is the latest version."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        } else {
+            alert.messageText = "Couldn't check for updates"
+            alert.informativeText = "Please check your internet connection and try again."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     // MARK: - Settings Actions
