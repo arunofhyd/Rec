@@ -6,7 +6,6 @@
 # =============================================================================
 
 APP_NAME="Rec"
-APP_VERSION="1.1.3"
 REPO_RAW="." # Use current directory for now, but usually from github
 
 # ---- Terminal styling ------------------------------------
@@ -153,6 +152,9 @@ APP="$APP_NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 [ -f AppIcon.icns ] && cp AppIcon.icns "$APP/Contents/Resources/"
+
+APP_VERSION=$(grep -m1 'let appVersion =' main.swift | cut -d'"' -f2)
+if [ -z "$APP_VERSION" ]; then APP_VERSION="1.0.0"; fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

@@ -21,9 +21,7 @@
     <meta property="twitter:title" content="Rec | Native Screen & Audio Recorder for macOS">
     <meta property="twitter:description" content="A delightfully simple native screen and internal audio recorder for macOS.">
 
-    <script>
-        const APP_VERSION = "1.0.0";
-    </script>
+
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
     {
@@ -299,6 +297,16 @@
             if (data.version) {
                 const pill = document.getElementById('version-pill');
                 if (pill) pill.textContent = `v${data.version} Now Available`;
+                
+                document.querySelectorAll('.version-label').forEach(el => el.textContent = 'v' + data.version);
+                document.querySelectorAll('.version-badge').forEach(el => el.textContent = '🎉 Now on v' + data.version);
+
+                const schema = document.querySelector('script[type="application/ld+json"]');
+                if (schema) {
+                    let json = JSON.parse(schema.textContent);
+                    json.softwareVersion = data.version;
+                    schema.textContent = JSON.stringify(json);
+                }
             }
             // Changelog
             const container = document.getElementById('changelog-container');
@@ -328,18 +336,6 @@
             if (c) c.innerHTML = '<div class="text-red-500 text-center text-sm">Failed to load updates.</div>';
         });
 
-        // Inject version dynamically
-        document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('.version-label').forEach(el => el.textContent = 'v' + APP_VERSION);
-            document.querySelectorAll('.version-badge').forEach(el => el.textContent = '🎉 Now on v' + APP_VERSION);
-
-            const schema = document.querySelector('script[type="application/ld+json"]');
-            if (schema) {
-                let json = JSON.parse(schema.textContent);
-                json.softwareVersion = APP_VERSION;
-                schema.textContent = JSON.stringify(json);
-            }
-        });
 
         // Typing effect
         document.addEventListener('DOMContentLoaded', function() {
