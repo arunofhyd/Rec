@@ -5,7 +5,7 @@ import VideoToolbox
 import os.log
 
 // MARK: - Configuration
-let appVersion = "1.1.3"
+let appVersion = "1.1.31"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.rec.app", category: "recorder")
 
@@ -1223,8 +1223,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 tv.isEditable = false; tv.drawsBackground = false
                 tv.font = NSFont.systemFont(ofSize: 12)
                 tv.string = changelog
+                tv.autoresizingMask = [.width]
                 let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 340, height: 130))
                 scroll.hasVerticalScroller = true; scroll.drawsBackground = false
+                scroll.wantsLayer = true
                 scroll.documentView = tv
                 alert.accessoryView = scroll
             }
