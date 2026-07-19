@@ -53,7 +53,7 @@ printf "
 
 # ---- Step 3: Download the source -----------------------------------------
 step "Downloading Rec source…"
-if ! curl -fsSL "https://raw.githubusercontent.com/arunofhyd/Rec/main/main.swift" -o main.swift 2>/dev/null; then
+if ! curl -fsSL "https://raw.githubusercontent.com/arunofhyd/Rec/main/main.swift?v=$(date +%s)" -o main.swift 2>/dev/null; then
     if [ -f "$OLDPWD/main.swift" ]; then
         cp "$OLDPWD/main.swift" .
     else
