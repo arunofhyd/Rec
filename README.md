@@ -39,6 +39,8 @@ Built with Apple's modern ScreenCaptureKit framework, Rec seamlessly records you
 *   **Multiple Modes**: 🎯 Record your entire screen, click-and-drag to select a specific region, or record a specific application window.
 *   **Custom Quality**: ⚙️ Adjust your Framerate (30 or 60 FPS), Resolution (Native Retina, 1080p, or 720p), and Video Encoding Bitrate.
 *   **Floating Controls**: 🪟 A small, unobtrusive control panel that stays out of your way and hides automatically from the final recording.
+*   **Camera Overlay**: 📹 Display a circular, floating camera overlay alongside your screen recording to add a personal touch.
+*   **Cursor Highlighting**: 🖱️ Highlight your mouse clicks and cursor movements with customizable colors for clear tutorials and presentations.
 *   **Countdown Timer**: ⏱️ Set a 5 or 10-second countdown delay before recording officially begins.
 *   **Native & Fast**: 🚀 Encodes directly to a multiplexed `.mov` file using hardware acceleration via AVAssetWriter. No post-processing or splicing delays.
 
