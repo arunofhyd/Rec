@@ -5,7 +5,7 @@ import VideoToolbox
 import os.log
 
 // MARK: - Configuration
-let appVersion = "1.1.31"
+let appVersion = "1.1.32"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.rec.app", category: "recorder")
 
@@ -23,6 +23,40 @@ struct AppSettings: Codable {
     var highlightCursor: Bool = false
     var cursorColor: Int = 0
     var mirrorCamera: Bool = true
+    var lastRectX: Double?
+    var lastRectY: Double?
+    var lastRectW: Double?
+    var lastRectH: Double?
+    var lastScreenDisplayID: UInt32?
+
+    var savedLastRect: NSRect? {
+        guard let x = lastRectX, let y = lastRectY, let w = lastRectW, let h = lastRectH,
+              w > 5, h > 5 else { return nil }
+        return NSRect(x: x, y: y, width: w, height: h)
+    }
+
+    func savedLastScreen() -> NSScreen? {
+        if let displayID = lastScreenDisplayID {
+            for screen in NSScreen.screens {
+                if let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID, id == displayID {
+                    return screen
+                }
+            }
+        }
+        return NSScreen.main
+    }
+
+    mutating func saveLastSelectedArea(rect: NSRect, screen: NSScreen) {
+        self.lastRectX = Double(rect.origin.x)
+        self.lastRectY = Double(rect.origin.y)
+        self.lastRectW = Double(rect.size.width)
+        self.lastRectH = Double(rect.size.height)
+        if let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID {
+            self.lastScreenDisplayID = displayID
+        }
+        self.save()
+    }
+
     func save() {
         if let data = try? JSONEncoder().encode(self) {
             UserDefaults.standard.set(data, forKey: "RecAppSettings")
@@ -197,6 +231,9 @@ class CursorHighlighterWindow: NSWindow {
 }
 
 class RegionSelectionWindow: NSWindow {
+    override var canBecomeKey: Bool { return true }
+    override var canBecomeMain: Bool { return true }
+
     init(screen: NSScreen) {
         super.init(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         self.backgroundColor = .clear
@@ -215,7 +252,11 @@ class RegionSelectionWindow: NSWindow {
 class RegionSelectionView: NSView {
     var startPoint: NSPoint?
     var currentRect: NSRect = .zero
+    var isDragging = false
     var onSelectionComplete: ((NSRect) -> Void)?
+    var onCancel: (() -> Void)?
+
+    override var acceptsFirstResponder: Bool { return true }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -229,29 +270,92 @@ class RegionSelectionView: NSView {
             let path = NSBezierPath(rect: currentRect)
             path.lineWidth = 2.0
             path.stroke()
+
+            let w = Int(currentRect.width)
+            let h = Int(currentRect.height)
+            let text = "\(w) × \(h) px  •  Press Enter/Space or click to confirm  •  Drag to draw new  •  Esc to cancel"
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 13, weight: .medium),
+                .foregroundColor: NSColor.white
+            ]
+            let attrStr = NSAttributedString(string: text, attributes: attrs)
+            let textSize = attrStr.size()
+            let textRect = NSRect(
+                x: max(10, min(bounds.width - textSize.width - 20, currentRect.midX - textSize.width / 2)),
+                y: currentRect.maxY + 8 + textSize.height > bounds.height ? max(10, currentRect.minY - textSize.height - 12) : currentRect.maxY + 8,
+                width: textSize.width + 16,
+                height: textSize.height + 8
+            )
+            let bgPath = NSBezierPath(roundedRect: textRect, xRadius: 4, yRadius: 4)
+            NSColor.black.withAlphaComponent(0.75).set()
+            bgPath.fill()
+            attrStr.draw(at: NSPoint(x: textRect.minX + 8, y: textRect.minY + 4))
+        } else {
+            let text = "Click and drag to select recording area • Esc to cancel"
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 14, weight: .medium),
+                .foregroundColor: NSColor.white
+            ]
+            let attrStr = NSAttributedString(string: text, attributes: attrs)
+            let textSize = attrStr.size()
+            let textRect = NSRect(
+                x: (bounds.width - textSize.width) / 2 - 10,
+                y: (bounds.height - textSize.height) / 2 - 5,
+                width: textSize.width + 20,
+                height: textSize.height + 10
+            )
+            let bgPath = NSBezierPath(roundedRect: textRect, xRadius: 6, yRadius: 6)
+            NSColor.black.withAlphaComponent(0.75).set()
+            bgPath.fill()
+            attrStr.draw(at: NSPoint(x: textRect.minX + 10, y: textRect.minY + 5))
         }
     }
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         startPoint = convert(event.locationInWindow, from: nil)
-        currentRect = .zero
-        needsDisplay = true
+        isDragging = false
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let start = startPoint else { return }
         let currentPoint = convert(event.locationInWindow, from: nil)
-        currentRect = NSRect(
-            x: min(start.x, currentPoint.x),
-            y: min(start.y, currentPoint.y),
-            width: abs(currentPoint.x - start.x),
-            height: abs(currentPoint.y - start.y)
-        )
-        needsDisplay = true
+        let dx = abs(currentPoint.x - start.x)
+        let dy = abs(currentPoint.y - start.y)
+        if dx > 3 || dy > 3 {
+            isDragging = true
+            currentRect = NSRect(
+                x: min(start.x, currentPoint.x),
+                y: min(start.y, currentPoint.y),
+                width: dx,
+                height: dy
+            )
+            needsDisplay = true
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
-        onSelectionComplete?(currentRect)
+        if isDragging {
+            if currentRect.width > 5 && currentRect.height > 5 {
+                onSelectionComplete?(currentRect)
+            }
+        } else {
+            if currentRect.width > 5 && currentRect.height > 5 {
+                onSelectionComplete?(currentRect)
+            }
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 49 { // Return / Enter or Space
+            if currentRect.width > 5 && currentRect.height > 5 {
+                onSelectionComplete?(currentRect)
+            }
+        } else if event.keyCode == 53 { // Esc
+            onCancel?()
+        } else {
+            super.keyDown(with: event)
+        }
     }
 }
 
@@ -1223,10 +1327,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 tv.isEditable = false; tv.drawsBackground = false
                 tv.font = NSFont.systemFont(ofSize: 12)
                 tv.string = changelog
-                tv.autoresizingMask = [.width]
                 let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 340, height: 130))
                 scroll.hasVerticalScroller = true; scroll.drawsBackground = false
-                scroll.wantsLayer = true
                 scroll.documentView = tv
                 alert.accessoryView = scroll
             }
@@ -1622,15 +1724,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
 
-        let initialModeSymbols = ["macwindow", "macwindow.badge.plus", "crop"]
-        let initialModeSymbol = (0...2).contains(currentSettings.recordMode) ? initialModeSymbols[currentSettings.recordMode] : "macwindow"
+        let initialModeSymbols = ["macwindow", "macwindow.badge.plus", "crop", "rectangle.dashed"]
+        let initialModeSymbol = (0...3).contains(currentSettings.recordMode) ? initialModeSymbols[currentSettings.recordMode] : "macwindow"
         modeGearItem.image = NSImage(systemSymbolName: initialModeSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         modePopUp.menu?.addItem(modeGearItem)
 
         let modeItems = [
             ("Entire Screen", "macwindow", 0),
             ("Specific App", "macwindow.badge.plus", 1),
-            ("Select Area", "crop", 2)
+            ("Select Area", "crop", 2),
+            ("Last Selected Area", "rectangle.dashed", 3)
         ]
         for (title, symbol, idx) in modeItems {
             let item = NSMenuItem(title: title, action: #selector(modeChanged(_:)), keyEquivalent: "")
@@ -1885,15 +1988,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             for window in regionSelectionWindows { window.close() }
             regionSelectionWindows.removeAll()
 
+            let savedDisplayID = currentSettings.lastScreenDisplayID
+
             for screen in NSScreen.screens {
                 let window = RegionSelectionWindow(screen: screen)
                 if let view = window.contentView as? RegionSelectionView {
+                    let screenDisplayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+                    
+                    let isSavedScreen = (savedDisplayID != nil && screenDisplayID == savedDisplayID) ||
+                                       (savedDisplayID == nil && screen == NSScreen.main)
+                    
+                    if isSavedScreen, let lastRect = currentSettings.savedLastRect {
+                        view.currentRect = lastRect
+                    }
+
+                    view.onCancel = { [weak self] in
+                        for w in self?.regionSelectionWindows ?? [] { w.close() }
+                        self?.regionSelectionWindows.removeAll()
+                    }
+
                     view.onSelectionComplete = { [weak self] rect in
                         guard let self = self else { return }
                         self.recorder.captureApp = nil
                         self.recorder.captureRect = rect
                         self.recorder.captureScreen = screen
                         
+                        currentSettings.saveLastSelectedArea(rect: rect, screen: screen)
+
                         for w in self.regionSelectionWindows { w.close() }
                         self.regionSelectionWindows.removeAll()
                         
@@ -1902,8 +2023,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 regionSelectionWindows.append(window)
                 window.makeKeyAndOrderFront(nil)
+                if let view = window.contentView as? RegionSelectionView {
+                    window.makeFirstResponder(view)
+                }
             }
             NSApp.activate(ignoringOtherApps: true)
+        } else if modeIndex == 3 { // Last Selected Area
+            if let savedScreen = currentSettings.savedLastScreen(),
+               let savedRect = currentSettings.savedLastRect {
+                recorder.captureApp = nil
+                recorder.captureRect = savedRect
+                recorder.captureScreen = savedScreen
+                startCountdownAndRecord()
+            } else {
+                currentSettings.recordMode = 2
+                startRecordingProcess()
+            }
         } else { // Entire Screen
             recorder.captureApp = nil
             recorder.captureRect = nil

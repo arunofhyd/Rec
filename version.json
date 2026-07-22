@@ -1,7 +1,15 @@
 {
-  "version": "1.1.31",
+  "version": "1.1.32",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.1.32",
+      "date": "2026-07-23",
+      "changes": [
+        "Added persistent saving and restoration of last selected recording area across app relaunches.",
+        "Added live pixel dimension readout during region selection."
+      ]
+    },
     {
       "version": "1.1.31",
       "date": "2026-07-19",

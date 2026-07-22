@@ -6,6 +6,7 @@
 # =============================================================================
 
 APP_NAME="Rec"
+APP_VERSION="1.1.32"
 REPO_RAW="." # Use current directory for now, but usually from github
 
 # ---- Terminal styling ------------------------------------
@@ -53,7 +54,7 @@ printf "
 
 # ---- Step 3: Download the source -----------------------------------------
 step "Downloading Rec source…"
-if ! curl -fsSL "https://raw.githubusercontent.com/arunofhyd/Rec/main/main.swift?v=$(date +%s)" -o main.swift 2>/dev/null; then
+if ! curl -fsSL "https://raw.githubusercontent.com/arunofhyd/Rec/main/main.swift" -o main.swift 2>/dev/null; then
     if [ -f "$OLDPWD/main.swift" ]; then
         cp "$OLDPWD/main.swift" .
     else
@@ -152,9 +153,6 @@ APP="$APP_NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 [ -f AppIcon.icns ] && cp AppIcon.icns "$APP/Contents/Resources/"
-
-APP_VERSION=$(grep -m1 'let appVersion =' main.swift | cut -d'"' -f2)
-if [ -z "$APP_VERSION" ]; then APP_VERSION="1.0.0"; fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
