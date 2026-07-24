@@ -5,7 +5,7 @@ import VideoToolbox
 import os.log
 
 // MARK: - Configuration
-let appVersion = "1.1.33"
+let appVersion = "1.1.34"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
 
@@ -1332,11 +1332,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 scroll.documentView = tv
                 alert.accessoryView = scroll
             }
-            alert.addButton(withTitle: "Download")
+            alert.addButton(withTitle: "Update Now")
             alert.addButton(withTitle: "Later")
-            if alert.runModal() == .alertFirstButtonReturn,
-               let url = URL(string: downloadURL) {
-                NSWorkspace.shared.open(url)
+            if alert.runModal() == .alertFirstButtonReturn {
+                downloadAndInstallUpdate()
             }
         } else if remote != nil {
             alert.messageText = "You're up to date"
@@ -1349,6 +1348,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.addButton(withTitle: "OK")
             alert.runModal()
         }
+    }
+
+    func downloadAndInstallUpdate() {
+        let commandURL = "https://raw.githubusercontent.com/arunofhyd/Rec/refs/heads/main/install-rec.command"
+        guard let url = URL(string: commandURL) else { return }
+        
+        let task = URLSession.shared.downloadTask(with: url) { tempURL, _, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    let err = NSAlert()
+                    err.alertStyle = .warning
+                    err.messageText = "Download Failed"
+                    err.informativeText = "Could not download the update:\n\(error.localizedDescription)\n\nPlease check your internet connection and try again."
+                    err.addButton(withTitle: "OK")
+                    err.runModal()
+                    return
+                }
+                
+                guard let tempURL = tempURL else { return }
+                
+                let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
+                let destURL = downloadsDir.appendingPathComponent("install-rec.command")
+                
+                try? FileManager.default.removeItem(at: destURL)
+                do {
+                    try FileManager.default.copyItem(at: tempURL, to: destURL)
+                    try FileManager.default.setAttributes(
+                        [.posixPermissions: NSNumber(value: 0o755)],
+                        ofItemAtPath: destURL.path
+                    )
+                    NSWorkspace.shared.open(destURL)
+                } catch {
+                    let err = NSAlert()
+                    err.alertStyle = .warning
+                    err.messageText = "Could Not Save Installer"
+                    err.informativeText = "The installer was downloaded but couldn't be saved:\n\(error.localizedDescription)"
+                    err.addButton(withTitle: "OK")
+                    err.runModal()
+                }
+            }
+        }
+        task.resume()
     }
 
     // MARK: - Settings Actions

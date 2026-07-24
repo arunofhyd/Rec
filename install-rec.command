@@ -6,7 +6,7 @@
 # =============================================================================
 
 APP_NAME="Rec"
-APP_VERSION="1.1.33"
+APP_VERSION="1.1.34"
 REPO_RAW="." # Use current directory for now, but usually from github
 
 # ---- Terminal styling ------------------------------------
