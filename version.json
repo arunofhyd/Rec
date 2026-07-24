@@ -1,7 +1,14 @@
 {
-  "version": "1.1.32",
+  "version": "1.1.33",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.1.33",
+      "date": "2026-07-24",
+      "changes": [
+        "Standardized bundle identifier to com.aoh.rec across app bundle, Info.plist, and installer."
+      ]
+    },
     {
       "version": "1.1.32",
       "date": "2026-07-23",
