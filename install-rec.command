@@ -160,7 +160,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key><string>$APP_NAME</string>
-  <key>CFBundleIdentifier</key><string>com.local.screenrecorder</string>
+  <key>CFBundleIdentifier</key><string>com.aoh.rec</string>
   <key>CFBundleVersion</key><string>$APP_VERSION</string>
   <key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
   <key>CFBundleExecutable</key><string>$APP_NAME</string>
