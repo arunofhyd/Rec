@@ -19,7 +19,13 @@ try {
   const today = new Date().toISOString().split('T')[0];
   if (targetPath) {
     let content = fs.readFileSync(targetPath, 'utf8');
-    content = content.replace(/<lastmod>.*?<\/lastmod>/g, `<lastmod>${today}</lastmod>`);
+
+    if (/<lastmod[\s\S]*?(?:<\/lastmod>|\/>)/gi.test(content)) {
+      content = content.replace(/<lastmod[\s\S]*?(?:<\/lastmod>|\/>)/gi, `<lastmod>${today}</lastmod>`);
+    } else {
+      content = content.replace(/<\/url>/gi, `  <lastmod>${today}</lastmod>\n  </url>`);
+    }
+
     fs.writeFileSync(targetPath, content, 'utf8');
     const relativePath = path.relative(projectRoot, targetPath);
     console.log(`[sitemap] Updated lastmod date to ${today} in ${relativePath}`);
