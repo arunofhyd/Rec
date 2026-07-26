@@ -1,0 +1,35 @@
+name: Auto Update Sitemap
+
+on:
+  push:
+    paths-ignore:
+      - '**/sitemap.xml'
+
+jobs:
+  update-sitemap:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Update sitemap lastmod date
+        run: node scripts/update-sitemap.mjs
+
+      - name: Commit and push changes if modified
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add public/sitemap.xml sitemap.xml static/sitemap.xml 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "Sitemap is already up to date."
+          else
+            git commit -m "chore(sitemap): auto-update lastmod date [skip ci]"
+            git push
+          fi
