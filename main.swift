@@ -3,9 +3,10 @@ import ScreenCaptureKit
 import AVFoundation
 import VideoToolbox
 import os.log
+import SwiftUI
 
 // MARK: - Configuration
-let appVersion = "1.1.34"
+let appVersion = "1.1.35"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
 
@@ -68,6 +69,29 @@ struct AppSettings: Codable {
             return settings
         }
         return AppSettings()
+    }
+}
+
+struct UpdateChangelogView: View {
+    let changelog: String
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            Text(changelog)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundColor(.primary)
+                .lineSpacing(3)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+        }
+        .frame(width: 340, height: 140)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 
@@ -1270,9 +1294,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func manualUpdateCheck() { checkForUpdates(silentIfCurrent: false) }
 
     func checkForUpdates(silentIfCurrent: Bool) {
-        guard let url = URL(string: updateCheckURL) else { return }
+        URLCache.shared.removeAllCachedResponses()
+        let ts = Int(Date().timeIntervalSince1970)
+        let urlStr = updateCheckURL.contains("?") ? "\(updateCheckURL)&t=\(ts)" : "\(updateCheckURL)?t=\(ts)"
+        guard let url = URL(string: urlStr) else { return }
         var request = URLRequest(url: url)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.addValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.addValue("no-cache", forHTTPHeaderField: "Pragma")
+        
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
             guard let self = self else { return }
             guard let data = data,
@@ -1285,10 +1315,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let dl = (json["downloadURL"] as? String) ?? "https://rec-aoh.netlify.app/#install"
             var notes = ""
-            if let logs = json["changelog"] as? [[String: Any]],
-               let entry = logs.first(where: { ($0["version"] as? String) == remote }),
-               let changes = entry["changes"] as? [String] {
-                notes = changes.map { "•  \($0)" }.joined(separator: "\n")
+            if let logs = json["changelog"] as? [[String: Any]] {
+                let unreadEntries = logs.filter { entry in
+                    if let v = entry["version"] as? String {
+                        return self.isNewer(v, than: appVersion)
+                    }
+                    return false
+                }
+                notes = unreadEntries.compactMap { entry -> String? in
+                    guard let v = entry["version"] as? String,
+                          let changes = entry["changes"] as? [String] else { return nil }
+                    let changeList = changes.map { "•  \($0)" }.joined(separator: "\n")
+                    return "Version \(v):\n\(changeList)"
+                }.joined(separator: "\n\n")
             }
             let newer = self.isNewer(remote, than: appVersion)
             DispatchQueue.main.async {
@@ -1323,14 +1362,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.messageText = "Rec \(remote) is available"
             alert.informativeText = "You have v\(appVersion). Here's what's new:"
             if !changelog.isEmpty {
-                let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: 340, height: 130))
-                tv.isEditable = false; tv.drawsBackground = false
-                tv.font = NSFont.systemFont(ofSize: 12)
-                tv.string = changelog
-                let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 340, height: 130))
-                scroll.hasVerticalScroller = true; scroll.drawsBackground = false
-                scroll.documentView = tv
-                alert.accessoryView = scroll
+                let hosting = NSHostingView(rootView: UpdateChangelogView(changelog: changelog))
+                hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 140)
+                alert.accessoryView = hosting
             }
             alert.addButton(withTitle: "Update Now")
             alert.addButton(withTitle: "Later")

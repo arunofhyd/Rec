@@ -1,7 +1,16 @@
 {
-  "version": "1.1.34",
+  "version": "1.1.35",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.1.35",
+      "date": "2026-07-27",
+      "changes": [
+        "Smooth Update Window Scrolling: Introduced hardware-accelerated SwiftUI ScrollView changelog viewer for 60 FPS / 120 FPS ProMotion trackpad scrolling.",
+        "Real-Time Update Check: Purged URLCache and added cache-busting timestamp parameters for zero-delay update notifications.",
+        "Cumulative Release Notes: Update alert now parses and displays all unread changes since your current build."
+      ]
+    },
     {
       "version": "1.1.34",
       "date": "2026-07-24",
