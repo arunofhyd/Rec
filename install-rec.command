@@ -6,7 +6,8 @@
 # =============================================================================
 
 APP_NAME="Rec"
-APP_VERSION="1.1.34"
+APP_VERSION=$(grep -m1 'let appVersion =' main.swift | cut -d'"' -f2)
+if [ -z "$APP_VERSION" ]; then APP_VERSION="1.1.35"; fi
 REPO_RAW="." # Use current directory for now, but usually from github
 
 # ---- Terminal styling ------------------------------------
