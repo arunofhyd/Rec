@@ -6,7 +6,7 @@ import os.log
 import SwiftUI
 
 // MARK: - Configuration
-let appVersion = "1.1.35"
+let appVersion = "1.1.36"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
 
@@ -1130,7 +1130,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
-    @objc func showPanel() { panel.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
+    @objc func showPanel() {
+        updateButtonImage()
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
     @objc func hidePanel() { panel.orderOut(nil) }
     @objc func showAboutAction() { showAbout(onLaunch: false) }
     func showAbout(onLaunch: Bool) {
@@ -1518,11 +1522,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         currentSettings.cameraID = deviceID
         currentSettings.save()
         
-        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
-        let symbol = deviceID == "None" ? "video.slash" : "video.fill"
-        cameraPopUp.menu?.item(at: 0)?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
-        
         if deviceID == "None" {
+            cameraWindow?.stopCamera()
             cameraWindow?.close()
             cameraWindow = nil
             recorder.cameraWindowID = nil
@@ -1534,6 +1535,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             cameraWindow?.startCamera(deviceID: deviceID)
         }
+        updateButtonImage()
     }
 
     @objc func modeChanged(_ sender: NSMenuItem) {
@@ -2221,9 +2223,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let camConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
         let camIsActive = (cameraWindow != nil && cameraWindow!.isVisible)
         let camSymbol = camIsActive ? "video.fill" : "video.slash"
-        cameraRecordButton.image = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(camConfig)
+        let camImage = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(camConfig)
+        
+        cameraRecordButton.image = camImage
         cameraRecordButton.contentTintColor = camIsActive ? .systemGreen : .labelColor
-        cameraPopUp.menu?.item(at: 0)?.image = cameraRecordButton.image
+        
+        if let topItem = cameraPopUp?.menu?.item(at: 0) {
+            topItem.image = camImage
+        }
+        cameraPopUp?.synchronizeTitleAndSelectedItem()
+        cameraPopUp?.needsDisplay = true
 
         // Handle Cursor Highlighter lifecycle
         if recorder.isRecording && currentSettings.highlightCursor {
