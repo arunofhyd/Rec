@@ -6,7 +6,7 @@ import os.log
 import SwiftUI
 
 // MARK: - Configuration
-let appVersion = "1.1.36"
+let appVersion = "1.1.37"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
 
@@ -1033,6 +1033,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             cameraWindow?.makeKeyAndOrderFront(nil)
             recorder.cameraWindowID = cameraWindow?.windowNumber
             cameraWindow?.startCamera(deviceID: currentSettings.cameraID)
+            updateButtonImage()
         }
     }
     
@@ -1861,7 +1862,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cameraPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         let cameraGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        let camSymbol = currentSettings.cameraID == "None" ? "video.slash" : "video.fill"
+        let camIsActive = (cameraWindow != nil && cameraWindow!.isVisible)
+        let camSymbol = camIsActive ? "video.fill" : "video.slash"
         cameraGearItem.image = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         cameraPopUp.menu?.addItem(cameraGearItem)
 
@@ -2231,6 +2233,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let topItem = cameraPopUp?.menu?.item(at: 0) {
             topItem.image = camImage
         }
+        cameraPopUp?.selectItem(at: 0)
+        cameraPopUp?.contentTintColor = camIsActive ? .systemGreen : .labelColor
         cameraPopUp?.synchronizeTitleAndSelectedItem()
         cameraPopUp?.needsDisplay = true
 

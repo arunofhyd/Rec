@@ -1,7 +1,14 @@
 {
-  "version": "1.1.36",
+  "version": "1.1.37",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.1.37",
+      "date": "2026-07-29",
+      "changes": [
+        "Camera Popover Icon Sync: Fixed issue where NSPopUpButton cell failed to select header item 0 and update contentTintColor, ensuring camera icon displays video.fill with green tint whenever camera window is active."
+      ]
+    },
     {
       "version": "1.1.36",
       "date": "2026-07-29",
