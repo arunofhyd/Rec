@@ -186,7 +186,7 @@ if ! swiftc -O -o "$APP/Contents/MacOS/$APP_NAME" main.swift -framework Cocoa -f
     exit 1
 fi
 chmod +x "$APP/Contents/MacOS/$APP_NAME"
-codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
+codesign --force --deep --sign - --requirements '=designated => identifier "com.aoh.rec"' "$APP" >/dev/null 2>&1 || true
 ok "App built."
 printf "\n"
 
