@@ -1,7 +1,15 @@
 {
-  "version": "1.1.37",
+  "version": "1.2.0",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.2.0",
+      "date": "2026-08-01",
+      "changes": [
+        "Screen Capture Window Exclusion: Robust window filtering logic to cleanly exclude floating control panels and menu bar status items from captured recordings.",
+        "Floating Panel Menu Enhancements: Added About Rec, Check for Updates, and Quit items directly to the floating control panel settings menu."
+      ]
+    },
     {
       "version": "1.1.37",
       "date": "2026-07-29",

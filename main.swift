@@ -4,9 +4,10 @@ import AVFoundation
 import VideoToolbox
 import os.log
 import SwiftUI
+import QuartzCore
 
 // MARK: - Configuration
-let appVersion = "1.1.37"
+let appVersion = "1.2.0"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
 
@@ -523,6 +524,8 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
     var cameraWindowID: Int?
     var cursorWindowID: Int?
+    var statusItemWindowID: Int?
+    var statusItemFrame: CGRect?
     
     private var targetScreenID: CGDirectDisplayID?
     private var targetScaleFactor: CGFloat = 1.0
@@ -556,14 +559,25 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
             let filter: SCContentFilter
             let targetDisplay: SCDisplay
-            var excepting = [SCWindow]()
-
-            let myProcessId = ProcessInfo.processInfo.processIdentifier
-            var exceptingAppWindows = content.windows.filter { $0.owningApplication?.processID == myProcessId }
             
-            if let camWinID = self.cameraWindowID { exceptingAppWindows.removeAll(where: { $0.windowID == CGWindowID(camWinID) }) }
-            if let cursorWinID = self.cursorWindowID { exceptingAppWindows.removeAll(where: { $0.windowID == CGWindowID(cursorWinID) }) }
-            excepting.append(contentsOf: exceptingAppWindows)
+            var windowsToExclude = [SCWindow]()
+            let myProcessId = ProcessInfo.processInfo.processIdentifier
+
+            for window in content.windows where window.owningApplication?.processID == myProcessId {
+                if let camWinID = self.cameraWindowID, window.windowID == CGWindowID(camWinID) { continue }
+                if let cursorWinID = self.cursorWindowID, window.windowID == CGWindowID(cursorWinID) { continue }
+                windowsToExclude.append(window)
+            }
+
+            if let frame = self.statusItemFrame {
+                if let controlCenter = content.applications.first(where: { $0.bundleIdentifier == "com.apple.controlcenter" }) {
+                    for window in content.windows where window.owningApplication?.processID == controlCenter.processID {
+                        if abs(window.frame.minX - frame.minX) < 2.0 && abs(window.frame.width - frame.width) < 2.0 {
+                            windowsToExclude.append(window)
+                        }
+                    }
+                }
+            }
 
             if let app = self.captureApp {
                 guard let display = content.displays.first else {
@@ -571,17 +585,56 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                     return
                 }
                 targetDisplay = display
-                filter = SCContentFilter(display: display, including: [app], exceptingWindows: excepting)
+                filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
             } else {
                 if let sID = self.targetScreenID {
                     targetDisplay = content.displays.first { $0.displayID == sID } ?? content.displays.first!
                 } else {
                     targetDisplay = content.displays.first!
                 }
-                filter = SCContentFilter(display: targetDisplay, excludingApplications: [], exceptingWindows: excepting)
+                filter = SCContentFilter(display: targetDisplay, excludingWindows: windowsToExclude)
             }
 
             self.continueStartingRecording(filter: filter, display: targetDisplay)
+        }
+    }
+
+    func updateStreamFilter() {
+        guard let stream = stream, isRecording else { return }
+        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { [weak self] content, error in
+            guard let self = self, let content = content else { return }
+            var windowsToExclude = [SCWindow]()
+            let myProcessId = ProcessInfo.processInfo.processIdentifier
+
+            for window in content.windows where window.owningApplication?.processID == myProcessId {
+                if let camWinID = self.cameraWindowID, window.windowID == CGWindowID(camWinID) { continue }
+                if let cursorWinID = self.cursorWindowID, window.windowID == CGWindowID(cursorWinID) { continue }
+                windowsToExclude.append(window)
+            }
+
+            if let frame = self.statusItemFrame {
+                if let controlCenter = content.applications.first(where: { $0.bundleIdentifier == "com.apple.controlcenter" }) {
+                    for window in content.windows where window.owningApplication?.processID == controlCenter.processID {
+                        if abs(window.frame.minX - frame.minX) < 2.0 && abs(window.frame.width - frame.width) < 2.0 {
+                            windowsToExclude.append(window)
+                        }
+                    }
+                }
+            }
+            
+            let filter: SCContentFilter
+            if let app = self.captureApp {
+                filter = SCContentFilter(display: content.displays.first!, including: [app], exceptingWindows: [])
+            } else {
+                let targetDisplay = content.displays.first { $0.displayID == self.targetScreenID } ?? content.displays.first!
+                filter = SCContentFilter(display: targetDisplay, excludingWindows: windowsToExclude)
+            }
+            
+            stream.updateContentFilter(filter) { error in
+                if let error = error {
+                    os_log("Failed to update content filter: %{public}@", log: log, type: .error, error.localizedDescription)
+                }
+            }
         }
     }
 
@@ -868,7 +921,8 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         if CMTimeCompare(adjustedPTS, sessionStartTime) < 0 { return }
 
         if type == .screen {
-            guard CMSampleBufferGetImageBuffer(adjustedBuffer) != nil else { return }
+            guard let pixelBuffer = CMSampleBufferGetImageBuffer(adjustedBuffer) else { return }
+            maskStatusItem(pixelBuffer: pixelBuffer)
             if let videoInput = videoInput, videoInput.isReadyForMoreMediaData { videoInput.append(adjustedBuffer) }
         } else if type == .audio {
             if let audioInput = audioInput, audioInput.isReadyForMoreMediaData { audioInput.append(adjustedBuffer) }
@@ -878,6 +932,45 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         os_log("Stream Stopped Error: %{public}@", log: log, type: .error, error.localizedDescription)
         DispatchQueue.main.async { self.onError?(error); self.stopRecording() }
+    }
+
+    private func maskStatusItem(pixelBuffer: CVPixelBuffer) {
+        guard let statusFrame = statusItemFrame, statusFrame != .zero else { return }
+        
+        CVPixelBufferLockBaseAddress(pixelBuffer, CVPixelBufferLockFlags(rawValue: 0))
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, CVPixelBufferLockFlags(rawValue: 0)) }
+        
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        
+        guard let mainScreen = NSScreen.main else { return }
+        let screenBounds = mainScreen.frame
+        let scale = targetScaleFactor
+        
+        let pxX = max(0, Int(statusFrame.origin.x * scale))
+        let pxWidth = min(width - pxX, Int(statusFrame.size.width * scale))
+        
+        let topYInPoints = screenBounds.height - (statusFrame.origin.y + statusFrame.size.height)
+        let pxY = max(0, Int(topYInPoints * scale))
+        let pxHeight = min(height - pxY, Int(statusFrame.size.height * scale))
+        
+        guard pxWidth > 0, pxHeight > 0, pxX + pxWidth <= width, pxY + pxHeight <= height else { return }
+        
+        let sampleX = max(0, pxX - 6)
+        let sampleY = pxY + pxHeight / 2
+        let samplePixelPtr = baseAddress.advanced(by: sampleY * bytesPerRow + sampleX * 4).assumingMemoryBound(to: UInt32.self)
+        let sampleColor = samplePixelPtr.pointee
+        
+        let pixelPtr = baseAddress.assumingMemoryBound(to: UInt32.self)
+        let stride32 = bytesPerRow / 4
+        for y in pxY..<(pxY + pxHeight) {
+            let rowOffset = y * stride32
+            for x in pxX..<(pxX + pxWidth) {
+                pixelPtr[rowOffset + x] = sampleColor
+            }
+        }
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
@@ -980,6 +1073,192 @@ class FloatingPanel: NSPanel {
 
 
 // ============================================================
+// Menu Bar Pill View
+// ============================================================
+
+class MenuBarPillView: NSView {
+    let dotImageView = NSImageView()
+    let timeLabel = NSTextField(labelWithString: "00:00")
+    let pauseButton = NSButton()
+    let stopButton = NSButton()
+    
+    var onClickPill: (() -> Void)?
+    var onRightClickPill: (() -> Void)?
+    var onPause: (() -> Void)?
+    var onStop: (() -> Void)?
+    private var isPausedState: Bool = false
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupUI()
+    }
+
+    private func setupUI() {
+        wantsLayer = true
+        layer?.cornerRadius = 11
+        layer?.masksToBounds = true
+        layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
+
+        let dotConfig = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
+        dotImageView.image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "Recording")?.withSymbolConfiguration(dotConfig)
+        dotImageView.contentTintColor = .systemRed
+        dotImageView.translatesAutoresizingMaskIntoConstraints = false
+
+        timeLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .bold)
+        timeLabel.textColor = .labelColor
+        timeLabel.isEditable = false
+        timeLabel.isSelectable = false
+        timeLabel.isBordered = false
+        timeLabel.drawsBackground = false
+        timeLabel.alignment = .center
+        timeLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        pauseButton.isBordered = false
+        pauseButton.setButtonType(.momentaryPushIn)
+        pauseButton.imagePosition = .imageOnly
+        pauseButton.target = self
+        pauseButton.action = #selector(pauseClicked)
+        pauseButton.toolTip = "Pause / Resume Recording"
+        pauseButton.translatesAutoresizingMaskIntoConstraints = false
+
+        stopButton.isBordered = false
+        stopButton.setButtonType(.momentaryPushIn)
+        stopButton.imagePosition = .imageOnly
+        stopButton.target = self
+        stopButton.action = #selector(stopClicked)
+        stopButton.toolTip = "Stop Recording"
+        stopButton.translatesAutoresizingMaskIntoConstraints = false
+
+        updatePauseButton(isPaused: false)
+        updateStopButton()
+
+        let stack = NSStackView(views: [dotImageView, timeLabel, pauseButton, stopButton])
+        stack.orientation = .horizontal
+        stack.spacing = 7
+        stack.alignment = .centerY
+        stack.edgeInsets = NSEdgeInsets(top: 2, left: 8, bottom: 2, right: 6)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            
+            dotImageView.widthAnchor.constraint(equalToConstant: 10),
+            dotImageView.heightAnchor.constraint(equalToConstant: 10),
+            pauseButton.widthAnchor.constraint(equalToConstant: 22),
+            pauseButton.heightAnchor.constraint(equalToConstant: 22),
+            stopButton.widthAnchor.constraint(equalToConstant: 22),
+            stopButton.heightAnchor.constraint(equalToConstant: 22)
+        ])
+    }
+
+    func updatePauseButton(isPaused: Bool) {
+        isPausedState = isPaused
+        let appearance = effectiveAppearance
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        
+        let size = NSSize(width: 22, height: 22)
+        let img = NSImage(size: size)
+        img.lockFocus()
+        
+        let bgPath = NSBezierPath(ovalIn: NSRect(origin: .zero, size: size))
+        let bgColor: NSColor
+        if isPaused {
+            bgColor = NSColor.systemOrange.withAlphaComponent(0.3)
+        } else {
+            bgColor = isDark ? NSColor.white.withAlphaComponent(0.22) : NSColor.black.withAlphaComponent(0.14)
+        }
+        bgColor.setFill()
+        bgPath.fill()
+        
+        let symbolName = isPaused ? "play.fill" : "pause.fill"
+        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .bold)
+        if let sysImg = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Pause/Resume")?.withSymbolConfiguration(config) {
+            let iconSize = sysImg.size
+            let iconRect = NSRect(
+                x: (size.width - iconSize.width) / 2 + (isPaused ? 1 : 0),
+                y: (size.height - iconSize.height) / 2,
+                width: iconSize.width,
+                height: iconSize.height
+            )
+            sysImg.draw(in: iconRect)
+            let iconColor: NSColor = isPaused ? .systemOrange : (isDark ? .white : .black)
+            iconColor.set()
+            iconRect.fill(using: .sourceAtop)
+        }
+        
+        img.unlockFocus()
+        img.isTemplate = false
+        pauseButton.image = img
+        dotImageView.contentTintColor = isPaused ? .systemOrange : .systemRed
+    }
+
+    func updateStopButton() {
+        let size = NSSize(width: 22, height: 22)
+        let img = NSImage(size: size)
+        img.lockFocus()
+        
+        let bgPath = NSBezierPath(ovalIn: NSRect(origin: .zero, size: size))
+        NSColor(red: 1.0, green: 59/255.0, blue: 48/255.0, alpha: 1.0).setFill()
+        bgPath.fill()
+        
+        let squareSize: CGFloat = 8
+        let squareRect = NSRect(
+            x: (size.width - squareSize) / 2,
+            y: (size.height - squareSize) / 2,
+            width: squareSize,
+            height: squareSize
+        )
+        let squarePath = NSBezierPath(roundedRect: squareRect, xRadius: 1.5, yRadius: 1.5)
+        NSColor.white.setFill()
+        squarePath.fill()
+        
+        img.unlockFocus()
+        img.isTemplate = false
+        stopButton.image = img
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updatePauseButton(isPaused: isPausedState)
+        updateStopButton()
+        (NSApp.delegate as? AppDelegate)?.recorder.updateStreamFilter()
+    }
+
+    func updateTime(_ timeString: String) {
+        if timeLabel.stringValue != timeString {
+            timeLabel.stringValue = timeString
+        }
+    }
+
+    @objc private func pauseClicked() {
+        onPause?()
+    }
+
+    @objc private func stopClicked() {
+        onStop?()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onClickPill?()
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        onRightClickPill?()
+    }
+}
+
+
+// ============================================================
 // App Delegate — FIXED AUDIO MENU LOGIC
 // ============================================================
 
@@ -997,6 +1276,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
+    var statusMenu: NSMenu!
+    var pillView: MenuBarPillView?
+    var recordingTimer: Timer?
+    var recordingStartTime: Date?
+    var pausedAccumulatedTime: TimeInterval = 0
+    var pauseStartDate: Date?
+
     var appSelectionMenu: AppSelectionMenuHandler?
     var aboutWindow: NSWindow?
 
@@ -1015,14 +1301,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var audioMicItems: [NSMenuItem] = []
     private var cameraItems: [NSMenuItem] = []
 
-    var globalEventMonitor: Any?
-    var localEventMonitor: Any?
-
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         setupMenu()
         setupUI()
         setupRecorder()
-        setupShortcuts()
         checkPermissions()
         setupCameraIfNeeded()
     }
@@ -1056,35 +1338,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateButtonImage()
     }
 
-    func setupShortcuts() {
-        let handler: (NSEvent) -> Void = { [weak self] event in
-            // Cmd + Shift + R -> 15
-            // Cmd + Shift + P -> 35
-            // Cmd + Shift + C -> 8
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if flags == [.command, .shift] {
-                if event.keyCode == 15 {
-                    DispatchQueue.main.async { self?.toggleRecording() }
-                } else if event.keyCode == 35 {
-                    DispatchQueue.main.async { self?.togglePause() }
-                } else if event.keyCode == 8 {
-                    DispatchQueue.main.async { self?.toggleCameraHotkey() }
-                }
-            }
-        }
-        
-        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        let accessEnabled = AXIsProcessTrustedWithOptions(options)
-        
-        if accessEnabled {
-            globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: handler)
-        }
-        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            handler(event)
-            return event
-        }
-    }
-
     func checkPermissions() {
         let granted = CGPreflightScreenCaptureAccess()
         if !granted {
@@ -1104,39 +1357,159 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func setupMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem.autosaveName = "RecStatusItem"
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Rec")
         }
 
-        let menu = NSMenu()
+        statusMenu = NSMenu()
         let aboutItem = NSMenuItem(title: "About Rec", action: #selector(showAboutAction), keyEquivalent: "")
         aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
-        menu.addItem(aboutItem)
+        statusMenu.addItem(aboutItem)
         
         let update = NSMenuItem(title: "Check for Updates...", action: #selector(manualUpdateCheck), keyEquivalent: "")
         update.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
         update.target = self
-        menu.addItem(update)
+        statusMenu.addItem(update)
         
-        menu.addItem(NSMenuItem.separator())
+        statusMenu.addItem(NSMenuItem.separator())
 
         let showControlsItem = NSMenuItem(title: "Show Controls", action: #selector(showPanel), keyEquivalent: "s")
         showControlsItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
-        menu.addItem(showControlsItem)
+        statusMenu.addItem(showControlsItem)
 
-        menu.addItem(NSMenuItem.separator())
+        statusMenu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit Rec", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
-        menu.addItem(quitItem)
-        statusItem.menu = menu
+        statusMenu.addItem(quitItem)
+        statusItem.menu = statusMenu
+        statusItem.isVisible = false
+    }
+
+    func updateMenuBarPill() {
+        guard let button = statusItem.button else { return }
+
+        if recorder.isRecording {
+            statusItem.menu = nil
+            let isNewPill = (pillView == nil)
+            if pillView == nil {
+                let pill = MenuBarPillView()
+                pill.alphaValue = 0.0
+                pill.onClickPill = { [weak self] in
+                    self?.showPanel()
+                }
+                pill.onRightClickPill = { [weak self] in
+                    guard let self = self, let btn = self.statusItem.button else { return }
+                    self.statusMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: btn.bounds.height + 4), in: btn)
+                }
+                pill.onPause = { [weak self] in
+                    self?.togglePause()
+                }
+                pill.onStop = { [weak self] in
+                    self?.toggleRecording()
+                }
+                pillView = pill
+            }
+
+            pillView?.updatePauseButton(isPaused: recorder.isPaused)
+            updateRecordingTimeDisplay()
+
+            if pillView?.superview != button {
+                button.subviews.forEach { $0.removeFromSuperview() }
+                button.image = nil
+                button.title = ""
+                button.addSubview(pillView!)
+                pillView?.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    pillView!.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 1),
+                    pillView!.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -1),
+                    pillView!.topAnchor.constraint(equalTo: button.topAnchor, constant: 1),
+                    pillView!.bottomAnchor.constraint(equalTo: button.bottomAnchor, constant: -1)
+                ])
+            }
+
+            pillView?.layoutSubtreeIfNeeded()
+            let targetWidth = (pillView?.fittingSize.width ?? 110) + 6
+
+            if isNewPill {
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.25
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    statusItem.length = targetWidth
+                    pillView?.animator().alphaValue = 1.0
+                })
+            } else {
+                statusItem.length = targetWidth
+            }
+            recorder.updateStreamFilter()
+        } else {
+            if let pill = pillView {
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.2
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    pill.animator().alphaValue = 0.0
+                    statusItem.length = NSStatusItem.squareLength
+                }, completionHandler: { [weak self] in
+                    pill.removeFromSuperview()
+                    self?.pillView = nil
+                    button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Rec")
+                    button.title = ""
+                    self?.statusItem.menu = self?.statusMenu
+                })
+            } else {
+                button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Rec")
+                button.title = ""
+                statusItem.menu = statusMenu
+                statusItem.length = NSStatusItem.squareLength
+            }
+        }
+    }
+
+    func updateRecordingTimeDisplay() {
+        guard recorder.isRecording else { return }
+        var elapsed: TimeInterval = 0
+        if let startTime = recordingStartTime {
+            if recorder.isPaused, let pauseStart = pauseStartDate {
+                elapsed = pauseStart.timeIntervalSince(startTime) - pausedAccumulatedTime
+            } else {
+                elapsed = Date().timeIntervalSince(startTime) - pausedAccumulatedTime
+            }
+        }
+        if elapsed < 0 { elapsed = 0 }
+
+        let totalSeconds = Int(elapsed)
+        let seconds = totalSeconds % 60
+        let minutes = (totalSeconds / 60) % 60
+        let hours = totalSeconds / 3600
+
+        let timeString: String
+        if hours > 0 {
+            timeString = String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            timeString = String(format: "%02d:%02d", minutes, seconds)
+        }
+
+        pillView?.updateTime(timeString)
+        
+        if let pill = pillView {
+            pill.layoutSubtreeIfNeeded()
+            let requiredWidth = pill.fittingSize.width + 6
+            if abs(statusItem.length - requiredWidth) > 1 {
+                statusItem.length = requiredWidth
+            }
+        }
     }
 
     @objc func showPanel() {
+        statusItem.isVisible = false
         updateButtonImage()
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    @objc func hidePanel() { panel.orderOut(nil) }
+    @objc func hidePanel() {
+        panel.orderOut(nil)
+        statusItem.isVisible = true
+    }
     @objc func showAboutAction() { showAbout(onLaunch: false) }
     func showAbout(onLaunch: Bool) {
         if aboutWindow != nil {
@@ -1778,6 +2151,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         locationItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         locationItem.target = self
         settingsPopUp.menu?.addItem(locationItem)
+        
+        settingsPopUp.menu?.addItem(NSMenuItem.separator())
+        
+        let aboutItem = NSMenuItem(title: "About Rec", action: #selector(showAboutAction), keyEquivalent: "")
+        aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+        aboutItem.target = self
+        settingsPopUp.menu?.addItem(aboutItem)
+        
+        let updateItem = NSMenuItem(title: "Check for Updates...", action: #selector(manualUpdateCheck), keyEquivalent: "")
+        updateItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
+        updateItem.target = self
+        settingsPopUp.menu?.addItem(updateItem)
+        
+        settingsPopUp.menu?.addItem(NSMenuItem.separator())
+        
+        let quitItem = NSMenuItem(title: "Quit Rec", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
+        settingsPopUp.menu?.addItem(quitItem)
+
 
         // ---- CLOSE BUTTON ----
         closeButton = NSButton()
@@ -1948,27 +2340,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func setupRecorder() {
         recorder.onRecordingStarted = { [weak self] in
-            self?.updateButtonImage()
-            self?.modePopUp.isEnabled = false
-            self?.audioPopUp.isEnabled = false
-            self?.timerPopUp.isEnabled = false
-            self?.settingsPopUp.isEnabled = false
-            self?.cameraPopUp.isHidden = true
-            self?.cameraRecordButton.isHidden = false
-            if let rect = self?.recorder.captureRect, rect != .zero, let screen = self?.recorder.captureScreen {
-                self?.recordingOverlay = RecordingOverlayWindow(screen: screen, holeRect: rect)
-                self?.recordingOverlay?.makeKeyAndOrderFront(nil)
+            guard let self = self else { return }
+            self.recordingStartTime = Date()
+            self.pausedAccumulatedTime = 0
+            self.pauseStartDate = nil
+            
+            self.recordingTimer?.invalidate()
+            self.recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                self?.updateRecordingTimeDisplay()
+            }
+
+            self.updateButtonImage()
+            self.updateMenuBarPill()
+            self.modePopUp.isEnabled = false
+            self.audioPopUp.isEnabled = false
+            self.timerPopUp.isEnabled = false
+            self.settingsPopUp.isEnabled = false
+            self.cameraPopUp.isHidden = true
+            self.cameraRecordButton.isHidden = false
+            if let rect = self.recorder.captureRect, rect != .zero, let screen = self.recorder.captureScreen {
+                self.recordingOverlay = RecordingOverlayWindow(screen: screen, holeRect: rect)
+                self.recordingOverlay?.makeKeyAndOrderFront(nil)
             }
         }
         recorder.onRecordingStopped = { [weak self] url in
-            self?.recordingOverlay?.close(); self?.recordingOverlay = nil
-            self?.updateButtonImage()
-            self?.modePopUp.isEnabled = true
-            self?.audioPopUp.isEnabled = true
-            self?.timerPopUp.isEnabled = true
-            self?.settingsPopUp.isEnabled = true
-            self?.cameraPopUp.isHidden = false
-            self?.cameraRecordButton.isHidden = true
+            guard let self = self else { return }
+            self.recordingTimer?.invalidate()
+            self.recordingTimer = nil
+            self.recordingStartTime = nil
+            self.pauseStartDate = nil
+
+            self.recordingOverlay?.close(); self.recordingOverlay = nil
+            self.updateButtonImage()
+            self.updateMenuBarPill()
+            self.modePopUp.isEnabled = true
+            self.audioPopUp.isEnabled = true
+            self.timerPopUp.isEnabled = true
+            self.settingsPopUp.isEnabled = true
+            self.cameraPopUp.isHidden = false
+            self.cameraRecordButton.isHidden = true
             let alert = NSAlert()
             alert.messageText = "Recording Saved"
             alert.informativeText = "Saved to \(url.lastPathComponent)"
@@ -1979,14 +2389,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.activateFileViewerSelecting([url]) }
         }
         recorder.onError = { [weak self] error in
-            self?.recordingOverlay?.close(); self?.recordingOverlay = nil
-            self?.updateButtonImage()
-            self?.modePopUp.isEnabled = true
-            self?.audioPopUp.isEnabled = true
-            self?.timerPopUp.isEnabled = true
-            self?.settingsPopUp.isEnabled = true
-            self?.cameraPopUp.isHidden = false
-            self?.cameraRecordButton.isHidden = true
+            guard let self = self else { return }
+            self.recordingTimer?.invalidate()
+            self.recordingTimer = nil
+            self.recordingStartTime = nil
+            self.pauseStartDate = nil
+
+            self.recordingOverlay?.close(); self.recordingOverlay = nil
+            self.updateButtonImage()
+            self.updateMenuBarPill()
+            self.modePopUp.isEnabled = true
+            self.audioPopUp.isEnabled = true
+            self.timerPopUp.isEnabled = true
+            self.settingsPopUp.isEnabled = true
+            self.cameraPopUp.isHidden = false
+            self.cameraRecordButton.isHidden = true
             let alert = NSAlert()
             alert.messageText = "Recording Error"
             alert.informativeText = error.localizedDescription
@@ -2028,11 +2445,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-
-
     @objc func togglePause() {
         recorder.togglePause()
+        if recorder.isPaused {
+            pauseStartDate = Date()
+        } else {
+            if let pauseStart = pauseStartDate {
+                pausedAccumulatedTime += Date().timeIntervalSince(pauseStart)
+                pauseStartDate = nil
+            }
+        }
         updateButtonImage()
+        updateMenuBarPill()
     }
 
     @objc func toggleRecording() {
@@ -2127,6 +2551,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startCountdownAndRecord() {
+        updateMenuBarPill()
         if currentSettings.timer > 0 {
             startCountdown(seconds: currentSettings.timer) { [weak self] in
                 self?.recorder.startRecording()
@@ -2201,10 +2626,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     innerPath.fill()
                 }
             } else {
-                // For the square stop button, just draw it normally and tint it white
-                systemImage.draw(in: NSRect(origin: .zero, size: size))
-                NSColor.white.set()
-                NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
+                let bgPath = NSBezierPath(ovalIn: NSRect(origin: .zero, size: size))
+                NSColor(red: 1.0, green: 59/255.0, blue: 48/255.0, alpha: 1.0).setFill()
+                bgPath.fill()
+                
+                let squareSize = size.width * 0.38
+                let squareRect = NSRect(
+                    x: (size.width - squareSize) / 2,
+                    y: (size.height - squareSize) / 2,
+                    width: squareSize,
+                    height: squareSize
+                )
+                let squarePath = NSBezierPath(roundedRect: squareRect, xRadius: 2.5, yRadius: 2.5)
+                NSColor.white.setFill()
+                squarePath.fill()
             }
 
             tintedImage.unlockFocus()
