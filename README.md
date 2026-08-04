@@ -46,7 +46,14 @@ Built with Apple's modern ScreenCaptureKit framework, Rec seamlessly records you
 
 ## 📦 Install
 
-Install by running the installer in **Terminal**:
+The fastest way to install Rec is to run the following one-liner in your **Terminal**:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"
+```
+
+### Manual Installation (Fallback)
+If you prefer to download and run the installer script manually:
 
 1. **Download** [`install-rec.command`](install-rec.command) (open the file, then click **Download raw file**).
 2. Open **Terminal** (`⌘ + Space`, type `Terminal`, press Enter).
