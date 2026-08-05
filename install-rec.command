@@ -204,7 +204,12 @@ pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 DEST="/Applications/$APP_NAME.app"
 INSTALLED=false
 
-if [ "$1" != "--modal" ] && [ "$1" != "--gui" ] && [ -w "/Applications" ]; then
+FORCE_MODAL=false
+for arg in "$@"; do
+    if [ "$arg" = "--modal" ] || [ "$arg" = "--gui" ]; then FORCE_MODAL=true; fi
+done
+
+if [ "$FORCE_MODAL" = "false" ] && [ -w "/Applications" ]; then
     rm -rf "$DEST" 2>/dev/null || true
     if cp -R "$APP" "$DEST" 2>/dev/null; then
         INSTALLED=true
