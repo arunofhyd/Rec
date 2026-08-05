@@ -7,7 +7,7 @@ import SwiftUI
 import QuartzCore
 
 // MARK: - Configuration
-let appVersion = "1.2.0"
+let appVersion = "1.2.1"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
 
