@@ -197,11 +197,33 @@ if [ "$CI" = "true" ]; then
     exit 0
 fi
 
-# ---- Step 5: Build the drag-to-Applications installer window -------------
-step "Preparing installer window…"
+# ---- Step 5: Install to /Applications -------------------------------------
+step "Installing Rec to /Applications…"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+DEST="/Applications/$APP_NAME.app"
+INSTALLED=false
 
+if [ -w "/Applications" ]; then
+    rm -rf "$DEST" 2>/dev/null || true
+    if cp -R "$APP" "$DEST" 2>/dev/null; then
+        INSTALLED=true
+    fi
+fi
+
+if [ "$INSTALLED" = "true" ]; then
+    xattr -dr com.apple.quarantine "$DEST" >/dev/null 2>&1 || true
+    ok "Rec installed to /Applications."
+    printf "\n"
+    line
+    printf "\n  ${GREEN}${BOLD}✓ Rec is installed and running!${NC}\n\n"
+    printf "  ${GREY}Look for the floating record button on your screen.${NC}\n\n"
+    open "$DEST"
+    exit 0
+fi
+
+# Fallback: Build drag-and-drop installer modal if permission required
+warn "Standard install required elevated privileges. Opening installer modal…"
 cat > Installer.swift <<'INSTEOF'
 import Cocoa
 import QuartzCore
@@ -380,28 +402,11 @@ app.activate(ignoringOtherApps: true)
 app.run()
 INSTEOF
 
-if ! swiftc -O -o Installer Installer.swift -framework Cocoa >/dev/null 2>&1; then
-    warn "Using direct install…"
-    DEST="/Applications/$APP_NAME.app"
-    if [ -w "/Applications" ]; then rm -rf "$DEST"; cp -R "$APP" "$DEST"
-    else osascript -e "do shell script \"rm -rf '$DEST'; cp -R '$BUILD_DIR/$APP' '/Applications/'\" with administrator privileges" >/dev/null 2>&1; fi
+if swiftc -O -o Installer Installer.swift -framework Cocoa >/dev/null 2>&1; then
+    ./Installer "$BUILD_DIR/$APP"
+else
+    osascript -e "do shell script \"rm -rf '$DEST'; cp -R '$BUILD_DIR/$APP' '/Applications/'\" with administrator privileges" >/dev/null 2>&1 || true
     xattr -dr com.apple.quarantine "$DEST" >/dev/null 2>&1 || true
-    ok "Installed to Applications."
-    printf "\n"; line
-    printf "\n  ${GREEN}${BOLD}✓ Rec is installed!${NC}\n\n"
-    printf "  Launch Rec now? [Y/n] "
-    read -r ans
-    case "$ans" in [Nn]*) : ;; *) open "$DEST" ;; esac
-    printf "\n"
-    exit 0
+    open "$DEST"
 fi
-ok "Installer ready."
-printf "\n"
-
-line
-printf "\n  ${GREEN}${BOLD}✓ Build complete!${NC}\n\n"
-printf "  ${GREY}A window will open — drag the Rec icon onto the${NC}\n"
-printf "  ${GREY}Applications folder to finish installing.${NC}\n\n"
-
-./Installer "$BUILD_DIR/$APP"
 printf "\n"
