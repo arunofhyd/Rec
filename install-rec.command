@@ -389,11 +389,77 @@ appsLabel.alignment = .center
 appsLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
 bg.addSubview(appsLabel)
 
+class AnimatedInstallButton: NSButton {
+    private var trackingArea: NSTrackingArea?
+    private var isHovered = false { didSet { animateState() } }
+    private var isPressed = false { didSet { animateState() } }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setup()
+    }
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setup()
+    }
+    private func setup() {
+        wantsLayer = true
+        isBordered = false
+        focusRingType = .none
+        layer?.cornerRadius = 10
+        layer?.backgroundColor = NSColor.systemBlue.cgColor
+        contentTintColor = .white
+    }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let area = trackingArea { removeTrackingArea(area) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        NSCursor.pointingHand.set()
+    }
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        NSCursor.arrow.set()
+    }
+    override func mouseDown(with event: NSEvent) {
+        isPressed = true
+        super.mouseDown(with: event)
+    }
+    override func mouseUp(with event: NSEvent) {
+        isPressed = false
+        super.mouseUp(with: event)
+    }
+    private func animateState() {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            ctx.allowsImplicitAnimation = true
+            if isPressed {
+                layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.75).cgColor
+                layer?.transform = CATransform3DMakeScale(0.95, 0.95, 1.0)
+            } else if isHovered {
+                layer?.backgroundColor = NSColor(calibratedRed: 0.15, green: 0.52, blue: 1.0, alpha: 1.0).cgColor
+                layer?.transform = CATransform3DMakeScale(1.04, 1.04, 1.0)
+                layer?.shadowColor = NSColor.systemBlue.cgColor
+                layer?.shadowRadius = 10
+                layer?.shadowOpacity = 0.6
+                layer?.shadowOffset = .zero
+            } else {
+                layer?.backgroundColor = NSColor.systemBlue.cgColor
+                layer?.transform = CATransform3DIdentity
+                layer?.shadowOpacity = 0
+            }
+        }
+    }
+}
+
 // Instant 1-Click Install Button
-let installBtn = NSButton(frame: NSRect(x: (W - 250)/2, y: 35, width: 250, height: 40))
+let installBtn = AnimatedInstallButton(frame: NSRect(x: (W - 270)/2, y: 35, width: 270, height: 42))
 installBtn.title = "⚡ One-Click Install to /Applications"
-installBtn.bezelStyle = .rounded
-installBtn.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+installBtn.font = NSFont.systemFont(ofSize: 13, weight: .bold)
 installBtn.target = ActionTarget.self
 installBtn.action = #selector(ActionTarget.oneClickInstall)
 bg.addSubview(installBtn)
