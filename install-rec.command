@@ -252,8 +252,7 @@ func performInstallation(src: URL) -> Bool {
         }
         try FileManager.default.copyItem(at: src, to: dest)
     } catch {
-        let p = src.path.replacingOccurrences(of: "'", with: "'\\''")
-        let script = "do shell script \"rm -rf '/Applications/\(appName).app'; cp -R '\(p)' /Applications/\" with administrator privileges"
+        let script = "do shell script \"rm -rf '/Applications/\(appName).app'; cp -R '\(src.path)' /Applications/\" with administrator privileges"
         if let s = NSAppleScript(source: script) {
             var err: NSDictionary?
             s.executeAndReturnError(&err)
