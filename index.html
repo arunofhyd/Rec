@@ -99,6 +99,15 @@
             50% { box-shadow: 0 0 20px rgba(255,59,48,0.55); border-color: rgba(255,59,48,0.8); }
         }
         .copied-toast { transition: opacity .3s, transform .3s; }
+        /* Custom scrollbar for horizontal carousel */
+        #changelog-container::-webkit-scrollbar { height: 6px; }
+        #changelog-container::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 9999px; }
+        #changelog-container::-webkit-scrollbar-thumb { background: rgba(255, 59, 48, 0.3); border-radius: 9999px; }
+        #changelog-container::-webkit-scrollbar-thumb:hover { background: rgba(255, 59, 48, 0.6); }
+        function scrollCarousel(containerId, amount) {
+            const el = document.getElementById(containerId);
+            if (el) el.scrollBy({ left: amount, behavior: 'smooth' });
+        }
     </style>
 </head>
 <body class="antialiased selection:bg-brand-red selection:text-white">
@@ -306,9 +315,18 @@
     <!-- Changelog -->
     <section id="changelog" class="py-12 bg-black/40 border-b border-white/5">
         <div class="max-w-6xl mx-auto px-6">
-            <h2 class="text-2xl font-bold mb-8 text-center text-gray-200">Release Notes</h2>
-            <div id="changelog-container" class="space-y-6 max-w-3xl mx-auto">
-                <div class="text-center text-gray-500 animate-pulse">Loading updates…</div>
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-200">Release Notes</h2>
+                    <p class="text-xs text-gray-400 mt-1">Scroll sideways to explore version history</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="scrollCarousel('changelog-container', -360)" class="w-9 h-9 rounded-full bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 flex items-center justify-center transition-all">←</button>
+                    <button onclick="scrollCarousel('changelog-container', 360)" class="w-9 h-9 rounded-full bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 flex items-center justify-center transition-all">→</button>
+                </div>
+            </div>
+            <div id="changelog-container" class="flex gap-6 overflow-x-auto pb-6 snap-x snap-mandatory scroll-smooth">
+                <div class="text-center text-gray-500 animate-pulse w-full py-8">Loading updates…</div>
             </div>
         </div>
     </section>
@@ -323,6 +341,11 @@
     </footer>
 
     <script>
+        function scrollCarousel(id, amount) {
+            const el = document.getElementById(id);
+            if (el) el.scrollBy({ left: amount, behavior: 'smooth' });
+        }
+
         // Version pill from version.json
         fetch('version.json').then(r => r.json()).then(data => {
             if (data.version) {
@@ -339,21 +362,27 @@
                     schema.textContent = JSON.stringify(json);
                 }
             }
-            // Changelog
+            // Changelog Horizontal Carousel
             const container = document.getElementById('changelog-container');
             if (container && Array.isArray(data.changelog)) {
                 container.innerHTML = '';
-                data.changelog.forEach(release => {
+                data.changelog.forEach((release, index) => {
+                    const isLatest = index === 0;
                     const div = document.createElement('div');
-                    div.className = 'bg-white/5 border border-white/10 rounded-xl p-6 hover:border-brand-red/30 transition-colors';
-                    const header = `<div class="flex items-center gap-3 mb-4">
-                        <span class="text-brand-red font-mono font-bold text-lg">v${release.version}</span>
-                        ${release.date ? `<span class="text-gray-500 text-xs px-2 py-0.5 rounded bg-white/5 border border-white/5">${release.date}</span>` : ''}
+                    div.className = `flex-none w-[320px] sm:w-[360px] snap-start bg-white/5 border ${isLatest ? 'border-brand-red/60 shadow-[0_0_15px_rgba(255,59,48,0.15)]' : 'border-white/10'} rounded-2xl p-6 hover:border-brand-red/30 transition-all flex flex-col justify-between`;
+                    
+                    const header = `<div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2.5">
+                            <span class="text-brand-red font-mono font-bold text-lg">v${release.version}</span>
+                            ${isLatest ? `<span class="bg-brand-red/20 text-brand-red text-[10px] font-bold px-2 py-0.5 rounded-full border border-brand-red/30 tracking-wider">LATEST</span>` : ''}
+                        </div>
+                        ${release.date ? `<span class="text-gray-400 text-xs font-mono px-2 py-0.5 rounded bg-white/5 border border-white/5">${release.date}</span>` : ''}
                     </div>`;
                     const list = document.createElement('ul');
-                    list.className = 'space-y-2 text-gray-400 text-sm list-disc list-inside';
+                    list.className = 'space-y-2 text-gray-400 text-sm list-disc list-inside overflow-y-auto max-h-[160px] pr-1';
                     (release.changes || []).forEach(change => {
                         const li = document.createElement('li');
+                        li.className = 'leading-relaxed';
                         li.textContent = change;
                         list.appendChild(li);
                     });
