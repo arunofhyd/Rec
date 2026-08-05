@@ -204,23 +204,93 @@ pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 cat > Installer.swift <<'INSTEOF'
 import Cocoa
+import QuartzCore
 
 let appName = "Rec"
 let sourcePath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ""
 
+func getHighResIcon(path: String) -> NSImage {
+    let icns = "\(path)/Contents/Resources/AppIcon.icns"
+    if FileManager.default.fileExists(atPath: icns), let img = NSImage(contentsOfFile: icns) {
+        img.size = NSSize(width: 128, height: 128)
+        return img
+    }
+    let fallback = NSWorkspace.shared.icon(forFile: path)
+    fallback.size = NSSize(width: 128, height: 128)
+    return fallback
+}
+
+func performInstallation(src: URL) -> Bool {
+    let dest = URL(fileURLWithPath: "/Applications").appendingPathComponent(src.lastPathComponent)
+    do {
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try FileManager.default.removeItem(at: dest)
+        }
+        try FileManager.default.copyItem(at: src, to: dest)
+    } catch {
+        let p = src.path.replacingOccurrences(of: "'", with: "'\\''")
+        let script = "do shell script \"rm -rf '/Applications/\(appName).app'; cp -R '\(p)' /Applications/\" with administrator privileges"
+        if let s = NSAppleScript(source: script) {
+            var err: NSDictionary?
+            s.executeAndReturnError(&err)
+            if err != nil {
+                let a = NSAlert(); a.messageText = "Installation failed"
+                a.informativeText = "Could not copy into Applications."
+                a.runModal(); return false
+            }
+        }
+    }
+    let clean = Process()
+    clean.launchPath = "/usr/bin/xattr"
+    clean.arguments = ["-dr", "com.apple.quarantine", dest.path]
+    clean.standardOutput = Pipe()
+    clean.standardError = Pipe()
+    try? clean.run(); clean.waitUntilExit()
+
+    NSSound(named: "Glass")?.play()
+    let a = NSAlert()
+    a.messageText = "Rec installed!"
+    a.informativeText = "Look for the floating record button."
+    a.addButton(withTitle: "Launch Rec")
+    a.addButton(withTitle: "Quit")
+    if a.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(dest) }
+    NSApp.terminate(nil)
+    return true
+}
+
+class ActionTarget: NSObject {
+    @objc static func oneClickInstall() {
+        if !sourcePath.isEmpty {
+            let src = URL(fileURLWithPath: sourcePath)
+            _ = performInstallation(src: src)
+        }
+    }
+}
+
+// Icon you can drag with crisp 2x Retina rendering.
 class DragIcon: NSImageView, NSDraggingSource {
     var fileURL: URL?
     func draggingSession(_ s: NSDraggingSession, sourceOperationMaskFor c: NSDraggingContext) -> NSDragOperation { .copy }
     override func mouseDown(with event: NSEvent) {
-        guard let url = fileURL else { return }
+        guard let url = fileURL, let originalImg = image else { return }
         let item = NSPasteboardItem()
         item.setString(url.absoluteString, forType: .fileURL)
         let drag = NSDraggingItem(pasteboardWriter: item)
-        drag.setDraggingFrame(bounds, contents: image)
+        
+        let dragImg = NSImage(size: bounds.size)
+        dragImg.lockFocus()
+        if let ctx = NSGraphicsContext.current {
+            ctx.imageInterpolation = .high
+        }
+        originalImg.draw(in: bounds)
+        dragImg.unlockFocus()
+        
+        drag.setDraggingFrame(bounds, contents: dragImg)
         beginDraggingSession(with: [drag], event: event, source: self)
     }
 }
 
+// The Applications folder drop target.
 class DropZone: NSImageView {
     override init(frame f: NSRect) { super.init(frame: f); registerForDraggedTypes([.fileURL]) }
     required init?(coder: NSCoder) { super.init(coder: coder); registerForDraggedTypes([.fileURL]) }
@@ -228,48 +298,14 @@ class DropZone: NSImageView {
     override func performDragOperation(_ s: NSDraggingInfo) -> Bool {
         guard let str = s.draggingPasteboard.propertyList(forType: .fileURL) as? String,
               let src = URL(string: str) else { return false }
-        let dest = URL(fileURLWithPath: "/Applications").appendingPathComponent(src.lastPathComponent)
-        do {
-            if FileManager.default.fileExists(atPath: dest.path) {
-                try FileManager.default.removeItem(at: dest)
-            }
-            try FileManager.default.copyItem(at: src, to: dest)
-        } catch {
-            let p = src.path.replacingOccurrences(of: "'", with: "'\\''")
-            let script = "do shell script \"rm -rf '/Applications/\(appName).app'; cp -R '\(p)' /Applications/\" with administrator privileges"
-            if let s = NSAppleScript(source: script) {
-                var err: NSDictionary?
-                s.executeAndReturnError(&err)
-                if err != nil {
-                    let a = NSAlert(); a.messageText = "Installation failed"
-                    a.informativeText = "Could not copy into Applications."
-                    a.runModal(); return false
-                }
-            }
-        }
-        let clean = Process()
-        clean.launchPath = "/usr/bin/xattr"
-        clean.arguments = ["-dr", "com.apple.quarantine", dest.path]
-        clean.standardOutput = Pipe()
-        clean.standardError = Pipe()
-        try? clean.run(); clean.waitUntilExit()
-
-        NSSound(named: "Glass")?.play()
-        let a = NSAlert()
-        a.messageText = "Rec installed!"
-        a.informativeText = "Look for the floating record button."
-        a.addButton(withTitle: "Launch Rec")
-        a.addButton(withTitle: "Quit")
-        if a.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(dest) }
-        NSApp.terminate(nil)
-        return true
+        return performInstallation(src: src)
     }
 }
 
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 
-let W: CGFloat = 620, H: CGFloat = 380
+let W: CGFloat = 620, H: CGFloat = 410
 let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: W, height: H),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
 win.title = "Install Rec"
@@ -280,24 +316,25 @@ bg.material = .windowBackground; bg.state = .active
 win.contentView = bg
 
 let title = NSTextField(labelWithString: "Install Rec")
-title.frame = NSRect(x: 0, y: H - 70, width: W, height: 30)
+title.frame = NSRect(x: 0, y: H - 65, width: W, height: 30)
 title.alignment = .center
 title.font = NSFont.systemFont(ofSize: 22, weight: .bold)
 bg.addSubview(title)
 
-let sub = NSTextField(labelWithString: "Drag the app icon onto the Applications folder")
-sub.frame = NSRect(x: 0, y: H - 96, width: W, height: 20)
+let sub = NSTextField(labelWithString: "Drag Rec to Applications or click Instant Install below")
+sub.frame = NSRect(x: 0, y: H - 90, width: W, height: 20)
 sub.alignment = .center
 sub.font = NSFont.systemFont(ofSize: 13)
 sub.textColor = .secondaryLabelColor
 bg.addSubview(sub)
 
 let iconSize: CGFloat = 128
-let midY = (H - iconSize) / 2 - 10
+let midY: CGFloat = 145
 
+// App icon (draggable)
 let appIcon = DragIcon(frame: NSRect(x: 90, y: midY, width: iconSize, height: iconSize))
 appIcon.imageScaling = .scaleProportionallyUpOrDown
-appIcon.image = NSWorkspace.shared.icon(forFile: sourcePath)
+appIcon.image = getHighResIcon(path: sourcePath)
 appIcon.fileURL = URL(fileURLWithPath: sourcePath)
 bg.addSubview(appIcon)
 
@@ -307,16 +344,20 @@ appLabel.alignment = .center
 appLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
 bg.addSubview(appLabel)
 
-let arrow = NSTextField(labelWithString: "→")
-arrow.frame = NSRect(x: (W - 40)/2, y: midY + iconSize/2 - 24, width: 40, height: 40)
+// Arrow
+let arrow = NSTextField(labelWithString: "➜")
+arrow.frame = NSRect(x: (W - 50)/2, y: midY + iconSize/2 - 24, width: 50, height: 40)
 arrow.alignment = .center
-arrow.font = NSFont.systemFont(ofSize: 34, weight: .thin)
-arrow.textColor = .tertiaryLabelColor
+arrow.font = NSFont.systemFont(ofSize: 32, weight: .regular)
+arrow.textColor = .secondaryLabelColor
 bg.addSubview(arrow)
 
+// Applications folder (drop zone)
 let drop = DropZone(frame: NSRect(x: W - 90 - iconSize, y: midY, width: iconSize, height: iconSize))
 drop.imageScaling = .scaleProportionallyUpOrDown
-drop.image = NSWorkspace.shared.icon(forFile: "/Applications")
+let appsIcon = NSWorkspace.shared.icon(forFile: "/Applications")
+appsIcon.size = NSSize(width: 128, height: 128)
+drop.image = appsIcon
 bg.addSubview(drop)
 
 let appsLabel = NSTextField(labelWithString: "Applications")
@@ -324,6 +365,15 @@ appsLabel.frame = NSRect(x: W - 90 - iconSize, y: midY - 26, width: iconSize, he
 appsLabel.alignment = .center
 appsLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
 bg.addSubview(appsLabel)
+
+// Instant 1-Click Install Button
+let installBtn = NSButton(frame: NSRect(x: (W - 250)/2, y: 35, width: 250, height: 40))
+installBtn.title = "⚡ One-Click Install to /Applications"
+installBtn.bezelStyle = .rounded
+installBtn.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+installBtn.target = ActionTarget.self
+installBtn.action = #selector(ActionTarget.oneClickInstall)
+bg.addSubview(installBtn)
 
 win.makeKeyAndOrderFront(nil)
 app.activate(ignoringOtherApps: true)
