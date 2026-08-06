@@ -407,7 +407,7 @@ class AnimatedInstallButton: NSButton {
         isBordered = false
         focusRingType = .none
         layer?.cornerRadius = 10
-        layer?.backgroundColor = NSColor.systemBlue.cgColor
+        layer?.backgroundColor = NSColor(red: 0.18, green: 0.18, blue: 0.20, alpha: 1.0).cgColor
         contentTintColor = .white
     }
     override func updateTrackingAreas() {
@@ -438,17 +438,17 @@ class AnimatedInstallButton: NSButton {
             ctx.duration = 0.15
             ctx.allowsImplicitAnimation = true
             if isPressed {
-                layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.75).cgColor
+                layer?.backgroundColor = NSColor(red: 0.14, green: 0.14, blue: 0.16, alpha: 1.0).cgColor
                 layer?.transform = CATransform3DMakeScale(0.95, 0.95, 1.0)
             } else if isHovered {
-                layer?.backgroundColor = NSColor(calibratedRed: 0.15, green: 0.52, blue: 1.0, alpha: 1.0).cgColor
+                layer?.backgroundColor = NSColor(red: 0.28, green: 0.28, blue: 0.30, alpha: 1.0).cgColor
                 layer?.transform = CATransform3DMakeScale(1.04, 1.04, 1.0)
-                layer?.shadowColor = NSColor.systemBlue.cgColor
-                layer?.shadowRadius = 10
-                layer?.shadowOpacity = 0.6
+                layer?.shadowColor = NSColor.black.cgColor
+                layer?.shadowRadius = 8
+                layer?.shadowOpacity = 0.35
                 layer?.shadowOffset = .zero
             } else {
-                layer?.backgroundColor = NSColor.systemBlue.cgColor
+                layer?.backgroundColor = NSColor(red: 0.18, green: 0.18, blue: 0.20, alpha: 1.0).cgColor
                 layer?.transform = CATransform3DIdentity
                 layer?.shadowOpacity = 0
             }
