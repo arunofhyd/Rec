@@ -367,12 +367,37 @@ appLabel.alignment = .center
 appLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
 bg.addSubview(appLabel)
 
-// Arrow
-let arrow = NSTextField(labelWithString: "➜")
-arrow.frame = NSRect(x: (W - 50)/2, y: midY + iconSize/2 - 24, width: 50, height: 40)
-arrow.alignment = .center
-arrow.font = NSFont.systemFont(ofSize: 32, weight: .regular)
-arrow.textColor = .secondaryLabelColor
+// Gradient Arrow View (Fading Stem Arrow)
+class GradientArrowView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let w = bounds.width
+        let h = bounds.height
+        let midY = h / 2.0
+        
+        let stemH: CGFloat = 10
+        let headH: CGFloat = 26
+        let headW: CGFloat = 20
+        let stemR = w - headW
+        
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: 0, y: midY - stemH/2))
+        path.line(to: NSPoint(x: stemR, y: midY - stemH/2))
+        path.line(to: NSPoint(x: stemR, y: midY - headH/2))
+        path.line(to: NSPoint(x: w, y: midY))
+        path.line(to: NSPoint(x: stemR, y: midY + headH/2))
+        path.line(to: NSPoint(x: stemR, y: midY + stemH/2))
+        path.line(to: NSPoint(x: 0, y: midY + stemH/2))
+        path.close()
+        
+        let startColor = NSColor.labelColor.withAlphaComponent(0.0)
+        let endColor = NSColor.labelColor.withAlphaComponent(0.50)
+        let gradient = NSGradient(starting: startColor, ending: endColor)
+        gradient?.draw(in: path, angle: 0)
+    }
+}
+
+let arrow = GradientArrowView(frame: NSRect(x: (W - 70)/2, y: midY + iconSize/2 - 18, width: 70, height: 36))
 bg.addSubview(arrow)
 
 // Applications folder (drop zone)
