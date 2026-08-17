@@ -1637,28 +1637,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let buttonsY = credit.frame.minY - 48
         
-        let permW: CGFloat = 110
-        let contactW: CGFloat = 85
-        let gitW: CGFloat = 85
-        let spacing: CGFloat = 10
-        let totalW = permW + contactW + gitW + spacing * 2
+        let contactW: CGFloat = 110
+        let gitW: CGFloat = 110
+        let spacing: CGFloat = 16
+        let totalW = contactW + gitW + spacing
         let startX = (width - totalW) / 2
         
-        let permBtn = NSButton(title: "Permissions", target: self, action: #selector(showPermissionsAction))
-        permBtn.frame = NSRect(x: startX, y: buttonsY, width: permW, height: 32)
-        permBtn.isBordered = false
-        permBtn.wantsLayer = true
-        permBtn.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.18).cgColor
-        permBtn.layer?.cornerRadius = 16
-        permBtn.layer?.masksToBounds = true
-        permBtn.attributedTitle = NSAttributedString(string: "Permissions", attributes: [
-            .foregroundColor: NSColor.systemRed,
-            .font: NSFont.systemFont(ofSize: 13, weight: .semibold)
-        ])
-        bg.addSubview(permBtn)
-
         let contact = NSButton(title: "Contact", target: self, action: #selector(contactDeveloper))
-        contact.frame = NSRect(x: startX + permW + spacing, y: buttonsY, width: contactW, height: 32)
+        contact.frame = NSRect(x: startX, y: buttonsY, width: contactW, height: 32)
         contact.isBordered = false
         contact.wantsLayer = true
         contact.layer?.backgroundColor = NSColor.white.cgColor
@@ -1671,7 +1657,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bg.addSubview(contact)
 
         let github = NSButton(title: "GitHub", target: self, action: #selector(openGitHub))
-        github.frame = NSRect(x: startX + permW + spacing + contactW + spacing, y: buttonsY, width: gitW, height: 32)
+        github.frame = NSRect(x: startX + contactW + spacing, y: buttonsY, width: gitW, height: 32)
         github.isBordered = false
         github.wantsLayer = true
         github.layer?.backgroundColor = NSColor.black.cgColor
