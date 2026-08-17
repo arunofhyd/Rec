@@ -1701,7 +1701,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let width: CGFloat = 480
-        let height: CGFloat = 490
+        let height: CGFloat = 530
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
                            styleMask: [.titled, .closable, .fullSizeContentView],
                            backing: .buffered, defer: false)
@@ -1720,16 +1720,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bg.state = .active
 
         // App Icon
-        let icon = NSImageView(frame: NSRect(x: (width - 52)/2, y: 390, width: 52, height: 52))
+        let icon = NSImageView(frame: NSRect(x: (width - 56)/2, y: 424, width: 56, height: 56))
         icon.image = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
         icon.imageScaling = .scaleProportionallyUpOrDown
         bg.addSubview(icon)
 
         // Title
         let title = NSTextField(labelWithString: "Permissions & Setup")
-        title.font = NSFont.systemFont(ofSize: 20, weight: .bold)
+        title.font = NSFont.systemFont(ofSize: 21, weight: .bold)
         title.alignment = .center
-        title.frame = NSRect(x: 0, y: 352, width: width, height: 26)
+        title.frame = NSRect(x: 0, y: 382, width: width, height: 28)
         bg.addSubview(title)
 
         // Subtitle
@@ -1737,7 +1737,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         sub.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         sub.textColor = .secondaryLabelColor
         sub.alignment = .center
-        sub.frame = NSRect(x: 20, y: 330, width: width - 40, height: 16)
+        sub.frame = NSRect(x: 20, y: 356, width: width - 40, height: 18)
         bg.addSubview(sub)
 
         struct PermItem {
@@ -1779,59 +1779,52 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         ]
 
-        let cardWidth = width - 40 // 440
-        let cardHeight: CGFloat = 54
-        let cardYPositions: [CGFloat] = [262, 200, 138, 76]
+        let rowHeight: CGFloat = 48
+        let rowYPositions: [CGFloat] = [282, 218, 154, 90]
 
         for (idx, item) in items.enumerated() {
-            let cardY = cardYPositions[idx]
-            let card = NSBox(frame: NSRect(x: 20, y: cardY, width: cardWidth, height: cardHeight))
-            card.boxType = .custom
-            card.isTransparent = false
-            card.fillColor = NSColor.labelColor.withAlphaComponent(0.05)
-            card.borderColor = NSColor.separatorColor.withAlphaComponent(0.22)
-            card.borderWidth = 1
-            card.cornerRadius = 10
+            let rowY = rowYPositions[idx]
 
-            let symView = NSImageView(frame: NSRect(x: 14, y: (cardHeight - 24)/2, width: 24, height: 24))
-            let symCfg = NSImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+            // Icon
+            let symView = NSImageView(frame: NSRect(x: 32, y: rowY + (rowHeight - 26)/2, width: 26, height: 26))
+            let symCfg = NSImage.SymbolConfiguration(pointSize: 20, weight: .semibold)
             symView.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(symCfg)
             symView.contentTintColor = item.color
-            card.addSubview(symView)
+            bg.addSubview(symView)
 
-            let textWidth = cardWidth - 50 - 80
+            // Text
+            let textWidth = width - 68 - 115
             let hLabel = NSTextField(labelWithString: item.title)
-            hLabel.font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
-            hLabel.frame = NSRect(x: 48, y: 27, width: textWidth, height: 16)
-            card.addSubview(hLabel)
+            hLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+            hLabel.frame = NSRect(x: 68, y: rowY + 24, width: textWidth, height: 18)
+            bg.addSubview(hLabel)
 
             let dLabel = NSTextField(labelWithString: item.desc)
-            dLabel.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+            dLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .regular)
             dLabel.textColor = .secondaryLabelColor
             dLabel.lineBreakMode = .byTruncatingTail
-            dLabel.frame = NSRect(x: 48, y: 10, width: textWidth, height: 15)
-            card.addSubview(dLabel)
+            dLabel.frame = NSRect(x: 68, y: rowY + 4, width: textWidth, height: 18)
+            bg.addSubview(dLabel)
 
+            // Action Button
             let btn = NSButton(title: "Open", target: self, action: item.action)
-            btn.frame = NSRect(x: cardWidth - 78, y: (cardHeight - 26)/2, width: 66, height: 26)
+            btn.frame = NSRect(x: width - 32 - 70, y: rowY + (rowHeight - 28)/2, width: 70, height: 28)
             btn.bezelStyle = .rounded
-            btn.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
-            card.addSubview(btn)
-
-            bg.addSubview(card)
+            btn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+            bg.addSubview(btn)
         }
 
         // Done Button (Crisp contrast pill)
         let doneBtn = NSButton(title: "Done", target: self, action: #selector(closePermissionsGuide))
-        doneBtn.frame = NSRect(x: (width - 140)/2, y: 24, width: 140, height: 34)
+        doneBtn.frame = NSRect(x: (width - 150)/2, y: 26, width: 150, height: 36)
         doneBtn.isBordered = false
         doneBtn.wantsLayer = true
         doneBtn.layer?.backgroundColor = NSColor.white.cgColor
-        doneBtn.layer?.cornerRadius = 17
+        doneBtn.layer?.cornerRadius = 18
         doneBtn.layer?.masksToBounds = true
         doneBtn.attributedTitle = NSAttributedString(string: "Done", attributes: [
             .foregroundColor: NSColor.black,
-            .font: NSFont.systemFont(ofSize: 13, weight: .semibold)
+            .font: NSFont.systemFont(ofSize: 13.5, weight: .semibold)
         ])
         bg.addSubview(doneBtn)
 
