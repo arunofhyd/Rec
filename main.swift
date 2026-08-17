@@ -1564,10 +1564,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let width: CGFloat = 440
-        let height: CGFloat = 510
+        struct RecAboutFeature {
+            let symbol: String
+            let color: NSColor
+            let title: String
+            let desc: String
+        }
+
+        let features: [RecAboutFeature] = [
+            RecAboutFeature(symbol: "record.circle", color: .systemRed, title: "Native Screen Capture", desc: "Records full screen, single windows, or cropped regions with ScreenCaptureKit."),
+            RecAboutFeature(symbol: "speaker.wave.3.fill", color: .systemPurple, title: "Internal System Audio", desc: "Direct hardware capture for crystal-clear system audio without loopback drivers."),
+            RecAboutFeature(symbol: "bolt.fill", color: .systemOrange, title: "Fast & Lightweight", desc: "Hardware-accelerated Apple Silicon encoding directly to high-efficiency video."),
+            RecAboutFeature(symbol: "chevron.left.forwardslash.chevron.right", color: .systemPink, title: "Free & Open Source", desc: "Rec is completely free and open source. Check out the repository on GitHub.")
+        ]
+
+        let width: CGFloat = 460
+        let textWidth: CGFloat = width - 115
+        let para = NSMutableParagraphStyle()
+        para.lineSpacing = 2
+        let textFont = NSFont.systemFont(ofSize: 11.5, weight: .regular)
+        let titleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
+
+        var featureHeights: [CGFloat] = []
+        var totalFeaturesHeight: CGFloat = 0
+        for f in features {
+            let attr = NSAttributedString(string: f.desc, attributes: [
+                .font: textFont,
+                .paragraphStyle: para
+            ])
+            let measured = attr.boundingRect(
+                with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading])
+            let h = ceil(measured.height) + 24
+            featureHeights.append(h)
+            totalFeaturesHeight += h + 16
+        }
+        totalFeaturesHeight -= 16
+
+        let headerHeight: CGFloat = 204
+        let bottomSpaceNeeded: CGFloat = 124
+        let finalHeight = headerHeight + totalFeaturesHeight + bottomSpaceNeeded
+
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: finalHeight),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
@@ -1580,68 +1619,69 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.isReleasedWhenClosed = false
         win.level = .floating
 
-        let bg = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        let bg = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: finalHeight))
         bg.material = .popover
         bg.blendingMode = .behindWindow
         bg.state = .active
         
-        let icon = NSImageView(frame: NSRect(x: (width - 58)/2, y: 426, width: 58, height: 58))
+        let icon = NSImageView(frame: NSRect(x: (width - 64)/2, y: finalHeight - 88, width: 64, height: 64))
         icon.image = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
         icon.imageScaling = .scaleProportionallyUpOrDown
         bg.addSubview(icon)
 
         let title = NSTextField(labelWithString: "Rec")
-        title.font = NSFont.systemFont(ofSize: 22, weight: .bold)
+        title.font = NSFont.systemFont(ofSize: 24, weight: .bold)
         title.alignment = .center
-        title.frame = NSRect(x: 0, y: 388, width: width, height: 26)
+        title.frame = NSRect(x: 0, y: finalHeight - 124, width: width, height: 28)
         bg.addSubview(title)
 
         let ver = NSTextField(labelWithString: "Version \(appVersion)")
         ver.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
         ver.textColor = .tertiaryLabelColor
         ver.alignment = .center
-        ver.frame = NSRect(x: 0, y: 368, width: width, height: 15)
+        ver.frame = NSRect(x: 0, y: finalHeight - 144, width: width, height: 15)
         bg.addSubview(ver)
         
         let sub = NSTextField(labelWithString: "A clean, native screen and internal audio recorder.")
-        sub.font = NSFont.systemFont(ofSize: 11.5, weight: .regular)
+        sub.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         sub.textColor = .secondaryLabelColor
         sub.alignment = .center
-        sub.frame = NSRect(x: 16, y: 346, width: width - 32, height: 16)
+        sub.frame = NSRect(x: 16, y: finalHeight - 168, width: width - 32, height: 16)
         bg.addSubview(sub)
 
-        let features: [(String, NSColor, String, String)] = [
-            ("record.circle", .systemRed, "Native Screen Capture", "Records screen & internal audio with ScreenCaptureKit."),
-            ("speaker.wave.3.fill", .systemPurple, "Internal System Audio", "Crystal-clear system sound without loopback drivers."),
-            ("bolt.fill", .systemOrange, "Fast & Lightweight", "Hardware-accelerated encoding directly to .mov."),
-            ("chevron.left.forwardslash.chevron.right", .systemPink, "Free & Open Source", "Rec is completely free. Check out the source on GitHub.")
-        ]
+        var currentY = finalHeight - headerHeight
+        for (i, f) in features.enumerated() {
+            let itemH = featureHeights[i]
+            let itemY = currentY - itemH
 
-        let textWidth = width - 82
-        let rowYPositions: [CGFloat] = [286, 232, 178, 124]
-
-        for (idx, item) in features.enumerated() {
-            let rowY = rowYPositions[idx]
-            let (sym, color, head, desc) = item
-
-            let symSize: CGFloat = 22
-            let symView = NSImageView(frame: NSRect(x: 28, y: rowY + 11, width: symSize, height: symSize))
-            let symCfg = NSImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
-            symView.image = NSImage(systemSymbolName: sym, accessibilityDescription: nil)?.withSymbolConfiguration(symCfg)
-            symView.contentTintColor = color
+            let symSize: CGFloat = 24
+            let symView = NSImageView(frame: NSRect(x: 36, y: itemY + (itemH - symSize)/2 + 2, width: symSize, height: symSize))
+            let symCfg = NSImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+            symView.image = NSImage(systemSymbolName: f.symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(symCfg)
+            symView.contentTintColor = f.color
             bg.addSubview(symView)
 
-            let hLabel = NSTextField(labelWithString: head)
-            hLabel.font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
-            hLabel.frame = NSRect(x: 62, y: rowY + 22, width: textWidth, height: 16)
+            let hLabel = NSTextField(labelWithString: f.title)
+            hLabel.font = titleFont
+            hLabel.frame = NSRect(x: 74, y: itemY + itemH - 20, width: textWidth, height: 18)
             bg.addSubview(hLabel)
 
-            let dLabel = NSTextField(labelWithString: desc)
-            dLabel.font = NSFont.systemFont(ofSize: 11, weight: .regular)
-            dLabel.textColor = .secondaryLabelColor
-            dLabel.lineBreakMode = .byTruncatingTail
-            dLabel.frame = NSRect(x: 62, y: rowY + 3, width: textWidth, height: 16)
+            let attr = NSAttributedString(string: f.desc, attributes: [
+                .font: textFont,
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: para
+            ])
+            let dLabel = NSTextField(labelWithAttributedString: attr)
+            dLabel.frame = NSRect(x: 74, y: itemY, width: textWidth, height: itemH - 22)
+            dLabel.lineBreakMode = .byWordWrapping
+            dLabel.maximumNumberOfLines = 0
+            dLabel.isEditable = false
+            dLabel.drawsBackground = false
+            dLabel.isBordered = false
             bg.addSubview(dLabel)
+
+            currentY = itemY - 16
         }
 
         // Author Note
@@ -1661,11 +1701,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let startX = (width - totalW) / 2
         
         let contact = NSButton(title: "Contact", target: self, action: #selector(contactDeveloper))
-        contact.frame = NSRect(x: startX, y: buttonsY, width: contactW, height: 32)
+        contact.frame = NSRect(x: startX, y: buttonsY, width: contactW, height: 34)
         contact.isBordered = false
         contact.wantsLayer = true
         contact.layer?.backgroundColor = NSColor.white.cgColor
-        contact.layer?.cornerRadius = 16
+        contact.layer?.cornerRadius = 17
         contact.layer?.masksToBounds = true
         contact.attributedTitle = NSAttributedString(string: "Contact", attributes: [
             .foregroundColor: NSColor.black,
@@ -1674,11 +1714,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bg.addSubview(contact)
 
         let github = NSButton(title: "GitHub", target: self, action: #selector(openGitHub))
-        github.frame = NSRect(x: startX + contactW + spacing, y: buttonsY, width: gitW, height: 32)
+        github.frame = NSRect(x: startX + contactW + spacing, y: buttonsY, width: gitW, height: 34)
         github.isBordered = false
         github.wantsLayer = true
         github.layer?.backgroundColor = NSColor.black.cgColor
-        github.layer?.cornerRadius = 16
+        github.layer?.cornerRadius = 17
         github.layer?.masksToBounds = true
         github.attributedTitle = NSAttributedString(string: "GitHub", attributes: [
             .foregroundColor: NSColor.white,
