@@ -1,7 +1,16 @@
 {
-  "version": "1.2.1",
+  "version": "1.2.2",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.2.2",
+      "date": "2026-08-17",
+      "changes": [
+        "macOS Tahoe (26) Compatibility: Added applicationShouldHandleReopen handler so clicking the app in Finder or Spotlight restores the floating bar when running as an accessory.",
+        "Menu Bar Template Icons: Configured all menu bar SF Symbol status icons with isTemplate = true to adapt properly across light and dark menu bars.",
+        "Status Item Fallback: Added automatic detection in hidePanel to restore floating controls if menu bar item visibility is suppressed by system settings."
+      ]
+    },
     {
       "version": "1.2.1",
       "date": "2026-08-05",
