@@ -1,7 +1,16 @@
 {
-  "version": "1.2.2",
+  "version": "1.2.3",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.2.3",
+      "date": "2026-08-17",
+      "changes": [
+        "Permissions & System Setup Guide: Added an interactive onboarding and settings window with one-click direct links to open Screen Recording, Menu Bar / Control Center, Accessibility, and Microphone system settings.",
+        "Menu & Settings Integration: Added direct 'Permissions & Settings...' access in both the menu bar dropdown and the floating control panel settings menu.",
+        "Enhanced First-Launch Flow: Clear setup alerts and guidance on first launch to ensure macOS Tahoe (26+) Menu Bar and Screen Capture permissions are properly enabled."
+      ]
+    },
     {
       "version": "1.2.2",
       "date": "2026-08-17",
