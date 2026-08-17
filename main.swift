@@ -1308,7 +1308,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupRecorder()
         checkPermissions()
         setupCameraIfNeeded()
-        checkFirstLaunch()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -1351,31 +1350,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let granted = CGPreflightScreenCaptureAccess()
         if !granted {
             CGRequestScreenCaptureAccess()
-            let alert = NSAlert()
-            alert.messageText = "Screen Recording & Menu Bar Setup"
-            alert.informativeText = "Rec requires Screen Recording permission to capture video and system audio.\n\nOn macOS Tahoe (26+), please also ensure Rec is enabled under System Settings > Menu Bar so the menu bar icon stays accessible."
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "Open Setup Guide...")
-            alert.addButton(withTitle: "Screen Recording Settings")
-            alert.addButton(withTitle: "Menu Bar Settings")
-            alert.addButton(withTitle: "Continue")
-            
-            let res = alert.runModal()
-            if res == .alertFirstButtonReturn {
-                showPermissionsGuide(isFirstLaunch: true)
-            } else if res == .alertSecondButtonReturn {
-                openScreenRecordingSettings()
-            } else if res == .alertThirdButtonReturn {
-                openMenuBarSettings()
-            }
         }
+        checkFirstLaunch(screenCaptureGranted: granted)
     }
 
-    func checkFirstLaunch() {
+    func checkFirstLaunch(screenCaptureGranted: Bool) {
         let key = "hasSeenPermissionsGuide_v1"
-        if !UserDefaults.standard.bool(forKey: key) {
-            UserDefaults.standard.set(true, forKey: key)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        let hasSeen = UserDefaults.standard.bool(forKey: key)
+        if !hasSeen || !screenCaptureGranted {
+            if !hasSeen {
+                UserDefaults.standard.set(true, forKey: key)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 self?.showPermissionsGuide(isFirstLaunch: true)
             }
         }
@@ -1714,8 +1700,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let width: CGFloat = 480
-        let height: CGFloat = 540
+        let width: CGFloat = 460
+        let height: CGFloat = 520
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
                            styleMask: [.titled, .closable, .fullSizeContentView],
                            backing: .buffered, defer: false)
@@ -1725,21 +1711,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.center()
         win.isReleasedWhenClosed = false
         win.level = .floating
+        win.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        win.standardWindowButton(.zoomButton)?.isHidden = true
 
         let bg = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         bg.material = .popover
         bg.blendingMode = .behindWindow
         bg.state = .active
 
-        let icon = NSImageView(frame: NSRect(x: (width - 64)/2, y: height - 85, width: 64, height: 64))
+        let icon = NSImageView(frame: NSRect(x: (width - 60)/2, y: height - 88, width: 60, height: 60))
         icon.image = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
         icon.imageScaling = .scaleProportionallyUpOrDown
         bg.addSubview(icon)
 
         let title = NSTextField(labelWithString: "Permissions & Setup")
-        title.font = NSFont.systemFont(ofSize: 22, weight: .bold)
+        title.font = NSFont.systemFont(ofSize: 21, weight: .bold)
         title.alignment = .center
-        title.frame = NSRect(x: 0, y: icon.frame.minY - 32, width: width, height: 26)
+        title.frame = NSRect(x: 0, y: icon.frame.minY - 30, width: width, height: 26)
         bg.addSubview(title)
 
         let sub = NSTextField(labelWithString: "Enable permissions and menu bar access for smooth recording on macOS.")
@@ -1788,52 +1776,58 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         ]
 
-        var currentY = sub.frame.minY - 20
-        let rowH: CGFloat = 64
-        let bodyWidth = width - 48
+        var currentY = sub.frame.minY - 18
+        let rowH: CGFloat = 62
+        let bodyWidth = width - 40
 
         for item in items {
             currentY -= rowH
-            let card = NSBox(frame: NSRect(x: 24, y: currentY, width: bodyWidth, height: rowH - 8))
+            let card = NSBox(frame: NSRect(x: 20, y: currentY, width: bodyWidth, height: rowH - 6))
             card.boxType = .custom
             card.isTransparent = false
-            card.fillColor = NSColor.textColor.withAlphaComponent(0.04)
-            card.borderColor = NSColor.separatorColor.withAlphaComponent(0.3)
+            card.fillColor = NSColor.labelColor.withAlphaComponent(0.04)
+            card.borderColor = NSColor.separatorColor.withAlphaComponent(0.25)
             card.borderWidth = 1
             card.cornerRadius = 10
 
-            let symView = NSImageView(frame: NSRect(x: 12, y: (card.frame.height - 24)/2, width: 24, height: 24))
+            let symView = NSImageView(frame: NSRect(x: 12, y: (card.frame.height - 26)/2, width: 26, height: 26))
             let symCfg = NSImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
             symView.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(symCfg)
             symView.contentTintColor = item.color
             card.addSubview(symView)
 
             let hLabel = NSTextField(labelWithString: item.title)
-            hLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
-            hLabel.frame = NSRect(x: 44, y: card.frame.height - 22, width: bodyWidth - 145, height: 16)
+            hLabel.font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+            hLabel.frame = NSRect(x: 48, y: card.frame.height - 23, width: bodyWidth - 142, height: 16)
             card.addSubview(hLabel)
 
             let dLabel = NSTextField(labelWithString: item.desc)
-            dLabel.font = NSFont.systemFont(ofSize: 10.5)
+            dLabel.font = NSFont.systemFont(ofSize: 10.5, weight: .regular)
             dLabel.textColor = .secondaryLabelColor
             dLabel.lineBreakMode = .byWordWrapping
-            dLabel.frame = NSRect(x: 44, y: 4, width: bodyWidth - 145, height: 26)
+            dLabel.frame = NSRect(x: 48, y: 5, width: bodyWidth - 142, height: 26)
             card.addSubview(dLabel)
 
             let btn = NSButton(title: "Open", target: self, action: item.action)
-            btn.frame = NSRect(x: bodyWidth - 88, y: (card.frame.height - 26)/2, width: 76, height: 26)
+            btn.frame = NSRect(x: bodyWidth - 84, y: (card.frame.height - 26)/2, width: 72, height: 26)
             btn.bezelStyle = .rounded
-            btn.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+            btn.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
             card.addSubview(btn)
 
             bg.addSubview(card)
         }
 
         let doneBtn = NSButton(title: "Done", target: self, action: #selector(closePermissionsGuide))
-        doneBtn.frame = NSRect(x: (width - 120)/2, y: 18, width: 120, height: 32)
-        doneBtn.bezelStyle = .rounded
-        doneBtn.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        doneBtn.keyEquivalent = "\r"
+        doneBtn.frame = NSRect(x: (width - 140)/2, y: 20, width: 140, height: 34)
+        doneBtn.isBordered = false
+        doneBtn.wantsLayer = true
+        doneBtn.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
+        doneBtn.layer?.cornerRadius = 17
+        doneBtn.layer?.masksToBounds = true
+        doneBtn.attributedTitle = NSAttributedString(string: "Done", attributes: [
+            .foregroundColor: NSColor.labelColor,
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold)
+        ])
         bg.addSubview(doneBtn)
 
         win.contentView = bg
@@ -1845,6 +1839,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func closePermissionsGuide() {
         permissionsWindow?.close()
         permissionsWindow = nil
+        showPanel()
     }
 
     @objc func openScreenRecordingSettings() {
