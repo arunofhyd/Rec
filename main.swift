@@ -1701,7 +1701,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let width: CGFloat = 480
-        let height: CGFloat = 560
+        let height: CGFloat = 550
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
                            styleMask: [.titled, .closable, .fullSizeContentView],
                            backing: .buffered, defer: false)
@@ -1720,7 +1720,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bg.state = .active
 
         // App Icon
-        let icon = NSImageView(frame: NSRect(x: (width - 60)/2, y: 440, width: 60, height: 60))
+        let icon = NSImageView(frame: NSRect(x: (width - 58)/2, y: 446, width: 58, height: 58))
         icon.image = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
         icon.imageScaling = .scaleProportionallyUpOrDown
         bg.addSubview(icon)
@@ -1729,7 +1729,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let title = NSTextField(labelWithString: "Permissions & Setup")
         title.font = NSFont.systemFont(ofSize: 22, weight: .bold)
         title.alignment = .center
-        title.frame = NSRect(x: 0, y: 398, width: width, height: 28)
+        title.frame = NSRect(x: 0, y: 404, width: width, height: 28)
         bg.addSubview(title)
 
         // Subtitle
@@ -1737,7 +1737,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         sub.font = NSFont.systemFont(ofSize: 12.5, weight: .regular)
         sub.textColor = .secondaryLabelColor
         sub.alignment = .center
-        sub.frame = NSRect(x: 20, y: 368, width: width - 40, height: 18)
+        sub.frame = NSRect(x: 20, y: 380, width: width - 40, height: 18)
         bg.addSubview(sub)
 
         struct PermItem {
@@ -1753,35 +1753,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 symbol: "record.circle.fill",
                 color: .systemRed,
                 title: "Screen Recording (Required)",
-                desc: "Allows capturing your screen, windows, and system audio.",
+                desc: "Allows capturing screen video, audio, and windows.",
                 action: #selector(openScreenRecordingSettings)
             ),
             PermItem(
                 symbol: "menubar.rectangle",
                 color: .systemBlue,
                 title: "Menu Bar Icon (macOS Tahoe+)",
-                desc: "Enable Rec in Menu Bar so it stays accessible when controls are closed.",
+                desc: "Keep Rec visible in the menu bar when closed.",
                 action: #selector(openMenuBarSettings)
             ),
             PermItem(
                 symbol: "hand.point.up.left.fill",
                 color: .systemPurple,
                 title: "Accessibility (Optional)",
-                desc: "Enables click animations and global shortcuts during recording.",
+                desc: "Enables cursor click effects and global hotkeys.",
                 action: #selector(openAccessibilitySettings)
             ),
             PermItem(
                 symbol: "mic.fill",
                 color: .systemOrange,
                 title: "Microphone (Optional)",
-                desc: "Allows voice narration and microphone audio capture.",
+                desc: "Record external voice narration and microphone.",
                 action: #selector(openMicrophoneSettings)
             )
         ]
 
         let cardWidth = width - 40 // 440
         let cardHeight: CGFloat = 62
-        let cardYPositions: [CGFloat] = [290, 218, 146, 74]
+        let cardYPositions: [CGFloat] = [302, 230, 158, 86]
 
         for (idx, item) in items.enumerated() {
             let cardY = cardYPositions[idx]
@@ -1793,26 +1793,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             card.borderWidth = 1
             card.cornerRadius = 12
 
-            let symView = NSImageView(frame: NSRect(x: 14, y: (cardHeight - 28)/2, width: 28, height: 28))
+            let symView = NSImageView(frame: NSRect(x: 16, y: (cardHeight - 28)/2, width: 28, height: 28))
             let symCfg = NSImage.SymbolConfiguration(pointSize: 20, weight: .semibold)
             symView.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)?.withSymbolConfiguration(symCfg)
             symView.contentTintColor = item.color
             card.addSubview(symView)
 
+            let textWidth = cardWidth - 56 - 86
             let hLabel = NSTextField(labelWithString: item.title)
             hLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-            hLabel.frame = NSRect(x: 52, y: 33, width: cardWidth - 145, height: 18)
+            hLabel.frame = NSRect(x: 56, y: 32, width: textWidth, height: 18)
             card.addSubview(hLabel)
 
             let dLabel = NSTextField(labelWithString: item.desc)
             dLabel.font = NSFont.systemFont(ofSize: 11, weight: .regular)
             dLabel.textColor = .secondaryLabelColor
-            dLabel.lineBreakMode = .byWordWrapping
-            dLabel.frame = NSRect(x: 52, y: 9, width: cardWidth - 145, height: 20)
+            dLabel.lineBreakMode = .byTruncatingTail
+            dLabel.frame = NSRect(x: 56, y: 12, width: textWidth, height: 17)
             card.addSubview(dLabel)
 
             let btn = NSButton(title: "Open", target: self, action: item.action)
-            btn.frame = NSRect(x: cardWidth - 84, y: (cardHeight - 28)/2, width: 72, height: 28)
+            btn.frame = NSRect(x: cardWidth - 84, y: (cardHeight - 28)/2, width: 70, height: 28)
             btn.bezelStyle = .rounded
             btn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
             card.addSubview(btn)
@@ -1820,17 +1821,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             bg.addSubview(card)
         }
 
-        // Done Button (Crisp contrast pill)
+        // Done Button (Centered, balanced pill)
         let doneBtn = NSButton(title: "Done", target: self, action: #selector(closePermissionsGuide))
-        doneBtn.frame = NSRect(x: (width - 150)/2, y: 20, width: 150, height: 36)
+        doneBtn.frame = NSRect(x: (width - 150)/2, y: 30, width: 150, height: 38)
         doneBtn.isBordered = false
         doneBtn.wantsLayer = true
         doneBtn.layer?.backgroundColor = NSColor.white.cgColor
-        doneBtn.layer?.cornerRadius = 18
+        doneBtn.layer?.cornerRadius = 19
         doneBtn.layer?.masksToBounds = true
         doneBtn.attributedTitle = NSAttributedString(string: "Done", attributes: [
             .foregroundColor: NSColor.black,
-            .font: NSFont.systemFont(ofSize: 13, weight: .semibold)
+            .font: NSFont.systemFont(ofSize: 13.5, weight: .semibold)
         ])
         bg.addSubview(doneBtn)
 
