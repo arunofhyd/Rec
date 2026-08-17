@@ -73,27 +73,50 @@ struct AppSettings: Codable {
     }
 }
 
-struct UpdateChangelogView: View {
-    let changelog: String
-
-    var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            Text(changelog)
-                .font(.system(size: 12, weight: .regular))
-                .foregroundColor(.primary)
-                .lineSpacing(3)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-        }
-        .frame(width: 340, height: 140)
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-        )
-    }
+func createChangelogView(changelog: String) -> NSView {
+    let container = NSBox(frame: NSRect(x: 0, y: 0, width: 340, height: 140))
+    container.boxType = .custom
+    container.isTransparent = false
+    container.fillColor = NSColor.controlBackgroundColor
+    container.borderColor = NSColor.separatorColor.withAlphaComponent(0.3)
+    container.borderWidth = 1
+    container.cornerRadius = 8
+    
+    let scrollView = NSScrollView(frame: NSRect(x: 4, y: 4, width: 332, height: 132))
+    scrollView.hasVerticalScroller = true
+    scrollView.hasHorizontalScroller = false
+    scrollView.autohidesScrollers = true
+    scrollView.borderType = .noBorder
+    scrollView.drawsBackground = false
+    scrollView.wantsLayer = true
+    
+    let contentSize = scrollView.contentSize
+    let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: contentSize.width, height: contentSize.height))
+    textView.minSize = NSSize(width: 0.0, height: contentSize.height)
+    textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+    textView.isVerticallyResizable = true
+    textView.isHorizontallyResizable = false
+    textView.autoresizingMask = [.width]
+    textView.textContainer?.containerSize = NSSize(width: contentSize.width - 12, height: CGFloat.greatestFiniteMagnitude)
+    textView.textContainer?.widthTracksTextView = true
+    textView.textContainerInset = NSSize(width: 6, height: 6)
+    textView.isEditable = false
+    textView.isSelectable = true
+    textView.drawsBackground = false
+    
+    let paraStyle = NSMutableParagraphStyle()
+    paraStyle.lineSpacing = 3
+    
+    let attrStr = NSAttributedString(string: changelog, attributes: [
+        .font: NSFont.systemFont(ofSize: 12, weight: .regular),
+        .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: paraStyle
+    ])
+    textView.textStorage?.setAttributedString(attrStr)
+    
+    scrollView.documentView = textView
+    container.addSubview(scrollView)
+    return container
 }
 
 var currentSettings = AppSettings.load()
@@ -1957,9 +1980,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.messageText = "Rec \(remote) is available"
             alert.informativeText = "You have v\(appVersion). Here's what's new:"
             if !changelog.isEmpty {
-                let hosting = NSHostingView(rootView: UpdateChangelogView(changelog: changelog))
-                hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 140)
-                alert.accessoryView = hosting
+                alert.accessoryView = createChangelogView(changelog: changelog)
             }
             alert.addButton(withTitle: "Update Now")
             alert.addButton(withTitle: "Later")
