@@ -1,7 +1,16 @@
 {
-  "version": "1.2.3",
+  "version": "1.2.4",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.2.4",
+      "date": "2026-08-17",
+      "changes": [
+        "Unified About Window Typography & Dynamic Spacing: Adopted 24pt bold typography, vibrant system color SF Symbols, multiline auto-measured spacing, and 26px bottom clearance.",
+        "120 FPS Native Update Changelog: Upgraded update dialog with trackpad-smooth AppKit native NSTextView scrolling.",
+        "First-Launch Gated Permissions Guide: Eliminated recurring launch modals, prompting only on first install or when essential permissions are missing."
+      ]
+    },
     {
       "version": "1.2.3",
       "date": "2026-08-17",
