@@ -1370,20 +1370,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func checkPermissions() {
-        let granted = CGPreflightScreenCaptureAccess()
-        if !granted {
-            CGRequestScreenCaptureAccess()
-        }
-        checkFirstLaunch(screenCaptureGranted: granted)
-    }
+        let hasScreenPerm = CGPreflightScreenCaptureAccess()
+        let hasSeenKey = "hasSeenPermissionsGuide_v1"
+        let hasSeen = UserDefaults.standard.bool(forKey: hasSeenKey)
 
-    func checkFirstLaunch(screenCaptureGranted: Bool) {
-        let key = "hasSeenPermissionsGuide_v1"
-        let hasSeen = UserDefaults.standard.bool(forKey: key)
-        if !hasSeen || !screenCaptureGranted {
-            if !hasSeen {
-                UserDefaults.standard.set(true, forKey: key)
+        if !hasScreenPerm {
+            // Required Screen Recording permission is missing: prompt user
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.showPermissionsGuide(isFirstLaunch: !hasSeen)
             }
+        } else if !hasSeen {
+            // First launch guide: show once
+            UserDefaults.standard.set(true, forKey: hasSeenKey)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 self?.showPermissionsGuide(isFirstLaunch: true)
             }
@@ -1845,6 +1843,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func closePermissionsGuide() {
+        UserDefaults.standard.set(true, forKey: "hasSeenPermissionsGuide_v1")
         permissionsWindow?.close()
         permissionsWindow = nil
         showPanel()
