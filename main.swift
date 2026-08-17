@@ -1622,15 +1622,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("chevron.left.forwardslash.chevron.right", "Free & Open Source", "Rec is completely free and open source. Check out the code on GitHub.")
         ]
 
-        let bodyWidth = width - 80
-        var currentY = sub.frame.minY - 32
+        let textWidth = width - 115
+        var currentY = sub.frame.minY - 26
 
         for (sym, head, desc) in features {
-            let rowH: CGFloat = 52
+            let rowH: CGFloat = 56
             currentY -= rowH
 
             let symSize: CGFloat = 24
-            let symView = NSImageView(frame: NSRect(x: 40, y: currentY + (rowH - symSize)/2 + 2, width: symSize, height: symSize))
+            let symView = NSImageView(frame: NSRect(x: 36, y: currentY + (rowH - symSize)/2 + 2, width: symSize, height: symSize))
             let symCfg = NSImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
             symView.image = NSImage(systemSymbolName: sym, accessibilityDescription: nil)?.withSymbolConfiguration(symCfg)
             symView.contentTintColor = .systemRed
@@ -1638,14 +1638,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             let hLabel = NSTextField(labelWithString: head)
             hLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-            hLabel.frame = NSRect(x: 80, y: currentY + 24, width: bodyWidth - 40, height: 18)
+            hLabel.frame = NSRect(x: 74, y: currentY + 28, width: textWidth, height: 18)
             bg.addSubview(hLabel)
 
             let dLabel = NSTextField(labelWithString: desc)
-            dLabel.font = NSFont.systemFont(ofSize: 12)
+            dLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .regular)
             dLabel.textColor = .secondaryLabelColor
             dLabel.lineBreakMode = .byWordWrapping
-            dLabel.frame = NSRect(x: 80, y: currentY - 4, width: bodyWidth - 40, height: 26)
+            dLabel.maximumNumberOfLines = 2
+            dLabel.frame = NSRect(x: 74, y: currentY - 4, width: textWidth, height: 32)
             bg.addSubview(dLabel)
             
             currentY -= 6
