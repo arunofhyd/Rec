@@ -1610,11 +1610,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         sub.frame = NSRect(x: 16, y: 346, width: width - 32, height: 16)
         bg.addSubview(sub)
 
-        let features: [(String, String, String)] = [
-            ("record.circle", "Native Screen Capture", "Records screen & internal audio with ScreenCaptureKit."),
-            ("speaker.wave.3", "Internal System Audio", "Crystal-clear system sound without loopback drivers."),
-            ("bolt.fill", "Fast & Lightweight", "Hardware-accelerated encoding directly to .mov."),
-            ("chevron.left.forwardslash.chevron.right", "Free & Open Source", "Rec is completely free. Check out the source on GitHub.")
+        let features: [(String, NSColor, String, String)] = [
+            ("record.circle", .systemRed, "Native Screen Capture", "Records screen & internal audio with ScreenCaptureKit."),
+            ("speaker.wave.3.fill", .systemPurple, "Internal System Audio", "Crystal-clear system sound without loopback drivers."),
+            ("bolt.fill", .systemOrange, "Fast & Lightweight", "Hardware-accelerated encoding directly to .mov."),
+            ("chevron.left.forwardslash.chevron.right", .systemPink, "Free & Open Source", "Rec is completely free. Check out the source on GitHub.")
         ]
 
         let textWidth = width - 82
@@ -1622,13 +1622,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         for (idx, item) in features.enumerated() {
             let rowY = rowYPositions[idx]
-            let (sym, head, desc) = item
+            let (sym, color, head, desc) = item
 
             let symSize: CGFloat = 22
             let symView = NSImageView(frame: NSRect(x: 28, y: rowY + 11, width: symSize, height: symSize))
             let symCfg = NSImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
             symView.image = NSImage(systemSymbolName: sym, accessibilityDescription: nil)?.withSymbolConfiguration(symCfg)
-            symView.contentTintColor = .white
+            symView.contentTintColor = color
             bg.addSubview(symView)
 
             let hLabel = NSTextField(labelWithString: head)
