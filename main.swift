@@ -1309,6 +1309,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupCameraIfNeeded()
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag || !panel.isVisible {
+            showPanel()
+        }
+        return true
+    }
+
     func setupCameraIfNeeded() {
         if currentSettings.cameraID != "None" && !currentSettings.cameraID.isEmpty {
             cameraWindow = CameraOverlayWindow()
@@ -1359,7 +1366,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.autosaveName = "RecStatusItem"
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Rec")
+            let img = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Rec")
+            img?.isTemplate = true
+            button.image = img
         }
 
         statusMenu = NSMenu()
@@ -1452,12 +1461,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }, completionHandler: { [weak self] in
                     pill.removeFromSuperview()
                     self?.pillView = nil
-                    button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Rec")
+                    let recImg = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Rec")
+                    recImg?.isTemplate = true
+                    button.image = recImg
                     button.title = ""
                     self?.statusItem.menu = self?.statusMenu
                 })
             } else {
-                button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Rec")
+                let recImg2 = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "Rec")
+                recImg2?.isTemplate = true
+                button.image = recImg2
                 button.title = ""
                 statusItem.menu = statusMenu
                 statusItem.length = NSStatusItem.squareLength
@@ -1509,6 +1522,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func hidePanel() {
         panel.orderOut(nil)
         statusItem.isVisible = true
+
+        // macOS Tahoe (26+) may suppress menu bar items via System Settings → Menu Bar.
+        // If the status item isn't actually visible after a short delay, re-show the panel
+        // so the user isn't stranded with no UI.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            if self.statusItem.button?.window?.occlusionState.contains(.visible) != true && !self.panel.isVisible {
+                self.showPanel()
+            }
+        }
     }
     @objc func showAboutAction() { showAbout(onLaunch: false) }
     func showAbout(onLaunch: Bool) {
