@@ -7,7 +7,7 @@ import SwiftUI
 import QuartzCore
 
 // MARK: - Configuration
-let appVersion = "1.2.4"
+let appVersion = "1.2.5"
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
 
@@ -73,50 +73,35 @@ struct AppSettings: Codable {
     }
 }
 
+struct ChangelogAlertView: View {
+    let changelog: String
+    
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(changelog)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(Color(NSColor.labelColor))
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+        }
+        .frame(width: 360, height: 150)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(NSColor.separatorColor).opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
 func createChangelogView(changelog: String) -> NSView {
-    let container = NSBox(frame: NSRect(x: 0, y: 0, width: 340, height: 140))
-    container.boxType = .custom
-    container.isTransparent = false
-    container.fillColor = NSColor.controlBackgroundColor
-    container.borderColor = NSColor.separatorColor.withAlphaComponent(0.3)
-    container.borderWidth = 1
-    container.cornerRadius = 8
-    
-    let scrollView = NSScrollView(frame: NSRect(x: 4, y: 4, width: 332, height: 132))
-    scrollView.hasVerticalScroller = true
-    scrollView.hasHorizontalScroller = false
-    scrollView.autohidesScrollers = true
-    scrollView.borderType = .noBorder
-    scrollView.drawsBackground = false
-    scrollView.wantsLayer = true
-    
-    let contentSize = scrollView.contentSize
-    let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: contentSize.width, height: contentSize.height))
-    textView.minSize = NSSize(width: 0.0, height: contentSize.height)
-    textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-    textView.isVerticallyResizable = true
-    textView.isHorizontallyResizable = false
-    textView.autoresizingMask = [.width]
-    textView.textContainer?.containerSize = NSSize(width: contentSize.width - 12, height: CGFloat.greatestFiniteMagnitude)
-    textView.textContainer?.widthTracksTextView = true
-    textView.textContainerInset = NSSize(width: 6, height: 6)
-    textView.isEditable = false
-    textView.isSelectable = true
-    textView.drawsBackground = false
-    
-    let paraStyle = NSMutableParagraphStyle()
-    paraStyle.lineSpacing = 3
-    
-    let attrStr = NSAttributedString(string: changelog, attributes: [
-        .font: NSFont.systemFont(ofSize: 12, weight: .regular),
-        .foregroundColor: NSColor.labelColor,
-        .paragraphStyle: paraStyle
-    ])
-    textView.textStorage?.setAttributedString(attrStr)
-    
-    scrollView.documentView = textView
-    container.addSubview(scrollView)
-    return container
+    let hostingView = NSHostingView(rootView: ChangelogAlertView(changelog: changelog))
+    hostingView.frame = NSRect(x: 0, y: 0, width: 360, height: 150)
+    return hostingView
 }
 
 var currentSettings = AppSettings.load()

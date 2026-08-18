@@ -1,7 +1,14 @@
 {
-  "version": "1.2.4",
+  "version": "1.2.5",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.2.5",
+      "date": "2026-08-18",
+      "changes": [
+        "Hardware-Accelerated Update Changelog: Replaced legacy text view with a silky smooth SwiftUI ScrollView supporting 120Hz ProMotion momentum scrolling."
+      ]
+    },
     {
       "version": "1.2.4",
       "date": "2026-08-17",
