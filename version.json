@@ -1,7 +1,14 @@
 {
-  "version": "1.2.7",
+  "version": "1.2.8",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.2.8",
+      "date": "2026-08-21",
+      "changes": [
+        "Fixed Floating Bar Dismissal: Resolved an issue where clicking the close button caused the floating control bar to reappear after half a second."
+      ]
+    },
     {
       "version": "1.2.7",
       "date": "2026-08-21",

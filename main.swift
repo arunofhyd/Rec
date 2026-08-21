@@ -8,8 +8,10 @@ import QuartzCore
 
 // MARK: - Configuration
 let appVersion: String = {
-    if let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !v.isEmpty { return v }
-    return "1.2.7"
+    if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
+        return ver
+    }
+    return "1.2.8"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -1535,16 +1537,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func hidePanel() {
         panel.orderOut(nil)
         statusItem.isVisible = true
-
-        // macOS Tahoe (26+) may suppress menu bar items via System Settings → Menu Bar.
-        // If the status item isn't actually visible after a short delay, re-show the panel
-        // so the user isn't stranded with no UI.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
-            if self.statusItem.button?.window?.occlusionState.contains(.visible) != true && !self.panel.isVisible {
-                self.showPanel()
-            }
-        }
     }
     @objc func showAboutAction() { showAbout(onLaunch: false) }
     func showAbout(onLaunch: Bool) {

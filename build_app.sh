@@ -10,7 +10,7 @@ APP_DIR="$DIR/$APP_NAME.app"
 DEST_APP="/Applications/$APP_NAME.app"
 
 # 1. Single Source of Truth: Read version from version.json or main.swift
-VERSION=$(python3 -c "import json; print(json.load(open('$DIR/version.json'))['version'])" 2>/dev/null || grep -m1 'let appVersion =' "$DIR/main.swift" | cut -d'"' -f2 || echo "1.2.7")
+VERSION=$(python3 -c "import json; print(json.load(open('$DIR/version.json'))['version'])" 2>/dev/null || grep -m1 'let appVersion =' "$DIR/main.swift" | cut -d'"' -f2 || echo "1.2.8")
 echo "🔖 Building $APP_NAME v$VERSION..."
 
 # 2. Assemble .app bundle structure
