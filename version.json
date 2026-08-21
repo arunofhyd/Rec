@@ -1,7 +1,14 @@
 {
-  "version": "1.2.6",
+  "version": "1.2.7",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.2.7",
+      "date": "2026-08-21",
+      "changes": [
+        "Live Permission & Menu Bar Check Indicators: Upgraded Permissions & Setup guide with real-time status polling checkmarks for Screen Recording, Menu Bar, Accessibility, and Microphone."
+      ]
+    },
     {
       "version": "1.2.6",
       "date": "2026-08-21",

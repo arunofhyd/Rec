@@ -9,7 +9,7 @@ import QuartzCore
 // MARK: - Configuration
 let appVersion: String = {
     if let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !v.isEmpty { return v }
-    return "1.2.6"
+    return "1.2.7"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -1297,6 +1297,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var appSelectionMenu: AppSelectionMenuHandler?
     var aboutWindow: NSWindow?
     var permissionsWindow: NSWindow?
+    var permissionButtons: [NSButton] = []
+    var permissionsTimer: Timer?
 
     var cameraWindow: CameraOverlayWindow?
 
@@ -1813,6 +1815,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let rowHeight: CGFloat = 48
         let rowYPositions: [CGFloat] = [282, 218, 154, 90]
 
+        self.permissionButtons = []
+
         for (idx, item) in items.enumerated() {
             let rowY = rowYPositions[idx]
 
@@ -1843,6 +1847,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             btn.bezelStyle = .rounded
             btn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
             bg.addSubview(btn)
+            permissionButtons.append(btn)
         }
 
         // Done Button (Crisp contrast pill)
@@ -1863,9 +1868,57 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.permissionsWindow = win
+
+        // Initial check and auto-polling timer for live updates
+        checkPermissionsStatus()
+        permissionsTimer?.invalidate()
+        let t = Timer(timeInterval: 0.8, target: self, selector: #selector(checkPermissionsStatus), userInfo: nil, repeats: true)
+        RunLoop.current.add(t, forMode: .common)
+        self.permissionsTimer = t
+    }
+
+    @objc func checkPermissionsStatus() {
+        guard permissionsWindow != nil, permissionButtons.count >= 4 else { return }
+
+        // Row 0: Screen Recording
+        let screenOk = CGPreflightScreenCaptureAccess()
+        updatePermissionButton(permissionButtons[0], isGranted: screenOk)
+
+        // Row 1: Menu Bar Icon
+        let menuBarOk = (statusItem != nil)
+        updatePermissionButton(permissionButtons[1], isGranted: menuBarOk)
+
+        // Row 2: Accessibility
+        let axOk = AXIsProcessTrusted()
+        updatePermissionButton(permissionButtons[2], isGranted: axOk)
+
+        // Row 3: Microphone
+        let micOk = (AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)
+        updatePermissionButton(permissionButtons[3], isGranted: micOk)
+    }
+
+    func updatePermissionButton(_ btn: NSButton, isGranted: Bool) {
+        if isGranted {
+            if btn.title != "✓" {
+                btn.title = "✓"
+                btn.font = NSFont.systemFont(ofSize: 13, weight: .bold)
+                btn.contentTintColor = .systemGreen
+                btn.toolTip = "Granted (Click to open settings)"
+            }
+        } else {
+            if btn.title != "Open" {
+                btn.title = "Open"
+                btn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+                btn.contentTintColor = nil
+                btn.toolTip = "Click to open settings"
+            }
+        }
     }
 
     @objc func closePermissionsGuide() {
+        permissionsTimer?.invalidate()
+        permissionsTimer = nil
+        permissionButtons = []
         UserDefaults.standard.set(true, forKey: "hasSeenPermissionsGuide_v1")
         permissionsWindow?.close()
         permissionsWindow = nil
@@ -1875,6 +1928,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func openScreenRecordingSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.checkPermissionsStatus()
         }
     }
 
@@ -1888,11 +1944,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.checkPermissionsStatus()
+        }
     }
 
     @objc func openMicrophoneSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
             NSWorkspace.shared.open(url)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.checkPermissionsStatus()
         }
     }
 
