@@ -6,8 +6,16 @@
 # =============================================================================
 
 APP_NAME="Rec"
-APP_VERSION=$(grep -m1 'let appVersion =' main.swift | cut -d'"' -f2)
-if [ -z "$APP_VERSION" ]; then APP_VERSION="1.1.35"; fi
+APP_VERSION=""
+if [ -f version.json ]; then
+    APP_VERSION=$(python3 -c "import json; print(json.load(open('version.json'))['version'])" 2>/dev/null || true)
+elif [ -f "$SCRIPT_DIR/version.json" ]; then
+    APP_VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || true)
+fi
+if [ -z "$APP_VERSION" ]; then
+    APP_VERSION=$(grep -m1 'appVersion' main.swift 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+fi
+if [ -z "$APP_VERSION" ]; then APP_VERSION="1.2.5"; fi
 REPO_RAW="." # Use current directory for now, but usually from github
 
 # ---- Terminal styling ------------------------------------
