@@ -1,7 +1,15 @@
 {
-  "version": "1.2.5",
+  "version": "1.2.6",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.2.6",
+      "date": "2026-08-21",
+      "changes": [
+        "Dynamic Version Resolution: Standardized appVersion to load directly from bundle CFBundleShortVersionString with robust fallback.",
+        "Installer & GitHub Release Sync: Fixed one-liner terminal installer to fetch and parse version.json ensuring correct version builds across local and CI releases."
+      ]
+    },
     {
       "version": "1.2.5",
       "date": "2026-08-18",
