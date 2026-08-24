@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.3.1"
+    return "1.3.2"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -2430,7 +2430,7 @@ class RecordingFinishedWindow: NSWindow {
 
     init(fileURL: URL) {
         self.fileURL = fileURL
-        let rect = NSRect(x: 0, y: 0, width: 480, height: 280)
+        let rect = NSRect(x: 0, y: 0, width: 480, height: 288)
         super.init(contentRect: rect, styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
         
         self.isReleasedWhenClosed = false
@@ -2647,14 +2647,14 @@ class RecordingFinishedWindow: NSWindow {
             thumbnailView.widthAnchor.constraint(equalToConstant: 92),
             thumbnailView.heightAnchor.constraint(equalToConstant: 64),
 
-            actionsRow.topAnchor.constraint(equalTo: previewBox.bottomAnchor, constant: 12),
+            actionsRow.topAnchor.constraint(equalTo: previewBox.bottomAnchor, constant: 18),
             actionsRow.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
             actionsRow.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
 
-            bottomRow.topAnchor.constraint(equalTo: actionsRow.bottomAnchor, constant: 10),
+            bottomRow.topAnchor.constraint(equalTo: actionsRow.bottomAnchor, constant: 8),
             bottomRow.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
             bottomRow.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-            bottomRow.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -16)
+            bottomRow.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -18)
         ])
     }
 
@@ -3302,7 +3302,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let features: [RecAboutFeature] = [
             RecAboutFeature(symbol: "record.circle", color: .systemRed, title: "Native Screen Capture", desc: "Records full screen, single windows, or cropped regions with ScreenCaptureKit."),
             RecAboutFeature(symbol: "speaker.wave.3.fill", color: .systemPurple, title: "Internal System Audio", desc: "Direct hardware capture for crystal-clear system audio without loopback drivers."),
-            RecAboutFeature(symbol: "bolt.fill", color: .systemOrange, title: "Fast & Lightweight", desc: "Hardware-accelerated Apple Silicon encoding directly to high-efficiency video."),
+            RecAboutFeature(symbol: "scissors", color: .systemIndigo, title: "In-App Video Editor", desc: "Trim recordings with smooth timeline scrubbing, mute audio tracks, and save edits in-place."),
+            RecAboutFeature(symbol: "sparkles", color: .systemTeal, title: "HUD Toast & Quick Actions", desc: "Non-intrusive floating toast with 1-click clipboard copy, in-place renaming, and right-click actions."),
+            RecAboutFeature(symbol: "bolt.fill", color: .systemOrange, title: "Fast & Lightweight", desc: "Hardware-accelerated Apple Silicon encoding with up to 120 FPS ProMotion capture."),
             RecAboutFeature(symbol: "chevron.left.forwardslash.chevron.right", color: .systemPink, title: "Free & Open Source", desc: "Rec is completely free and open source. Check out the repository on GitHub.")
         ]
 

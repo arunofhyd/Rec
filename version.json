@@ -1,7 +1,15 @@
 {
-  "version": "1.3.1",
+  "version": "1.3.2",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.3.2",
+      "date": "2026-08-24",
+      "changes": [
+        "Refreshed About Window: Updated feature showcase highlighting In-App Video Editor, Floating HUD Toast, Dynamic Controls, and classic Contact/GitHub capsule actions.",
+        "Enhanced Post-Recording Layout: Increased top margin and spacing above the Play, Edit, Share, and Finder button row for improved visual balance and breathing room."
+      ]
+    },
     {
       "version": "1.3.1",
       "date": "2026-08-24",
