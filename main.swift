@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.3.0"
+    return "1.3.1"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -1592,7 +1592,7 @@ class VideoTrimmerWindow: NSWindow {
 
         self.isReleasedWhenClosed = false
         self.titlebarAppearsTransparent = true
-        self.title = "Trim Video — \(fileURL.lastPathComponent)"
+        self.title = "Edit Video — \(fileURL.lastPathComponent)"
         self.titleVisibility = .visible
         self.isMovableByWindowBackground = false
         self.backgroundColor = .clear
@@ -1603,14 +1603,18 @@ class VideoTrimmerWindow: NSWindow {
         self.minSize = NSSize(width: 580, height: 440)
 
         let visualEffectView = NSVisualEffectView(frame: rect)
-        visualEffectView.material = .hudWindow
+        visualEffectView.material = .popover
         visualEffectView.state = .active
         visualEffectView.blendingMode = .behindWindow
         visualEffectView.wantsLayer = true
         visualEffectView.layer?.cornerRadius = 18
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
-        visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor.white.withAlphaComponent(0.2)
+                : NSColor.black.withAlphaComponent(0.12)
+        }).cgColor
         self.contentView = visualEffectView
 
         setupUI(in: visualEffectView)
@@ -1665,10 +1669,14 @@ class VideoTrimmerWindow: NSWindow {
         leftStack.alignment = .centerY
         leftStack.translatesAutoresizingMaskIntoConstraints = false
 
-        // Center Duration (Dead-centered)
+        // Center Duration (Dead-centered with high-contrast emerald/forest green)
         durationLabel = NSTextField(labelWithString: "Selected: 00:00.0")
         durationLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .bold)
-        durationLabel.textColor = .systemGreen
+        durationLabel.textColor = NSColor(name: nil, dynamicProvider: { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(red: 0.22, green: 0.90, blue: 0.44, alpha: 1.0)
+                : NSColor(red: 0.08, green: 0.56, blue: 0.20, alpha: 1.0)
+        })
         durationLabel.alignment = .center
         durationLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1732,7 +1740,7 @@ class VideoTrimmerWindow: NSWindow {
 
         trimButton = NSButton()
         trimButton.bezelStyle = .rounded
-        trimButton.title = "Save Trimmed Video"
+        trimButton.title = "Save Edited Video"
         trimButton.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
         trimButton.keyEquivalent = "\r"
         trimButton.target = self
@@ -1929,7 +1937,7 @@ class VideoTrimmerWindow: NSWindow {
     @objc private func performTrim() {
         trimButton.isEnabled = false
         progressIndicator.startAnimation(nil)
-        exportStatusLabel.stringValue = "Trimming video..."
+        exportStatusLabel.stringValue = "Editing video..."
 
         let asset = AVURLAsset(url: fileURL)
         let startCM = CMTime(seconds: trimStartSeconds, preferredTimescale: 600)
@@ -1998,7 +2006,7 @@ class VideoTrimmerWindow: NSWindow {
                             try? FileManager.default.moveItem(at: tempURL, to: self.fileURL)
                         }
 
-                        self.exportStatusLabel.stringValue = "Trim saved!"
+                        self.exportStatusLabel.stringValue = "Edit saved!"
                         self.onTrimCompleted?(self.fileURL)
 
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -2021,6 +2029,388 @@ class VideoTrimmerWindow: NSWindow {
         player?.pause()
         self.orderOut(nil)
         self.close()
+    }
+}
+
+// ============================================================
+// Post-Recording HUD Toast Window (Bottom-Right Floating Notification)
+// ============================================================
+
+class RecordingToastWindow: NSWindow {
+    var fileURL: URL
+    var onDismiss: (() -> Void)?
+    var autoDismissTimer: Timer?
+    var trimmerWindow: VideoTrimmerWindow?
+
+    var thumbnailView: NSImageView!
+    var titleLabel: NSTextField!
+    var fileNameLabel: NSTextField!
+    var metaLabel: NSTextField!
+    var isHovered: Bool = false
+
+    override var canBecomeKey: Bool { return false }
+    override var canBecomeMain: Bool { return false }
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        let toastWidth: CGFloat = 330
+        let toastHeight: CGFloat = 80
+
+        let mouseLoc = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { NSPointInRect(mouseLoc, $0.frame) }) ?? NSScreen.main ?? NSScreen.screens.first
+        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let marginX: CGFloat = 24
+        let marginY: CGFloat = 24
+        let targetX = visibleFrame.maxX - toastWidth - marginX
+        let targetY = visibleFrame.minY + marginY
+        let initialRect = NSRect(
+            x: targetX,
+            y: targetY,
+            width: toastWidth,
+            height: toastHeight
+        )
+
+        super.init(contentRect: initialRect, styleMask: [.borderless, .fullSizeContentView], backing: .buffered, defer: false)
+
+        self.setFrame(initialRect, display: true)
+        self.isReleasedWhenClosed = false
+        self.titlebarAppearsTransparent = true
+        self.isMovableByWindowBackground = true
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = true
+        self.level = .floating
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        let visualEffectView = NSVisualEffectView(frame: NSRect(origin: .zero, size: initialRect.size))
+        visualEffectView.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.material = .popover
+        visualEffectView.state = .active
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.wantsLayer = true
+        visualEffectView.layer?.cornerRadius = 16
+        visualEffectView.layer?.masksToBounds = true
+        visualEffectView.layer?.borderWidth = 1.0
+        visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor.white.withAlphaComponent(0.2)
+                : NSColor.black.withAlphaComponent(0.12)
+        }).cgColor
+        self.contentView = visualEffectView
+
+        NSLayoutConstraint.activate([
+            visualEffectView.widthAnchor.constraint(equalToConstant: toastWidth),
+            visualEffectView.heightAnchor.constraint(equalToConstant: toastHeight)
+        ])
+
+        setupUI(in: visualEffectView)
+        setupTrackingArea(in: visualEffectView)
+        startAutoDismissTimer(seconds: 7.0)
+    }
+
+    private func setupUI(in container: NSView) {
+        // 1. Thumbnail on left
+        thumbnailView = NSImageView()
+        thumbnailView.translatesAutoresizingMaskIntoConstraints = false
+        thumbnailView.wantsLayer = true
+        thumbnailView.layer?.cornerRadius = 8
+        thumbnailView.layer?.masksToBounds = true
+        thumbnailView.layer?.borderWidth = 1.0
+        thumbnailView.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        thumbnailView.imageScaling = .scaleProportionallyUpOrDown
+
+        let filmConfig = NSImage.SymbolConfiguration(pointSize: 22, weight: .regular)
+        thumbnailView.image = NSImage(systemSymbolName: "play.rectangle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(filmConfig)
+        thumbnailView.contentTintColor = .systemRed
+
+        extractThumbnail()
+
+        // 2. Header text: checkmark + "Recording Saved"
+        let checkConfig = NSImage.SymbolConfiguration(pointSize: 13, weight: .bold)
+        let checkIcon = NSImageView()
+        checkIcon.translatesAutoresizingMaskIntoConstraints = false
+        checkIcon.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Saved")?.withSymbolConfiguration(checkConfig)
+        checkIcon.contentTintColor = .systemGreen
+
+        titleLabel = NSTextField(labelWithString: "Recording Saved")
+        titleLabel.font = NSFont.systemFont(ofSize: 12.5, weight: .bold)
+        titleLabel.textColor = .labelColor
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let headerRow = NSStackView(views: [checkIcon, titleLabel])
+        headerRow.orientation = .horizontal
+        headerRow.spacing = 5
+        headerRow.alignment = .centerY
+        headerRow.translatesAutoresizingMaskIntoConstraints = false
+
+        // 3. File name (Strictly truncated with low compression resistance so it never expands window)
+        fileNameLabel = NSTextField(labelWithString: fileURL.lastPathComponent)
+        fileNameLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
+        fileNameLabel.textColor = .labelColor
+        fileNameLabel.lineBreakMode = .byTruncatingMiddle
+        fileNameLabel.cell?.wraps = false
+        fileNameLabel.cell?.isScrollable = false
+        fileNameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        fileNameLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        fileNameLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // 4. Meta + right-click hint
+        var sizeStr = "0 MB"
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+           let bytes = attrs[.size] as? Int64 {
+            let mb = Double(bytes) / (1024.0 * 1024.0)
+            sizeStr = String(format: "%.1f MB", mb)
+        }
+        metaLabel = NSTextField(labelWithString: "\(sizeStr)  •  Right-click for options")
+        metaLabel.font = NSFont.systemFont(ofSize: 10.5, weight: .regular)
+        metaLabel.textColor = .secondaryLabelColor
+        metaLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        metaLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let textStack = NSStackView(views: [headerRow, fileNameLabel, metaLabel])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 2
+        textStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
+        // 5. Dismiss button
+        let closeBtn = NSButton()
+        closeBtn.bezelStyle = .regularSquare
+        closeBtn.isBordered = false
+        closeBtn.title = ""
+        let closeConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .bold)
+        closeBtn.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Dismiss")?.withSymbolConfiguration(closeConfig)
+        closeBtn.contentTintColor = NSColor.secondaryLabelColor
+        closeBtn.target = self
+        closeBtn.action = #selector(dismissAnimated)
+        closeBtn.translatesAutoresizingMaskIntoConstraints = false
+        closeBtn.widthAnchor.constraint(equalToConstant: 18).isActive = true
+        closeBtn.heightAnchor.constraint(equalToConstant: 18).isActive = true
+
+        container.addSubview(thumbnailView)
+        container.addSubview(textStack)
+        container.addSubview(closeBtn)
+
+        NSLayoutConstraint.activate([
+            thumbnailView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            thumbnailView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            thumbnailView.widthAnchor.constraint(equalToConstant: 78),
+            thumbnailView.heightAnchor.constraint(equalToConstant: 56),
+
+            textStack.leadingAnchor.constraint(equalTo: thumbnailView.trailingAnchor, constant: 10),
+            textStack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            textStack.trailingAnchor.constraint(equalTo: closeBtn.leadingAnchor, constant: -6),
+
+            closeBtn.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            closeBtn.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8)
+        ])
+    }
+
+    private func setupTrackingArea(in view: NSView) {
+        let trackingArea = NSTrackingArea(
+            rect: view.bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        view.addTrackingArea(trackingArea)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        autoDismissTimer?.invalidate()
+        autoDismissTimer = nil
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        startAutoDismissTimer(seconds: 4.0)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        NSWorkspace.shared.open(fileURL)
+        dismissAnimated()
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        autoDismissTimer?.invalidate()
+        autoDismissTimer = nil
+
+        let menu = NSMenu()
+
+        func addMenuItem(title: String, symbol: String, action: Selector, key: String = "") {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = self
+            let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?.withSymbolConfiguration(cfg)
+            menu.addItem(item)
+        }
+
+        addMenuItem(title: "Play Video", symbol: "play.fill", action: #selector(menuPlay))
+        addMenuItem(title: "Edit Video...", symbol: "scissors", action: #selector(menuTrim))
+        addMenuItem(title: "Copy File", symbol: "doc.on.doc", action: #selector(menuCopy))
+        addMenuItem(title: "Share...", symbol: "square.and.arrow.up", action: #selector(menuShare))
+        addMenuItem(title: "Rename...", symbol: "pencil", action: #selector(menuRename))
+        addMenuItem(title: "Show in Finder", symbol: "folder", action: #selector(menuFinder))
+        menu.addItem(NSMenuItem.separator())
+        addMenuItem(title: "Open Full Window...", symbol: "macwindow", action: #selector(menuFullModal))
+        menu.addItem(NSMenuItem.separator())
+        let delItem = NSMenuItem(title: "Move to Trash", action: #selector(menuDelete), keyEquivalent: "")
+        delItem.target = self
+        let delCfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        delItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete")?.withSymbolConfiguration(delCfg)
+        menu.addItem(delItem)
+
+        let point = event.locationInWindow
+        menu.popUp(positioning: nil, at: point, in: self.contentView)
+    }
+
+    private func extractThumbnail() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, fileURL = self.fileURL] in
+            let asset = AVURLAsset(url: fileURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 240, height: 180)
+            let time = CMTime(seconds: 0.1, preferredTimescale: 600)
+            if let cgImg = try? generator.copyCGImage(at: time, actualTime: nil) {
+                let img = NSImage(cgImage: cgImg, size: NSSize(width: cgImg.width, height: cgImg.height))
+                DispatchQueue.main.async {
+                    self?.thumbnailView.image = img
+                    self?.thumbnailView.contentTintColor = nil
+                }
+            }
+        }
+    }
+
+    private func startAutoDismissTimer(seconds: Double) {
+        autoDismissTimer?.invalidate()
+        autoDismissTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+            guard let self = self, !self.isHovered else { return }
+            self.dismissAnimated()
+        }
+    }
+
+    @objc func dismissAnimated() {
+        autoDismissTimer?.invalidate()
+        autoDismissTimer = nil
+
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.3
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            self.animator().alphaValue = 0.0
+        }, completionHandler: {
+            self.orderOut(nil)
+            self.close()
+            self.onDismiss?()
+        })
+    }
+
+    // Context Menu Actions
+    @objc private func menuPlay() {
+        NSWorkspace.shared.open(fileURL)
+        dismissAnimated()
+    }
+
+    @objc private func menuTrim() {
+        let trimmer = VideoTrimmerWindow(fileURL: fileURL)
+        trimmer.onTrimCompleted = { [weak self] updatedURL in
+            guard let self = self else { return }
+            self.fileURL = updatedURL
+            self.refreshToast(with: updatedURL)
+        }
+        self.trimmerWindow = trimmer
+        trimmer.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func menuCopy() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([fileURL as NSURL])
+        metaLabel.stringValue = "✓ Copied to Clipboard!"
+        metaLabel.textColor = .systemGreen
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self = self else { return }
+            self.metaLabel.textColor = .secondaryLabelColor
+            self.refreshToast(with: self.fileURL)
+        }
+    }
+
+    @objc private func menuShare() {
+        let picker = NSSharingServicePicker(items: [fileURL])
+        if let cv = self.contentView {
+            picker.show(relativeTo: cv.bounds, of: cv, preferredEdge: .minY)
+        }
+    }
+
+    @objc private func menuRename() {
+        let alert = NSAlert()
+        alert.messageText = "Rename Recording"
+        alert.informativeText = "Enter a new name for this video:"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        input.stringValue = fileURL.deletingPathExtension().lastPathComponent
+        alert.accessoryView = input
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            var rawName = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawName.isEmpty else { return }
+            rawName = rawName.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+            let ext = fileURL.pathExtension
+            let fullName = rawName.hasSuffix(".\(ext)") ? rawName : "\(rawName).\(ext)"
+            let newURL = fileURL.deletingLastPathComponent().appendingPathComponent(fullName)
+
+            if newURL.path != fileURL.path {
+                do {
+                    try FileManager.default.moveItem(at: fileURL, to: newURL)
+                    self.fileURL = newURL
+                    refreshToast(with: newURL)
+                } catch {
+                    // keep original
+                }
+            }
+        }
+    }
+
+    @objc private func menuFinder() {
+        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+    }
+
+    @objc private func menuFullModal() {
+        let fullWin = RecordingFinishedWindow(fileURL: fileURL)
+        fullWin.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        dismissAnimated()
+    }
+
+    @objc private func menuDelete() {
+        let alert = NSAlert()
+        alert.messageText = "Move Recording to Trash?"
+        alert.informativeText = "Are you sure you want to delete \(fileURL.lastPathComponent)?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Move to Trash")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            try? FileManager.default.trashItem(at: fileURL, resultingItemURL: nil)
+            dismissAnimated()
+        }
+    }
+
+    func refreshToast(with url: URL) {
+        fileNameLabel.stringValue = url.lastPathComponent
+        var sizeStr = "0 MB"
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let bytes = attrs[.size] as? Int64 {
+            let mb = Double(bytes) / (1024.0 * 1024.0)
+            sizeStr = String(format: "%.1f MB", mb)
+        }
+        metaLabel.stringValue = "\(sizeStr)  •  Right-click for options"
+        extractThumbnail()
     }
 }
 
@@ -2054,14 +2444,18 @@ class RecordingFinishedWindow: NSWindow {
         self.level = .floating
 
         let visualEffectView = NSVisualEffectView(frame: rect)
-        visualEffectView.material = .hudWindow
+        visualEffectView.material = .popover
         visualEffectView.state = .active
         visualEffectView.blendingMode = .behindWindow
         visualEffectView.wantsLayer = true
         visualEffectView.layer?.cornerRadius = 20
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
-        visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor.white.withAlphaComponent(0.2)
+                : NSColor.black.withAlphaComponent(0.12)
+        }).cgColor
         self.contentView = visualEffectView
 
         setupUI(in: visualEffectView)
@@ -2080,7 +2474,7 @@ class RecordingFinishedWindow: NSWindow {
         titleLabel.textColor = .labelColor
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let subTitleLabel = NSTextField(labelWithString: "Your video is ready to preview, trim, share, or manage.")
+        let subTitleLabel = NSTextField(labelWithString: "Your video is ready to preview, edit, share, or manage.")
         subTitleLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .regular)
         subTitleLabel.textColor = .secondaryLabelColor
         subTitleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -2101,8 +2495,16 @@ class RecordingFinishedWindow: NSWindow {
         let previewBox = NSBox()
         previewBox.boxType = .custom
         previewBox.borderWidth = 1.0
-        previewBox.borderColor = NSColor.white.withAlphaComponent(0.1)
-        previewBox.fillColor = NSColor.black.withAlphaComponent(0.35)
+        previewBox.borderColor = NSColor(name: nil, dynamicProvider: { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor.white.withAlphaComponent(0.1)
+                : NSColor.black.withAlphaComponent(0.08)
+        })
+        previewBox.fillColor = NSColor(name: nil, dynamicProvider: { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor.black.withAlphaComponent(0.35)
+                : NSColor.white.withAlphaComponent(0.6)
+        })
         previewBox.cornerRadius = 12
         previewBox.translatesAutoresizingMaskIntoConstraints = false
 
@@ -2171,9 +2573,9 @@ class RecordingFinishedWindow: NSWindow {
         playBtn.target = self
         playBtn.action = #selector(playClicked)
 
-        let trimBtn = makeActionButton(title: "Trim", symbol: "scissors")
-        trimBtn.target = self
-        trimBtn.action = #selector(trimClicked)
+        let editBtn = makeActionButton(title: "Edit", symbol: "scissors")
+        editBtn.target = self
+        editBtn.action = #selector(trimClicked)
 
         let shareBtn = makeActionButton(title: "Share", symbol: "square.and.arrow.up")
         shareBtn.target = self
@@ -2183,7 +2585,7 @@ class RecordingFinishedWindow: NSWindow {
         finderBtn.target = self
         finderBtn.action = #selector(finderClicked)
 
-        let actionsRow = NSStackView(views: [playBtn, trimBtn, shareBtn, finderBtn])
+        let actionsRow = NSStackView(views: [playBtn, editBtn, shareBtn, finderBtn])
         actionsRow.orientation = .horizontal
         actionsRow.distribution = .fillEqually
         actionsRow.spacing = 8
@@ -2606,6 +3008,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var appSelectionMenu: AppSelectionMenuHandler?
     var aboutWindow: NSWindow?
+    var toastWindow: RecordingToastWindow?
     var finishedWindow: RecordingFinishedWindow?
     var permissionsWindow: NSWindow?
     var permissionButtons: [NSButton] = []
@@ -4191,14 +4594,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.updateButtonImage()
             self.updateMenuBarPill()
 
-            self.finishedWindow?.close()
-            let win = RecordingFinishedWindow(fileURL: url)
-            win.onDismiss = { [weak self] in
-                self?.finishedWindow = nil
+            self.toastWindow?.close()
+            let toast = RecordingToastWindow(fileURL: url)
+            toast.onDismiss = { [weak self] in
+                self?.toastWindow = nil
             }
-            self.finishedWindow = win
-            win.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            self.toastWindow = toast
+            toast.alphaValue = 0.0
+            toast.orderFront(nil)
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.35
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                toast.animator().alphaValue = 1.0
+            }
         }
         recorder.onError = { [weak self] error in
             guard let self = self else { return }
