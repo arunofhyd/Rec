@@ -11,7 +11,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.2.8"
+    return "1.2.9"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -265,6 +265,132 @@ class CursorHighlighterWindow: NSWindow {
         let size = self.frame.size
         // NSPoint is lower-left origin, so center the window around the mouse
         self.setFrameOrigin(NSPoint(x: point.x - size.width/2, y: point.y - size.height/2))
+    }
+}
+
+class TapFeedbackWindow: NSWindow {
+    override var canBecomeKey: Bool { return false }
+    override var canBecomeMain: Bool { return false }
+
+    init(screen: NSScreen) {
+        super.init(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.level = .screenSaver
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        self.ignoresMouseEvents = true
+        self.isReleasedWhenClosed = false
+        
+        let containerView = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        containerView.wantsLayer = true
+        containerView.layer?.masksToBounds = false
+        self.contentView = containerView
+    }
+
+    func spawnRipple(at screenPoint: NSPoint, isRightClick: Bool = false) {
+        guard let view = self.contentView, let rootLayer = view.layer else { return }
+        
+        // Convert screen coordinate to window coordinate
+        let localPoint = self.convertPoint(fromScreen: screenPoint)
+        
+        // Get theme color: White when highlightCursor is disabled, otherwise the selected cursorColor
+        let baseColor: NSColor
+        let shadowColor: CGColor
+        if !currentSettings.highlightCursor {
+            baseColor = isRightClick ? NSColor(white: 0.88, alpha: 1.0) : NSColor.white
+            shadowColor = NSColor.black.withAlphaComponent(0.35).cgColor
+        } else {
+            switch currentSettings.cursorColor {
+            case 0: // Yellow / Gold
+                baseColor = isRightClick ? NSColor(red: 1.0, green: 0.58, blue: 0.0, alpha: 1.0) : NSColor(red: 1.0, green: 0.80, blue: 0.0, alpha: 1.0)
+            case 1: // Red / Coral
+                baseColor = isRightClick ? NSColor(red: 1.0, green: 0.18, blue: 0.33, alpha: 1.0) : NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0)
+            case 2: // Green / Emerald
+                baseColor = isRightClick ? NSColor(red: 0.0, green: 0.78, blue: 0.75, alpha: 1.0) : NSColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 1.0)
+            case 3: // Blue / Sapphire
+                baseColor = isRightClick ? NSColor(red: 0.35, green: 0.34, blue: 0.84, alpha: 1.0) : NSColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
+            default:
+                baseColor = NSColor(red: 1.0, green: 0.80, blue: 0.0, alpha: 1.0)
+            }
+            shadowColor = baseColor.cgColor
+        }
+
+        let rippleSize: CGFloat = 30.0
+        let rippleLayer = CALayer()
+        rippleLayer.bounds = CGRect(x: 0, y: 0, width: rippleSize, height: rippleSize)
+        rippleLayer.position = CGPoint(x: localPoint.x, y: localPoint.y)
+        rippleLayer.cornerRadius = rippleSize / 2
+        rippleLayer.backgroundColor = baseColor.withAlphaComponent(0.40).cgColor
+        rippleLayer.borderColor = baseColor.withAlphaComponent(0.90).cgColor
+        rippleLayer.borderWidth = 2.0
+        rippleLayer.shadowColor = shadowColor
+        rippleLayer.shadowRadius = 8.0
+        rippleLayer.shadowOpacity = 0.55
+        rippleLayer.shadowOffset = .zero
+
+        rootLayer.addSublayer(rippleLayer)
+
+        let duration: CFTimeInterval = 0.50
+        let timing = CAMediaTimingFunction(controlPoints: 0.4, 0.0, 0.2, 1.0)
+
+        let scaleAnim = CABasicAnimation(keyPath: "transform.scale")
+        scaleAnim.fromValue = 0.2
+        scaleAnim.toValue = isRightClick ? 2.8 : 2.5
+
+        let opacityAnim = CABasicAnimation(keyPath: "opacity")
+        opacityAnim.fromValue = 1.0
+        opacityAnim.toValue = 0.0
+
+        let borderAnim = CABasicAnimation(keyPath: "borderWidth")
+        borderAnim.fromValue = 2.5
+        borderAnim.toValue = 0.5
+
+        let group = CAAnimationGroup()
+        group.animations = [scaleAnim, opacityAnim, borderAnim]
+        group.duration = duration
+        group.timingFunction = timing
+        group.fillMode = .forwards
+        group.isRemovedOnCompletion = false
+
+        rippleLayer.add(group, forKey: "clickRipple")
+
+        // For right clicks, add an inner/outer secondary accent ring
+        if isRightClick {
+            let ringLayer = CALayer()
+            ringLayer.bounds = CGRect(x: 0, y: 0, width: rippleSize * 0.7, height: rippleSize * 0.7)
+            ringLayer.position = CGPoint(x: localPoint.x, y: localPoint.y)
+            ringLayer.cornerRadius = (rippleSize * 0.7) / 2
+            ringLayer.backgroundColor = NSColor.clear.cgColor
+            ringLayer.borderColor = baseColor.withAlphaComponent(0.95).cgColor
+            ringLayer.borderWidth = 2.0
+            rootLayer.addSublayer(ringLayer)
+
+            let ringScale = CABasicAnimation(keyPath: "transform.scale")
+            ringScale.fromValue = 0.3
+            ringScale.toValue = 1.8
+
+            let ringOpacity = CABasicAnimation(keyPath: "opacity")
+            ringOpacity.fromValue = 1.0
+            ringOpacity.toValue = 0.0
+
+            let ringGroup = CAAnimationGroup()
+            ringGroup.animations = [ringScale, ringOpacity]
+            ringGroup.duration = duration * 0.8
+            ringGroup.timingFunction = timing
+            ringGroup.fillMode = .forwards
+            ringGroup.isRemovedOnCompletion = false
+
+            ringLayer.add(ringGroup, forKey: "ringRipple")
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05) {
+                ringLayer.removeFromSuperlayer()
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05) {
+            rippleLayer.removeFromSuperlayer()
+        }
     }
 }
 
@@ -537,6 +663,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 
     var cameraWindowID: Int?
     var cursorWindowID: Int?
+    var tapFeedbackWindowIDs: [Int] = []
     var statusItemWindowID: Int?
     var statusItemFrame: CGRect?
     
@@ -579,6 +706,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             for window in content.windows where window.owningApplication?.processID == myProcessId {
                 if let camWinID = self.cameraWindowID, window.windowID == CGWindowID(camWinID) { continue }
                 if let cursorWinID = self.cursorWindowID, window.windowID == CGWindowID(cursorWinID) { continue }
+                if self.tapFeedbackWindowIDs.contains(Int(window.windowID)) { continue }
                 windowsToExclude.append(window)
             }
 
@@ -622,6 +750,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             for window in content.windows where window.owningApplication?.processID == myProcessId {
                 if let camWinID = self.cameraWindowID, window.windowID == CGWindowID(camWinID) { continue }
                 if let cursorWinID = self.cursorWindowID, window.windowID == CGWindowID(cursorWinID) { continue }
+                if self.tapFeedbackWindowIDs.contains(Int(window.windowID)) { continue }
                 windowsToExclude.append(window)
             }
 
@@ -719,6 +848,10 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             let ratio = CGFloat(baseWidth) / CGFloat(baseHeight)
             config.width = 1280
             config.height = Int(1280 / ratio)
+        } else if currentSettings.resolution == 480 {
+            let ratio = CGFloat(baseWidth) / CGFloat(baseHeight)
+            config.width = 854
+            config.height = Int(854 / ratio)
         } else {
             if sourceRect != nil {
                 config.width = Int(CGFloat(baseWidth) * scaleFactor)
@@ -741,17 +874,18 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
         config.capturesAudio = (currentSettings.audioSource == 0 || currentSettings.audioSource == 2)
         config.showsCursor = true
 
+        // Disable ScreenCaptureKit native click circles (replaced with custom TapFeedbackWindow)
         if config.responds(to: NSSelectorFromString("setShowsClicks:")) {
-            config.setValue(currentSettings.showsClicks, forKey: "showsClicks")
+            config.setValue(false, forKey: "showsClicks")
         }
         if config.responds(to: NSSelectorFromString("setCapturesMouseClicks:")) {
-            config.setValue(currentSettings.showsClicks, forKey: "capturesMouseClicks")
+            config.setValue(false, forKey: "capturesMouseClicks")
         }
         if config.responds(to: NSSelectorFromString("setShowMouseClicks:")) {
-            config.setValue(currentSettings.showsClicks, forKey: "showMouseClicks")
+            config.setValue(false, forKey: "showMouseClicks")
         }
         if config.responds(to: NSSelectorFromString("setShowsMouseClicks:")) {
-            config.setValue(currentSettings.showsClicks, forKey: "showsMouseClicks")
+            config.setValue(false, forKey: "showsMouseClicks")
         }
 
         config.pixelFormat = kCVPixelFormatType_32BGRA
@@ -1311,6 +1445,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var highlighterWindow: CursorHighlighterWindow?
     var highlighterTimer: Timer?
     var countdownWindow: CountdownWindow?
+    var tapFeedbackWindows: [TapFeedbackWindow] = []
+    var globalMouseMonitor: Any?
+    var localMouseMonitor: Any?
 
     // Track menu items for audio popup to manage state easily
     private var audioMainItems: [NSMenuItem] = []
@@ -1323,6 +1460,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupRecorder()
         checkPermissions()
         setupCameraIfNeeded()
+        
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self else { return }
+            if self.recorder.isRecording && currentSettings.showsClicks {
+                for win in self.tapFeedbackWindows { win.close() }
+                self.tapFeedbackWindows.removeAll()
+                for screen in NSScreen.screens {
+                    let win = TapFeedbackWindow(screen: screen)
+                    win.orderFrontRegardless()
+                    self.tapFeedbackWindows.append(win)
+                }
+                self.recorder.tapFeedbackWindowIDs = self.tapFeedbackWindows.compactMap { $0.windowNumber }
+                self.recorder.updateStreamFilter()
+            }
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -2124,20 +2276,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let menu = sender.menu else { return }
         menu.items.forEach { $0.state = .off }
         sender.state = .on
-        let index = menu.index(of: sender)
-        if index == 0 { currentSettings.fps = 60 }
-        else if index == 1 { currentSettings.fps = 30 }
-        else { currentSettings.fps = 24 }
+        currentSettings.fps = sender.tag
         currentSettings.save()
     }
     @objc func resChanged(_ sender: NSMenuItem) {
         guard let menu = sender.menu else { return }
         menu.items.forEach { $0.state = .off }
         sender.state = .on
-        let index = menu.index(of: sender)
-        if index == 0 { currentSettings.resolution = 0 }
-        else if index == 1 { currentSettings.resolution = 1080 }
-        else { currentSettings.resolution = 720 }
+        currentSettings.resolution = sender.tag
         currentSettings.save()
     }
     @objc func bitChanged(_ sender: NSMenuItem) {
@@ -2248,12 +2394,76 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         currentSettings.showsClicks.toggle()
         currentSettings.save()
         sender.state = currentSettings.showsClicks ? .on : .off
+        updateTapFeedbackLifecycle()
+        if currentSettings.showsClicks && !recorder.isRecording {
+            if let screen = NSScreen.main {
+                let previewWin = TapFeedbackWindow(screen: screen)
+                previewWin.orderFrontRegardless()
+                previewWin.spawnRipple(at: NSEvent.mouseLocation, isRightClick: false)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    previewWin.close()
+                }
+            }
+        }
     }
 
     @objc func toggleCursorHighlight(_ sender: NSMenuItem) {
         currentSettings.highlightCursor.toggle()
         currentSettings.save()
         sender.state = currentSettings.highlightCursor ? .on : .off
+        updateButtonImage()
+    }
+
+    func updateTapFeedbackLifecycle() {
+        if recorder.isRecording && currentSettings.showsClicks {
+            if tapFeedbackWindows.isEmpty {
+                for screen in NSScreen.screens {
+                    let win = TapFeedbackWindow(screen: screen)
+                    win.orderFrontRegardless()
+                    tapFeedbackWindows.append(win)
+                }
+                recorder.tapFeedbackWindowIDs = tapFeedbackWindows.compactMap { $0.windowNumber }
+                recorder.updateStreamFilter()
+                
+                if globalMouseMonitor == nil {
+                    globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+                        self?.handleMouseEvent(event)
+                    }
+                }
+                if localMouseMonitor == nil {
+                    localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+                        self?.handleMouseEvent(event)
+                        return event
+                    }
+                }
+            }
+        } else {
+            if let g = globalMouseMonitor { NSEvent.removeMonitor(g); globalMouseMonitor = nil }
+            if let l = localMouseMonitor { NSEvent.removeMonitor(l); localMouseMonitor = nil }
+            for win in tapFeedbackWindows { win.close() }
+            tapFeedbackWindows.removeAll()
+            recorder.tapFeedbackWindowIDs.removeAll()
+        }
+    }
+
+    func handleMouseEvent(_ event: NSEvent) {
+        guard recorder.isRecording && currentSettings.showsClicks else { return }
+        let mouseLoc = NSEvent.mouseLocation
+        let isRight = (event.type == .rightMouseDown)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.recorder.isRecording && currentSettings.showsClicks else { return }
+            var handled = false
+            for window in self.tapFeedbackWindows {
+                if window.frame.contains(mouseLoc) {
+                    window.spawnRipple(at: mouseLoc, isRightClick: isRight)
+                    handled = true
+                    break
+                }
+            }
+            if !handled, let fallbackWin = self.tapFeedbackWindows.first {
+                fallbackWin.spawnRipple(at: mouseLoc, isRightClick: isRight)
+            }
+        }
     }
 
     @objc func cursorColorChanged(_ sender: NSMenuItem) {
@@ -2403,22 +2613,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         addSubmenu("Framerate", "film", [
+            ("120 FPS (Ultra Smooth)", 120, #selector(fpsChanged(_:))),
+            ("90 FPS", 90, #selector(fpsChanged(_:))),
             ("60 FPS", 60, #selector(fpsChanged(_:))),
             ("30 FPS", 30, #selector(fpsChanged(_:))),
-            ("24 FPS", 24, #selector(fpsChanged(_:)))
+            ("24 FPS (Cinematic)", 24, #selector(fpsChanged(_:))),
+            ("15 FPS (Compact)", 15, #selector(fpsChanged(_:)))
         ])
-        if currentSettings.fps == 60 { (settingsPopUp.menu?.item(withTitle: "Framerate")?.submenu?.item(withTitle: "60 FPS"))?.state = .on }
-        else if currentSettings.fps == 30 { (settingsPopUp.menu?.item(withTitle: "Framerate")?.submenu?.item(withTitle: "30 FPS"))?.state = .on }
-        else { (settingsPopUp.menu?.item(withTitle: "Framerate")?.submenu?.item(withTitle: "24 FPS"))?.state = .on }
+        if let sub = settingsPopUp.menu?.item(withTitle: "Framerate")?.submenu {
+            for item in sub.items {
+                item.state = (item.tag == currentSettings.fps) ? .on : .off
+            }
+        }
 
         addSubmenu("Resolution", "display", [
             ("Native", 0, #selector(resChanged(_:))),
             ("1080p", 1080, #selector(resChanged(_:))),
-            ("720p", 720, #selector(resChanged(_:)))
+            ("720p", 720, #selector(resChanged(_:))),
+            ("480p (Compact)", 480, #selector(resChanged(_:)))
         ])
-        if currentSettings.resolution == 0 { (settingsPopUp.menu?.item(withTitle: "Resolution")?.submenu?.item(withTitle: "Native"))?.state = .on }
-        else if currentSettings.resolution == 1080 { (settingsPopUp.menu?.item(withTitle: "Resolution")?.submenu?.item(withTitle: "1080p"))?.state = .on }
-        else { (settingsPopUp.menu?.item(withTitle: "Resolution")?.submenu?.item(withTitle: "720p"))?.state = .on }
+        if let sub = settingsPopUp.menu?.item(withTitle: "Resolution")?.submenu {
+            for item in sub.items {
+                item.state = (item.tag == currentSettings.resolution) ? .on : .off
+            }
+        }
 
         addSubmenu("Bitrate", "speedometer", [
             ("High (Best Quality)", 0, #selector(bitChanged(_:))),
@@ -2432,7 +2650,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsPopUp.menu?.addItem(NSMenuItem.separator())
         
         let cursorMenu = NSMenu()
-        let nativeClickItem = NSMenuItem(title: "Show Native Clicks", action: #selector(toggleMouseClicks(_:)), keyEquivalent: "")
+        let nativeClickItem = NSMenuItem(title: "Show Tap Feedback", action: #selector(toggleMouseClicks(_:)), keyEquivalent: "")
         nativeClickItem.target = self
         nativeClickItem.state = currentSettings.showsClicks ? .on : .off
         cursorMenu.addItem(nativeClickItem)
@@ -2996,8 +3214,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Handle Cursor Highlighter lifecycle
         if recorder.isRecording && currentSettings.highlightCursor {
             if highlighterWindow == nil {
-                highlighterWindow = CursorHighlighterWindow()
-                highlighterWindow?.makeKeyAndOrderFront(nil)
+                let hw = CursorHighlighterWindow()
+                hw.makeKeyAndOrderFront(nil)
+                highlighterWindow = hw
+                recorder.cursorWindowID = hw.windowNumber
+                recorder.updateStreamFilter()
                 highlighterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
                     let mouseLoc = NSEvent.mouseLocation
                     self?.highlighterWindow?.moveTo(point: mouseLoc)
@@ -3008,11 +3229,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             highlighterTimer = nil
             highlighterWindow?.close()
             highlighterWindow = nil
+            recorder.cursorWindowID = nil
         }
+
+        // Handle Tap Feedback lifecycle
+        updateTapFeedbackLifecycle()
+    }
+
+    func applicationWillTerminate(_ aNotification: Notification) {
+        if let g = globalMouseMonitor { NSEvent.removeMonitor(g); globalMouseMonitor = nil }
+        if let l = localMouseMonitor { NSEvent.removeMonitor(l); localMouseMonitor = nil }
+        for win in tapFeedbackWindows { win.close() }
+        tapFeedbackWindows.removeAll()
+        highlighterTimer?.invalidate()
+        highlighterWindow?.close()
+        cameraWindow?.close()
+        recordingOverlay?.close()
     }
 
     deinit {
         recordingOverlay?.close()
+        for win in tapFeedbackWindows { win.close() }
+        if let g = globalMouseMonitor { NSEvent.removeMonitor(g) }
+        if let l = localMouseMonitor { NSEvent.removeMonitor(l) }
     }
 }
 

@@ -1,7 +1,17 @@
 {
-  "version": "1.2.8",
+  "version": "1.2.9",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.2.9",
+      "date": "2026-08-24",
+      "changes": [
+        "Clickity-Style Tap Feedback: Replaced legacy black outline circle click visualizer with smooth, hardware-accelerated tap ripple animations (white when cursor highlight is disabled, or matched to the selected cursor highlight color with dual-pulse for right clicks).",
+        "High-Framerate & Expanded FPS Options: Added 120 FPS (Ultra Smooth / ProMotion), 90 FPS, and 15 FPS (Compact) capture framerates.",
+        "Expanded Resolution Options: Added 480p (Compact / SD) resolution for lightweight screen captures and quick sharing.",
+        "Display & Multi-Monitor Safety: Added dynamic multi-monitor re-alignment, screen edge fallback, and main-thread safety protections."
+      ]
+    },
     {
       "version": "1.2.8",
       "date": "2026-08-21",
