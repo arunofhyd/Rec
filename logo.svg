@@ -1,6 +1,14 @@
 <svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
-  <!-- Record Circle Outer Ring -->
-  <circle cx="60" cy="60" r="44" fill="none" stroke="#ffffff" stroke-width="9"/>
-  <!-- Record Circle Inner Red Dot -->
-  <circle cx="60" cy="60" r="28" fill="#FF3B30"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#333333"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+  </defs>
+  <!-- Dark macOS Squircle App Icon Background -->
+  <rect x="0" y="0" width="120" height="120" rx="27" ry="27" fill="url(#bg)"/>
+  <!-- Record Circle Outer -->
+  <circle cx="60" cy="60" r="30" fill="none" stroke="#ffffff" stroke-width="6"/>
+  <!-- Record Circle Inner -->
+  <circle cx="60" cy="60" r="20" fill="#FF3B30"/>
 </svg>
