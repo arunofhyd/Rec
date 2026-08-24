@@ -1,6 +1,7 @@
 import Cocoa
 import ScreenCaptureKit
 import AVFoundation
+import AVKit
 import VideoToolbox
 import os.log
 import SwiftUI
@@ -11,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.2.9"
+    return "1.3.0"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -417,6 +418,7 @@ class RegionSelectionView: NSView {
     var startPoint: NSPoint?
     var currentRect: NSRect = .zero
     var isDragging = false
+    var isLastSelectedAreaPreview = false
     var onSelectionComplete: ((NSRect) -> Void)?
     var onCancel: (() -> Void)?
 
@@ -437,7 +439,8 @@ class RegionSelectionView: NSView {
 
             let w = Int(currentRect.width)
             let h = Int(currentRect.height)
-            let text = "\(w) × \(h) px  •  Press Enter/Space or click to confirm  •  Drag to draw new  •  Esc to cancel"
+            let titlePrefix = isLastSelectedAreaPreview ? "🎯 Last Selected Area: " : ""
+            let text = "\(titlePrefix)\(w) × \(h) px  •  Press Enter/Space or click to confirm  •  Drag to draw new  •  Esc to cancel"
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 13, weight: .medium),
                 .foregroundColor: NSColor.white
@@ -520,6 +523,93 @@ class RegionSelectionView: NSView {
         } else {
             super.keyDown(with: event)
         }
+    }
+}
+
+class LastAreaPreviewWindow: NSWindow {
+    override var canBecomeKey: Bool { return false }
+    override var canBecomeMain: Bool { return false }
+
+    init(screen: NSScreen, rect: NSRect) {
+        super.init(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.level = .floating
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.ignoresMouseEvents = true
+        self.isReleasedWhenClosed = false
+
+        let previewView = LastAreaPreviewView(frame: NSRect(origin: .zero, size: screen.frame.size), targetRect: rect)
+        self.contentView = previewView
+    }
+
+    func startPulseAndDismiss() {
+        self.alphaValue = 0.0
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.25
+            self.animator().alphaValue = 1.0
+        }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.35
+                    self?.animator().alphaValue = 0.0
+                }) {
+                    self?.close()
+                }
+            }
+        }
+    }
+}
+
+class LastAreaPreviewView: NSView {
+    let targetRect: NSRect
+
+    init(frame: NSRect, targetRect: NSRect) {
+        self.targetRect = targetRect
+        super.init(frame: frame)
+        self.wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard targetRect != .zero else { return }
+
+        // Subtle dim background outside targetRect
+        NSColor.black.withAlphaComponent(0.28).set()
+        dirtyRect.fill()
+
+        NSColor.clear.set()
+        targetRect.fill(using: .sourceOut)
+
+        // Accent outline with smooth rounded stroke
+        NSColor.systemBlue.withAlphaComponent(0.90).setStroke()
+        let path = NSBezierPath(roundedRect: targetRect, xRadius: 4, yRadius: 4)
+        path.lineWidth = 2.5
+        path.stroke()
+
+        // Badge
+        let w = Int(targetRect.width)
+        let h = Int(targetRect.height)
+        let text = "🎯 Last Selected Area: \(w) × \(h) px"
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: NSColor.white
+        ]
+        let attrStr = NSAttributedString(string: text, attributes: attrs)
+        let textSize = attrStr.size()
+        let textRect = NSRect(
+            x: max(10, min(bounds.width - textSize.width - 20, targetRect.midX - textSize.width / 2)),
+            y: targetRect.maxY + 8 + textSize.height > bounds.height ? max(10, targetRect.minY - textSize.height - 12) : targetRect.maxY + 8,
+            width: textSize.width + 16,
+            height: textSize.height + 8
+        )
+        let bgPath = NSBezierPath(roundedRect: textRect, xRadius: 6, yRadius: 6)
+        NSColor.black.withAlphaComponent(0.85).set()
+        bgPath.fill()
+        attrStr.draw(at: NSPoint(x: textRect.minX + 8, y: textRect.minY + 4))
     }
 }
 
@@ -1212,12 +1302,1087 @@ class FloatingPanel: NSPanel {
         visualEffectView.state = .active
         visualEffectView.blendingMode = .behindWindow
         visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 16
+        visualEffectView.layer?.cornerRadius = 18
         visualEffectView.layer?.masksToBounds = true
+        visualEffectView.layer?.borderWidth = 1.0
+        visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
         self.contentView = visualEffectView
     }
 }
 
+// ============================================================
+// Interactive Hover Controls for Floating Toolbar
+// ============================================================
+
+class HoverIconButton: NSButton {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+    }
+
+    convenience init() {
+        self.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+    }
+}
+
+class HoverPopUpButton: NSPopUpButton {
+    override init(frame frameRect: NSRect, pullsDown flag: Bool) {
+        super.init(frame: frameRect, pullsDown: flag)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect, pullsDown: false)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+    }
+
+    convenience init() {
+        self.init(frame: .zero, pullsDown: false)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+    }
+}
+
+class HoverRecordButton: NSButton {
+    private var trackingAreaObj: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingAreaObj { removeTrackingArea(existing) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingAreaObj = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            self.layer?.shadowColor = NSColor.systemRed.cgColor
+            self.layer?.shadowOpacity = 0.85
+            self.layer?.shadowRadius = 8
+            self.layer?.shadowOffset = .zero
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            self.layer?.shadowOpacity = 0.0
+        }
+    }
+}
+
+// ============================================================
+// Native Interactive Video Trim Range Slider (QuickTime style)
+// ============================================================
+
+class TrimRangeSliderView: NSView {
+    var duration: Double = 1.0 {
+        didSet { needsDisplay = true }
+    }
+    var startTime: Double = 0.0 {
+        didSet { needsDisplay = true }
+    }
+    var endTime: Double = 1.0 {
+        didSet { needsDisplay = true }
+    }
+    var currentTime: Double = 0.0 {
+        didSet { needsDisplay = true }
+    }
+
+    var onTrimChanged: ((Double, Double) -> Void)?
+    var onSeek: ((Double, Bool) -> Void)?
+
+    private enum DragTarget { case none, startHandle, endHandle, playhead }
+    private var currentDrag: DragTarget = .none
+    private let handleWidth: CGFloat = 16.0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.masksToBounds = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.masksToBounds = true
+    }
+
+    private func xForTime(_ t: Double) -> CGFloat {
+        guard duration > 0 else { return 0 }
+        let clamped = max(0, min(duration, t))
+        let trackWidth = bounds.width - (handleWidth * 2)
+        return handleWidth + CGFloat(clamped / duration) * trackWidth
+    }
+
+    private func timeForX(_ x: CGFloat) -> Double {
+        let trackWidth = bounds.width - (handleWidth * 2)
+        guard trackWidth > 0 else { return 0 }
+        let relX = max(0, min(trackWidth, x - handleWidth))
+        return (Double(relX) / Double(trackWidth)) * duration
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+
+        let b = bounds
+        // Background track
+        ctx.setFillColor(NSColor.black.withAlphaComponent(0.45).cgColor)
+        ctx.fill(b)
+
+        let startX = xForTime(startTime) - handleWidth
+        let endX = xForTime(endTime) + handleWidth
+        let selWidth = max(handleWidth * 2, endX - startX)
+        let selRect = NSRect(x: startX, y: 0, width: selWidth, height: b.height)
+
+        // Yellow selection highlight (QuickTime style)
+        let yellowColor = NSColor(srgbRed: 1.0, green: 0.82, blue: 0.0, alpha: 1.0)
+        ctx.setFillColor(yellowColor.withAlphaComponent(0.22).cgColor)
+        ctx.fill(selRect)
+
+        // Top & bottom border lines for trim box
+        ctx.setStrokeColor(yellowColor.cgColor)
+        ctx.setLineWidth(2.5)
+        ctx.stroke(NSRect(x: startX, y: 1, width: selWidth, height: b.height - 2))
+
+        // Left Handle (Start)
+        let leftHandleRect = NSRect(x: startX, y: 0, width: handleWidth, height: b.height)
+        ctx.setFillColor(yellowColor.cgColor)
+        let leftPath = CGPath(roundedRect: leftHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+        ctx.addPath(leftPath)
+        ctx.fillPath()
+
+        // Left handle grip notch
+        ctx.setFillColor(NSColor.black.withAlphaComponent(0.5).cgColor)
+        let notchH: CGFloat = 12
+        ctx.fill(NSRect(x: leftHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
+
+        // Right Handle (End)
+        let rightHandleRect = NSRect(x: endX - handleWidth, y: 0, width: handleWidth, height: b.height)
+        ctx.setFillColor(yellowColor.cgColor)
+        let rightPath = CGPath(roundedRect: rightHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+        ctx.addPath(rightPath)
+        ctx.fillPath()
+
+        // Right handle grip notch
+        ctx.fill(NSRect(x: rightHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
+
+        // Current Playhead Needle (always visible anywhere along timeline)
+        let playheadX = xForTime(currentTime)
+        if playheadX >= 0 && playheadX <= b.width {
+            ctx.setFillColor(NSColor.white.cgColor)
+            ctx.fill(NSRect(x: playheadX - 1, y: 0, width: 2, height: b.height))
+            ctx.fillEllipse(in: NSRect(x: playheadX - 4, y: b.height - 6, width: 8, height: 6))
+        }
+    }
+
+    override var mouseDownCanMoveWindow: Bool { return false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+
+    override func mouseDown(with event: NSEvent) {
+        let loc = convert(event.locationInWindow, from: nil)
+        let startX = xForTime(startTime)
+        let endX = xForTime(endTime)
+
+        if abs(loc.x - (startX - handleWidth / 2)) <= handleWidth + 10 {
+            currentDrag = .startHandle
+        } else if abs(loc.x - (endX + handleWidth / 2)) <= handleWidth + 10 {
+            currentDrag = .endHandle
+        } else {
+            currentDrag = .playhead
+            let t = timeForX(loc.x)
+            currentTime = t
+            needsDisplay = true
+            onSeek?(t, true)
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let loc = convert(event.locationInWindow, from: nil)
+        let t = timeForX(loc.x)
+
+        switch currentDrag {
+        case .startHandle:
+            startTime = max(0, min(endTime - 0.2, t))
+            currentTime = startTime
+            onTrimChanged?(startTime, endTime)
+            onSeek?(startTime, false)
+        case .endHandle:
+            endTime = min(duration, max(startTime + 0.2, t))
+            currentTime = endTime
+            onTrimChanged?(startTime, endTime)
+            onSeek?(endTime, false)
+        case .playhead:
+            currentTime = max(0, min(duration, t))
+            onSeek?(currentTime, false)
+        case .none:
+            break
+        }
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if currentDrag != .none {
+            let t = currentTime
+            onSeek?(t, true)
+            currentDrag = .none
+        }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        let startX = xForTime(startTime) - handleWidth
+        let endX = xForTime(endTime) + handleWidth
+        addCursorRect(NSRect(x: startX - 6, y: 0, width: handleWidth + 12, height: bounds.height), cursor: .resizeLeftRight)
+        addCursorRect(NSRect(x: endX - handleWidth - 6, y: 0, width: handleWidth + 12, height: bounds.height), cursor: .resizeLeftRight)
+    }
+}
+
+// ============================================================
+// Native In-App Video Trimmer Window
+// ============================================================
+
+class VideoTrimmerWindow: NSWindow {
+    let fileURL: URL
+    var player: AVPlayer?
+    var playerView: AVPlayerView!
+    var trimSlider: TrimRangeSliderView!
+    var totalDuration: Double = 0
+    var trimStartSeconds: Double = 0
+    var trimEndSeconds: Double = 0
+    var timeObserverToken: Any?
+    private var isSeeking = false
+    private var pendingSeek: (time: CMTime, exact: Bool)?
+    var onTrimCompleted: ((URL) -> Void)?
+    
+    var startTimeLabel: NSTextField!
+    var endTimeLabel: NSTextField!
+    var durationLabel: NSTextField!
+    var exportStatusLabel: NSTextField!
+    var playSelectionBtn: NSButton!
+    var muteButton: NSButton!
+    var trimButton: NSButton!
+    var progressIndicator: NSProgressIndicator!
+    var isPlayingSelection: Bool = false
+    var isAudioMuted: Bool = false
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        let rect = NSRect(x: 0, y: 0, width: 720, height: 530)
+        super.init(contentRect: rect, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+
+        self.isReleasedWhenClosed = false
+        self.titlebarAppearsTransparent = true
+        self.title = "Trim Video — \(fileURL.lastPathComponent)"
+        self.titleVisibility = .visible
+        self.isMovableByWindowBackground = false
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = true
+        self.center()
+        self.level = .floating
+        self.minSize = NSSize(width: 580, height: 440)
+
+        let visualEffectView = NSVisualEffectView(frame: rect)
+        visualEffectView.material = .hudWindow
+        visualEffectView.state = .active
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.wantsLayer = true
+        visualEffectView.layer?.cornerRadius = 18
+        visualEffectView.layer?.masksToBounds = true
+        visualEffectView.layer?.borderWidth = 1.0
+        visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        self.contentView = visualEffectView
+
+        setupUI(in: visualEffectView)
+        loadAsset()
+    }
+
+    private func setupUI(in container: NSView) {
+        // AVPlayerView
+        playerView = AVPlayerView()
+        playerView.translatesAutoresizingMaskIntoConstraints = false
+        playerView.controlsStyle = .inline
+        playerView.showsFullScreenToggleButton = true
+        playerView.showsSharingServiceButton = false
+        playerView.wantsLayer = true
+        playerView.layer?.cornerRadius = 10
+        playerView.layer?.masksToBounds = true
+        playerView.layer?.borderWidth = 1.0
+        playerView.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+
+        // Interactive Visual Trim Slider
+        trimSlider = TrimRangeSliderView()
+        trimSlider.translatesAutoresizingMaskIntoConstraints = false
+        trimSlider.onTrimChanged = { [weak self] start, end in
+            guard let self = self else { return }
+            self.trimStartSeconds = start
+            self.trimEndSeconds = end
+            self.stopSelectionPlaybackIfNeeded()
+            self.updateLabels()
+        }
+        trimSlider.onSeek = { [weak self] time, exact in
+            guard let self = self else { return }
+            self.stopSelectionPlaybackIfNeeded()
+            let cm = CMTime(seconds: time, preferredTimescale: 600)
+            self.smoothSeek(to: cm, exact: exact)
+        }
+
+        // Left Controls (Start)
+        let setStartBtn = NSButton(title: "Set Start", target: self, action: #selector(setStartToCurrent))
+        setStartBtn.bezelStyle = .rounded
+        setStartBtn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        setStartBtn.translatesAutoresizingMaskIntoConstraints = false
+        setStartBtn.heightAnchor.constraint(equalToConstant: 28).isActive = true
+
+        startTimeLabel = NSTextField(labelWithString: "Start: 00:00.0")
+        startTimeLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        startTimeLabel.textColor = .labelColor
+        startTimeLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let leftStack = NSStackView(views: [setStartBtn, startTimeLabel])
+        leftStack.orientation = .horizontal
+        leftStack.spacing = 8
+        leftStack.alignment = .centerY
+        leftStack.translatesAutoresizingMaskIntoConstraints = false
+
+        // Center Duration (Dead-centered)
+        durationLabel = NSTextField(labelWithString: "Selected: 00:00.0")
+        durationLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .bold)
+        durationLabel.textColor = .systemGreen
+        durationLabel.alignment = .center
+        durationLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // Right Controls (End)
+        endTimeLabel = NSTextField(labelWithString: "End: 00:00.0")
+        endTimeLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        endTimeLabel.textColor = .labelColor
+        endTimeLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let setEndBtn = NSButton(title: "Set End", target: self, action: #selector(setEndToCurrent))
+        setEndBtn.bezelStyle = .rounded
+        setEndBtn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        setEndBtn.translatesAutoresizingMaskIntoConstraints = false
+        setEndBtn.heightAnchor.constraint(equalToConstant: 28).isActive = true
+
+        let rightStack = NSStackView(views: [endTimeLabel, setEndBtn])
+        rightStack.orientation = .horizontal
+        rightStack.spacing = 8
+        rightStack.alignment = .centerY
+        rightStack.translatesAutoresizingMaskIntoConstraints = false
+
+        // Bottom Action Bar
+        playSelectionBtn = NSButton()
+        playSelectionBtn.bezelStyle = .rounded
+        playSelectionBtn.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+        playSelectionBtn.title = "Play Selection"
+        playSelectionBtn.target = self
+        playSelectionBtn.action = #selector(togglePlaySelection)
+        playSelectionBtn.translatesAutoresizingMaskIntoConstraints = false
+        playSelectionBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
+
+        let resetBtn = NSButton(title: "Reset", target: self, action: #selector(resetTrim))
+        resetBtn.bezelStyle = .rounded
+        resetBtn.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+        resetBtn.translatesAutoresizingMaskIntoConstraints = false
+        resetBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
+
+        muteButton = NSButton()
+        muteButton.bezelStyle = .rounded
+        muteButton.title = " Mute Audio"
+        muteButton.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+        let muteSymConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        muteButton.image = NSImage(systemSymbolName: "speaker.wave.2.fill", accessibilityDescription: "Mute Audio")?.withSymbolConfiguration(muteSymConfig)
+        muteButton.imagePosition = .imageLeading
+        muteButton.imageHugsTitle = true
+        muteButton.target = self
+        muteButton.action = #selector(toggleMute)
+        muteButton.translatesAutoresizingMaskIntoConstraints = false
+        muteButton.heightAnchor.constraint(equalToConstant: 32).isActive = true
+
+        progressIndicator = NSProgressIndicator()
+        progressIndicator.style = .spinning
+        progressIndicator.controlSize = .small
+        progressIndicator.isDisplayedWhenStopped = false
+        progressIndicator.translatesAutoresizingMaskIntoConstraints = false
+
+        exportStatusLabel = NSTextField(labelWithString: "")
+        exportStatusLabel.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        exportStatusLabel.textColor = .secondaryLabelColor
+        exportStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        trimButton = NSButton()
+        trimButton.bezelStyle = .rounded
+        trimButton.title = "Save Trimmed Video"
+        trimButton.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+        trimButton.keyEquivalent = "\r"
+        trimButton.target = self
+        trimButton.action = #selector(performTrim)
+        trimButton.translatesAutoresizingMaskIntoConstraints = false
+        trimButton.heightAnchor.constraint(equalToConstant: 32).isActive = true
+
+        let bottomStack = NSStackView(views: [playSelectionBtn, resetBtn, muteButton, progressIndicator, exportStatusLabel, NSView(), trimButton])
+        bottomStack.orientation = .horizontal
+        bottomStack.alignment = .centerY
+        bottomStack.spacing = 10
+        bottomStack.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(playerView)
+        container.addSubview(trimSlider)
+        container.addSubview(leftStack)
+        container.addSubview(durationLabel)
+        container.addSubview(rightStack)
+        container.addSubview(bottomStack)
+
+        NSLayoutConstraint.activate([
+            playerView.topAnchor.constraint(equalTo: container.topAnchor, constant: 36),
+            playerView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            playerView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+
+            trimSlider.topAnchor.constraint(equalTo: playerView.bottomAnchor, constant: 12),
+            trimSlider.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            trimSlider.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            trimSlider.heightAnchor.constraint(equalToConstant: 36),
+
+            leftStack.topAnchor.constraint(equalTo: trimSlider.bottomAnchor, constant: 10),
+            leftStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+
+            rightStack.topAnchor.constraint(equalTo: trimSlider.bottomAnchor, constant: 10),
+            rightStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+
+            durationLabel.centerYAnchor.constraint(equalTo: leftStack.centerYAnchor),
+            durationLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+
+            bottomStack.topAnchor.constraint(equalTo: leftStack.bottomAnchor, constant: 12),
+            bottomStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            bottomStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            bottomStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -14)
+        ])
+    }
+
+    private func smoothSeek(to time: CMTime, exact: Bool) {
+        if isSeeking {
+            pendingSeek = (time, exact)
+            return
+        }
+        isSeeking = true
+        let tol = exact ? CMTime.zero : CMTime(seconds: 0.02, preferredTimescale: 600)
+        player?.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] _ in
+            guard let self = self else { return }
+            self.isSeeking = false
+            if let next = self.pendingSeek {
+                self.pendingSeek = nil
+                self.smoothSeek(to: next.time, exact: next.exact)
+            }
+        }
+    }
+
+    private func loadAsset() {
+        let asset = AVURLAsset(url: fileURL)
+        let playerItem = AVPlayerItem(asset: asset)
+        let p = AVPlayer(playerItem: playerItem)
+        p.isMuted = self.isAudioMuted
+        self.player = p
+        self.playerView.player = p
+
+        // Observe playback time at ultra-smooth 60 FPS (1/60s)
+        let interval = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
+        timeObserverToken = p.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            guard let self = self else { return }
+            let sec = CMTimeGetSeconds(time)
+            self.trimSlider.currentTime = sec
+
+            if self.isPlayingSelection && sec >= self.trimEndSeconds {
+                self.player?.pause()
+                self.isPlayingSelection = false
+                self.updatePlaySelectionButton()
+                let startCM = CMTime(seconds: self.trimStartSeconds, preferredTimescale: 600)
+                self.player?.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero)
+            }
+        }
+
+        Task {
+            if let duration = try? await asset.load(.duration) {
+                let seconds = CMTimeGetSeconds(duration)
+                await MainActor.run {
+                    self.totalDuration = seconds > 0 ? seconds : 1.0
+                    self.trimStartSeconds = 0.0
+                    self.trimEndSeconds = self.totalDuration
+                    self.trimSlider.duration = self.totalDuration
+                    self.trimSlider.startTime = 0.0
+                    self.trimSlider.endTime = self.totalDuration
+                    self.updateLabels()
+                }
+            }
+        }
+    }
+
+    private func stopSelectionPlaybackIfNeeded() {
+        if isPlayingSelection {
+            player?.pause()
+            isPlayingSelection = false
+            updatePlaySelectionButton()
+        }
+    }
+
+    @objc private func togglePlaySelection() {
+        guard let p = player else { return }
+        if isPlayingSelection {
+            p.pause()
+            isPlayingSelection = false
+            updatePlaySelectionButton()
+        } else {
+            let startCM = CMTime(seconds: trimStartSeconds, preferredTimescale: 600)
+            p.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                guard let self = self else { return }
+                self.player?.play()
+                self.isPlayingSelection = true
+                self.updatePlaySelectionButton()
+            }
+        }
+    }
+
+    private func updatePlaySelectionButton() {
+        playSelectionBtn.title = isPlayingSelection ? "Pause Preview" : "Play Selection"
+    }
+
+    @objc private func toggleMute() {
+        isAudioMuted = !isAudioMuted
+        player?.isMuted = isAudioMuted
+        updateMuteButton()
+    }
+
+    private func updateMuteButton() {
+        let symName = isAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill"
+        let title = isAudioMuted ? " Unmute Audio" : " Mute Audio"
+        let symConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        muteButton.image = NSImage(systemSymbolName: symName, accessibilityDescription: "Mute")?.withSymbolConfiguration(symConfig)
+        muteButton.title = title
+        muteButton.contentTintColor = isAudioMuted ? .systemOrange : nil
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        let tenths = Int((seconds.truncatingRemainder(dividingBy: 1)) * 10)
+        return String(format: "%02d:%02d.%01d", mins, secs, tenths)
+    }
+
+    private func updateLabels() {
+        startTimeLabel.stringValue = "Start: \(formatTime(trimStartSeconds))"
+        endTimeLabel.stringValue = "End: \(formatTime(trimEndSeconds))"
+        let dur = max(0, trimEndSeconds - trimStartSeconds)
+        durationLabel.stringValue = "Selected: \(formatTime(dur))"
+    }
+
+    @objc private func setStartToCurrent() {
+        guard let p = player else { return }
+        stopSelectionPlaybackIfNeeded()
+        let current = CMTimeGetSeconds(p.currentTime())
+        if current < trimEndSeconds {
+            trimStartSeconds = max(0, current)
+            trimSlider.startTime = trimStartSeconds
+            updateLabels()
+        }
+    }
+
+    @objc private func setEndToCurrent() {
+        guard let p = player else { return }
+        stopSelectionPlaybackIfNeeded()
+        let current = CMTimeGetSeconds(p.currentTime())
+        if current > trimStartSeconds {
+            trimEndSeconds = min(totalDuration, current)
+            trimSlider.endTime = trimEndSeconds
+            updateLabels()
+        }
+    }
+
+    @objc private func resetTrim() {
+        stopSelectionPlaybackIfNeeded()
+        trimStartSeconds = 0.0
+        trimEndSeconds = totalDuration
+        trimSlider.startTime = 0.0
+        trimSlider.endTime = totalDuration
+        updateLabels()
+        player?.seek(to: .zero)
+    }
+
+    @objc private func performTrim() {
+        trimButton.isEnabled = false
+        progressIndicator.startAnimation(nil)
+        exportStatusLabel.stringValue = "Trimming video..."
+
+        let asset = AVURLAsset(url: fileURL)
+        let startCM = CMTime(seconds: trimStartSeconds, preferredTimescale: 600)
+        let endCM = CMTime(seconds: trimEndSeconds, preferredTimescale: 600)
+        let timeRange = CMTimeRange(start: startCM, duration: CMTimeSubtract(endCM, startCM))
+
+        let ext = fileURL.pathExtension
+        let tempURL = fileURL.deletingLastPathComponent().appendingPathComponent(".temp_trim_\(UUID().uuidString).\(ext)")
+
+        // Remove if existing
+        try? FileManager.default.removeItem(at: tempURL)
+
+        Task {
+            let exportAsset: AVAsset
+            let exportPreset: String
+
+            if self.isAudioMuted {
+                let comp = AVMutableComposition()
+                let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+                if let assetVideoTrack = tracks.first,
+                   let compVideoTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                    try? compVideoTrack.insertTimeRange(timeRange, of: assetVideoTrack, at: .zero)
+                    if let transform = try? await assetVideoTrack.load(.preferredTransform) {
+                        compVideoTrack.preferredTransform = transform
+                    }
+                }
+                exportAsset = comp
+                exportPreset = AVAssetExportPresetHighestQuality
+            } else {
+                exportAsset = asset
+                exportPreset = AVAssetExportPresetPassthrough
+            }
+
+            guard let exportSession = AVAssetExportSession(asset: exportAsset, presetName: exportPreset) else {
+                await MainActor.run {
+                    self.exportStatusLabel.stringValue = "Export failed."
+                    self.progressIndicator.stopAnimation(nil)
+                    self.trimButton.isEnabled = true
+                }
+                return
+            }
+
+            exportSession.outputURL = tempURL
+            exportSession.outputFileType = self.fileURL.pathExtension.lowercased() == "mp4" ? .mp4 : .mov
+            if !self.isAudioMuted {
+                exportSession.timeRange = timeRange
+            }
+
+            exportSession.exportAsynchronously { [weak self] in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.progressIndicator.stopAnimation(nil)
+                    self.trimButton.isEnabled = true
+
+                    if exportSession.status == .completed {
+                        // Release player reference so file is not locked
+                        self.player?.pause()
+                        self.player?.replaceCurrentItem(with: nil)
+                        self.player = nil
+
+                        // Replace original file in-place with the trimmed video
+                        do {
+                            _ = try FileManager.default.replaceItemAt(self.fileURL, withItemAt: tempURL)
+                        } catch {
+                            try? FileManager.default.removeItem(at: self.fileURL)
+                            try? FileManager.default.moveItem(at: tempURL, to: self.fileURL)
+                        }
+
+                        self.exportStatusLabel.stringValue = "Trim saved!"
+                        self.onTrimCompleted?(self.fileURL)
+
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            self.closeWindow()
+                        }
+                    } else {
+                        try? FileManager.default.removeItem(at: tempURL)
+                        self.exportStatusLabel.stringValue = "Export error: \(exportSession.error?.localizedDescription ?? "Unknown")"
+                    }
+                }
+            }
+        }
+    }
+
+    @objc private func closeWindow() {
+        if let token = timeObserverToken {
+            player?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+        player?.pause()
+        self.orderOut(nil)
+        self.close()
+    }
+}
+
+// ============================================================
+// Post-Recording Action Window (Play, Edit/Trim, Share, Finder, Delete)
+// ============================================================
+
+class RecordingFinishedWindow: NSWindow {
+    var fileURL: URL
+    var onDismiss: (() -> Void)?
+    var trimmerWindow: VideoTrimmerWindow?
+
+    var thumbnailView: NSImageView!
+    var fileNameLabel: NSTextField!
+    var metaLabel: NSTextField!
+    var locationLabel: NSTextField!
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        let rect = NSRect(x: 0, y: 0, width: 480, height: 280)
+        super.init(contentRect: rect, styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+        
+        self.isReleasedWhenClosed = false
+        self.titlebarAppearsTransparent = true
+        self.titleVisibility = .hidden
+        self.isMovableByWindowBackground = true
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = true
+        self.center()
+        self.level = .floating
+
+        let visualEffectView = NSVisualEffectView(frame: rect)
+        visualEffectView.material = .hudWindow
+        visualEffectView.state = .active
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.wantsLayer = true
+        visualEffectView.layer?.cornerRadius = 20
+        visualEffectView.layer?.masksToBounds = true
+        visualEffectView.layer?.borderWidth = 1.0
+        visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        self.contentView = visualEffectView
+
+        setupUI(in: visualEffectView)
+    }
+
+    private func setupUI(in container: NSView) {
+        // ---- 1. HEADER SECTION ----
+        let checkConfig = NSImage.SymbolConfiguration(pointSize: 22, weight: .semibold)
+        let checkIcon = NSImageView()
+        checkIcon.translatesAutoresizingMaskIntoConstraints = false
+        checkIcon.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Saved")?.withSymbolConfiguration(checkConfig)
+        checkIcon.contentTintColor = .systemGreen
+
+        let titleLabel = NSTextField(labelWithString: "Recording Saved")
+        titleLabel.font = NSFont.systemFont(ofSize: 16, weight: .bold)
+        titleLabel.textColor = .labelColor
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let subTitleLabel = NSTextField(labelWithString: "Your video is ready to preview, trim, share, or manage.")
+        subTitleLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .regular)
+        subTitleLabel.textColor = .secondaryLabelColor
+        subTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let headerTextStack = NSStackView(views: [titleLabel, subTitleLabel])
+        headerTextStack.orientation = .vertical
+        headerTextStack.alignment = .leading
+        headerTextStack.spacing = 0
+        headerTextStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let headerStack = NSStackView(views: [checkIcon, headerTextStack])
+        headerStack.orientation = .horizontal
+        headerStack.alignment = .centerY
+        headerStack.spacing = 12
+        headerStack.translatesAutoresizingMaskIntoConstraints = false
+
+        // ---- 2. PREVIEW CARD BOX ----
+        let previewBox = NSBox()
+        previewBox.boxType = .custom
+        previewBox.borderWidth = 1.0
+        previewBox.borderColor = NSColor.white.withAlphaComponent(0.1)
+        previewBox.fillColor = NSColor.black.withAlphaComponent(0.35)
+        previewBox.cornerRadius = 12
+        previewBox.translatesAutoresizingMaskIntoConstraints = false
+
+        thumbnailView = NSImageView()
+        thumbnailView.translatesAutoresizingMaskIntoConstraints = false
+        thumbnailView.wantsLayer = true
+        thumbnailView.layer?.cornerRadius = 8
+        thumbnailView.layer?.masksToBounds = true
+        thumbnailView.layer?.borderWidth = 1.0
+        thumbnailView.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+        thumbnailView.imageScaling = .scaleProportionallyUpOrDown
+
+        let filmConfig = NSImage.SymbolConfiguration(pointSize: 28, weight: .regular)
+        thumbnailView.image = NSImage(systemSymbolName: "play.rectangle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(filmConfig)
+        thumbnailView.contentTintColor = .systemRed
+
+        fileNameLabel = NSTextField(labelWithString: fileURL.lastPathComponent)
+        fileNameLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        fileNameLabel.textColor = .labelColor
+        fileNameLabel.lineBreakMode = .byTruncatingMiddle
+        fileNameLabel.isSelectable = true
+        fileNameLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        metaLabel = NSTextField(labelWithString: "0 MB  •  QuickTime Video")
+        metaLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
+        metaLabel.textColor = .secondaryLabelColor
+        metaLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        locationLabel = NSTextField(labelWithString: "Saved to \(fileURL.deletingLastPathComponent().lastPathComponent)")
+        locationLabel.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        locationLabel.textColor = .tertiaryLabelColor
+        locationLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        refreshPreviewCard(with: fileURL)
+
+        let cardTextStack = NSStackView(views: [fileNameLabel, metaLabel, locationLabel])
+        cardTextStack.orientation = .vertical
+        cardTextStack.alignment = .leading
+        cardTextStack.spacing = 3
+        cardTextStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let cardContentStack = NSStackView(views: [thumbnailView, cardTextStack])
+        cardContentStack.orientation = .horizontal
+        cardContentStack.alignment = .centerY
+        cardContentStack.spacing = 14
+        cardContentStack.translatesAutoresizingMaskIntoConstraints = false
+
+        previewBox.contentView = cardContentStack
+
+        // ---- 3. ACTION BUTTONS (Top Row: 4 Equal-Width Action Buttons) ----
+        func makeActionButton(title: String, symbol: String) -> NSButton {
+            let btn = NSButton()
+            btn.bezelStyle = .rounded
+            btn.title = " \(title)"
+            btn.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+            let symConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            btn.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?.withSymbolConfiguration(symConfig)
+            btn.imagePosition = .imageLeading
+            btn.imageHugsTitle = true
+            btn.translatesAutoresizingMaskIntoConstraints = false
+            btn.heightAnchor.constraint(equalToConstant: 32).isActive = true
+            return btn
+        }
+
+        let playBtn = makeActionButton(title: "Play", symbol: "play.fill")
+        playBtn.target = self
+        playBtn.action = #selector(playClicked)
+
+        let trimBtn = makeActionButton(title: "Trim", symbol: "scissors")
+        trimBtn.target = self
+        trimBtn.action = #selector(trimClicked)
+
+        let shareBtn = makeActionButton(title: "Share", symbol: "square.and.arrow.up")
+        shareBtn.target = self
+        shareBtn.action = #selector(shareClicked(_:))
+
+        let finderBtn = makeActionButton(title: "Finder", symbol: "folder")
+        finderBtn.target = self
+        finderBtn.action = #selector(finderClicked)
+
+        let actionsRow = NSStackView(views: [playBtn, trimBtn, shareBtn, finderBtn])
+        actionsRow.orientation = .horizontal
+        actionsRow.distribution = .fillEqually
+        actionsRow.spacing = 8
+        actionsRow.translatesAutoresizingMaskIntoConstraints = false
+
+        // ---- 4. FOOTER ROW (Bottom Row: Delete, Copy, Rename under Share, Done) ----
+        let deleteBtn = makeActionButton(title: "Delete", symbol: "trash")
+        deleteBtn.contentTintColor = .systemRed
+        deleteBtn.target = self
+        deleteBtn.action = #selector(deleteClicked)
+
+        let copyBtn = makeActionButton(title: "Copy", symbol: "doc.on.doc")
+        copyBtn.target = self
+        copyBtn.action = #selector(copyClicked(_:))
+
+        let renameBtn = makeActionButton(title: "Rename", symbol: "pencil")
+        renameBtn.target = self
+        renameBtn.action = #selector(renameClicked)
+
+        let okBtn = NSButton()
+        okBtn.bezelStyle = .rounded
+        okBtn.title = "Done"
+        okBtn.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+        okBtn.keyEquivalent = "\r"
+        okBtn.target = self
+        okBtn.action = #selector(doneClicked)
+        okBtn.translatesAutoresizingMaskIntoConstraints = false
+        okBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
+
+        let bottomRow = NSStackView(views: [deleteBtn, copyBtn, renameBtn, okBtn])
+        bottomRow.orientation = .horizontal
+        bottomRow.distribution = .fillEqually
+        bottomRow.spacing = 8
+        bottomRow.alignment = .centerY
+        bottomRow.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(headerStack)
+        container.addSubview(previewBox)
+        container.addSubview(actionsRow)
+        container.addSubview(bottomRow)
+
+        NSLayoutConstraint.activate([
+            headerStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 22),
+            headerStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            headerStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            checkIcon.widthAnchor.constraint(equalToConstant: 24),
+            checkIcon.heightAnchor.constraint(equalToConstant: 24),
+
+            previewBox.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 2),
+            previewBox.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            previewBox.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            previewBox.heightAnchor.constraint(equalToConstant: 84),
+
+            cardContentStack.leadingAnchor.constraint(equalTo: previewBox.leadingAnchor, constant: 10),
+            cardContentStack.trailingAnchor.constraint(equalTo: previewBox.trailingAnchor, constant: -10),
+            cardContentStack.topAnchor.constraint(equalTo: previewBox.topAnchor, constant: 8),
+            cardContentStack.bottomAnchor.constraint(equalTo: previewBox.bottomAnchor, constant: -8),
+
+            thumbnailView.widthAnchor.constraint(equalToConstant: 92),
+            thumbnailView.heightAnchor.constraint(equalToConstant: 64),
+
+            actionsRow.topAnchor.constraint(equalTo: previewBox.bottomAnchor, constant: 12),
+            actionsRow.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            actionsRow.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+
+            bottomRow.topAnchor.constraint(equalTo: actionsRow.bottomAnchor, constant: 10),
+            bottomRow.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            bottomRow.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            bottomRow.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -16)
+        ])
+    }
+
+    @objc private func renameClicked() {
+        let alert = NSAlert()
+        alert.messageText = "Rename Recording"
+        alert.informativeText = "Enter a new name for this video:"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        input.stringValue = fileURL.deletingPathExtension().lastPathComponent
+        alert.accessoryView = input
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            var rawName = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawName.isEmpty else { return }
+            rawName = rawName.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+            let ext = fileURL.pathExtension
+            let fullName = rawName.hasSuffix(".\(ext)") ? rawName : "\(rawName).\(ext)"
+            let newURL = fileURL.deletingLastPathComponent().appendingPathComponent(fullName)
+
+            if newURL.path != fileURL.path {
+                do {
+                    try FileManager.default.moveItem(at: fileURL, to: newURL)
+                    self.fileURL = newURL
+                    refreshPreviewCard(with: newURL)
+                } catch {
+                    let errAlert = NSAlert()
+                    errAlert.messageText = "Failed to Rename"
+                    errAlert.informativeText = error.localizedDescription
+                    errAlert.alertStyle = .warning
+                    errAlert.runModal()
+                }
+            }
+        }
+    }
+
+    func refreshPreviewCard(with url: URL) {
+        fileNameLabel.stringValue = url.lastPathComponent
+        locationLabel.stringValue = "Saved to \(url.deletingLastPathComponent().lastPathComponent)"
+
+        var sizeStr = "0 MB"
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let bytes = attrs[.size] as? Int64 {
+            let mb = Double(bytes) / (1024.0 * 1024.0)
+            sizeStr = String(format: "%.1f MB", mb)
+        }
+        metaLabel.stringValue = "\(sizeStr)  •  QuickTime Video"
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let asset = AVURLAsset(url: url)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 320, height: 240)
+            let time = CMTime(seconds: 0.1, preferredTimescale: 600)
+            if let cgImg = try? generator.copyCGImage(at: time, actualTime: nil) {
+                let img = NSImage(cgImage: cgImg, size: NSSize(width: cgImg.width, height: cgImg.height))
+                DispatchQueue.main.async {
+                    self?.thumbnailView.image = img
+                    self?.thumbnailView.contentTintColor = nil
+                }
+            }
+        }
+    }
+
+    @objc private func playClicked() {
+        NSWorkspace.shared.open(fileURL)
+    }
+
+    @objc private func copyClicked(_ sender: NSButton) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([fileURL as NSURL])
+
+        let originalTitle = sender.title
+        let originalImage = sender.image
+        let symConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        sender.title = " Copied!"
+        sender.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "Copied")?.withSymbolConfiguration(symConfig)
+        sender.contentTintColor = .systemGreen
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            sender.title = originalTitle
+            sender.image = originalImage
+            sender.contentTintColor = nil
+        }
+    }
+
+    @objc private func trimClicked() {
+        let trimmer = VideoTrimmerWindow(fileURL: fileURL)
+        trimmer.onTrimCompleted = { [weak self] updatedURL in
+            guard let self = self else { return }
+            self.refreshPreviewCard(with: updatedURL)
+        }
+        self.trimmerWindow = trimmer
+        trimmer.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func shareClicked(_ sender: NSButton) {
+        let picker = NSSharingServicePicker(items: [fileURL])
+        picker.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+    }
+
+    @objc private func finderClicked() {
+        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+    }
+
+    @objc private func deleteClicked() {
+        let alert = NSAlert()
+        alert.messageText = "Move Recording to Trash?"
+        alert.informativeText = "Are you sure you want to delete \(fileURL.lastPathComponent)?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Move to Trash")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            try? FileManager.default.trashItem(at: fileURL, resultingItemURL: nil)
+            self.orderOut(nil)
+            self.close()
+        }
+    }
+
+    @objc private func doneClicked() {
+        self.orderOut(nil)
+        self.close()
+        onDismiss?()
+    }
+}
 
 // ============================================================
 // Menu Bar Pill View
@@ -1411,15 +2576,24 @@ class MenuBarPillView: NSView {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: FloatingPanel!
-    var recordButton: NSButton!
-    var pauseButton: NSButton!
-    var closeButton: NSButton!
-    var modePopUp: NSPopUpButton!
-    var audioPopUp: NSPopUpButton!
-    var timerPopUp: NSPopUpButton!
-    var cameraPopUp: NSPopUpButton!
-    var cameraRecordButton: NSButton!
-    var settingsPopUp: NSPopUpButton!
+    var recordButton: HoverRecordButton!
+    var pauseButton: HoverIconButton!
+    var closeButton: HoverIconButton!
+    var modePopUp: HoverPopUpButton!
+    var audioPopUp: HoverPopUpButton!
+    var cameraPopUp: HoverPopUpButton!
+    var cameraRecordButton: HoverIconButton!
+    var audioRecordIndicator: HoverIconButton!
+    var liveTimerStack: NSStackView!
+    var liveTimerDot: NSImageView!
+    var liveTimerLabel: NSTextField!
+    var idleDivider1: NSBox!
+    var idleDivider2: NSBox!
+    var idleDivider3: NSBox!
+    var idleDivider4: NSBox!
+    var recDivider1: NSBox!
+    var recDivider2: NSBox!
+    var settingsPopUp: HoverPopUpButton!
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
@@ -1432,6 +2606,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var appSelectionMenu: AppSelectionMenuHandler?
     var aboutWindow: NSWindow?
+    var finishedWindow: RecordingFinishedWindow?
     var permissionsWindow: NSWindow?
     var permissionButtons: [NSButton] = []
     var permissionsTimer: Timer?
@@ -1484,6 +2659,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
+    }
+
     func setupCameraIfNeeded() {
         if currentSettings.cameraID != "None" && !currentSettings.cameraID.isEmpty {
             cameraWindow = CameraOverlayWindow()
@@ -1499,9 +2678,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.stopCamera()
             window.orderOut(nil)
             cameraWindow = nil
+            recorder.cameraWindowID = nil
+            currentSettings.cameraID = "None"
+            currentSettings.save()
+            for item in cameraItems {
+                item.state = (item.identifier?.rawValue == "None") ? .on : .off
+            }
         } else {
             let devID = (currentSettings.cameraID == "None" || currentSettings.cameraID.isEmpty) ? AVCaptureDevice.default(for: .video)?.uniqueID ?? "" : currentSettings.cameraID
             if !devID.isEmpty && devID != "None" {
+                currentSettings.cameraID = devID
+                currentSettings.save()
+                for item in cameraItems {
+                    item.state = (item.identifier?.rawValue == devID) ? .on : .off
+                }
                 if cameraWindow == nil {
                     cameraWindow = CameraOverlayWindow()
                     recorder.cameraWindowID = cameraWindow?.windowNumber
@@ -1670,6 +2860,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         pillView?.updateTime(timeString)
+        liveTimerLabel?.stringValue = timeString
         
         if let pill = pillView {
             pill.layoutSubtreeIfNeeded()
@@ -2297,8 +3488,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let menu = sender.menu else { return }
         menu.items.forEach { $0.state = .off }
         sender.state = .on
-        let val = sender.tag
-        currentSettings.timer = (val == 0 ? 0 : (val == 1 ? 5 : 10))
+        currentSettings.timer = sender.tag
         currentSettings.save()
     }
 
@@ -2388,6 +3578,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         currentSettings.recordMode = sender.tag
         currentSettings.save()
+
+        if sender.tag == 3 {
+            showLastSelectedAreaPreview()
+        }
+    }
+
+    func showLastSelectedAreaPreview() {
+        guard let savedScreen = currentSettings.savedLastScreen(),
+              let savedRect = currentSettings.savedLastRect else { return }
+        
+        let previewWin = LastAreaPreviewWindow(screen: savedScreen, rect: savedRect)
+        previewWin.orderFrontRegardless()
+        previewWin.startPulseAndDismiss()
     }
 
     @objc func toggleMouseClicks(_ sender: NSMenuItem) {
@@ -2505,26 +3708,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel = FloatingPanel(contentRect: rect, styleMask: [], backing: .buffered, defer: false)
         guard let contentView = panel.contentView else { return }
 
-        recordButton = NSButton()
+        recordButton = HoverRecordButton()
         recordButton.translatesAutoresizingMaskIntoConstraints = false
         recordButton.bezelStyle = .regularSquare
         recordButton.isBordered = false
         recordButton.imagePosition = .imageOnly
+        recordButton.wantsLayer = true
+        recordButton.layer?.cornerRadius = 16
+        recordButton.toolTip = "Start Recording (⌘R)"
         recordButton.target = self
-        recordButton.action = #selector(toggleRecording)
         recordButton.action = #selector(toggleRecording)
 
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
 
         // ---- AUDIO POPUP (FIXED) ----
-        audioPopUp = NSPopUpButton()
+        audioPopUp = HoverPopUpButton()
         audioPopUp.translatesAutoresizingMaskIntoConstraints = false
         audioPopUp.removeAllItems()
         audioPopUp.isBordered = false
         audioPopUp.imagePosition = .imageOnly
         audioPopUp.pullsDown = true
+        (audioPopUp.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         audioPopUp.wantsLayer = true
-        audioPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        audioPopUp.layer?.cornerRadius = 7
+        audioPopUp.toolTip = "Audio Input Source"
+        audioPopUp.widthAnchor.constraint(equalToConstant: 32).isActive = true
         audioPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         audioMainItems.removeAll()
@@ -2586,14 +3794,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 
         // ---- SETTINGS (GEAR) ----
-        settingsPopUp = NSPopUpButton()
+        settingsPopUp = HoverPopUpButton()
         settingsPopUp.translatesAutoresizingMaskIntoConstraints = false
         settingsPopUp.removeAllItems()
         settingsPopUp.isBordered = false
         settingsPopUp.imagePosition = .imageOnly
         settingsPopUp.pullsDown = true
+        (settingsPopUp.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         settingsPopUp.wantsLayer = true
-        settingsPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        settingsPopUp.layer?.cornerRadius = 7
+        settingsPopUp.toolTip = "Settings & Video Quality"
+        settingsPopUp.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        settingsPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
         settingsPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
         let gearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         gearItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config)
@@ -2618,7 +3830,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("60 FPS", 60, #selector(fpsChanged(_:))),
             ("30 FPS", 30, #selector(fpsChanged(_:))),
             ("24 FPS (Cinematic)", 24, #selector(fpsChanged(_:))),
-            ("15 FPS (Compact)", 15, #selector(fpsChanged(_:)))
+            ("15 FPS", 15, #selector(fpsChanged(_:)))
         ])
         if let sub = settingsPopUp.menu?.item(withTitle: "Framerate")?.submenu {
             for item in sub.items {
@@ -2630,7 +3842,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("Native", 0, #selector(resChanged(_:))),
             ("1080p", 1080, #selector(resChanged(_:))),
             ("720p", 720, #selector(resChanged(_:))),
-            ("480p (Compact)", 480, #selector(resChanged(_:)))
+            ("480p", 480, #selector(resChanged(_:)))
         ])
         if let sub = settingsPopUp.menu?.item(withTitle: "Resolution")?.submenu {
             for item in sub.items {
@@ -2644,6 +3856,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("Low (Space Saver)", 2, #selector(bitChanged(_:)))
         ])
         (settingsPopUp.menu?.item(withTitle: "Bitrate")?.submenu?.item(at: currentSettings.bitrate))?.state = .on
+
+        addSubmenu("Countdown Timer", "timer", [
+            ("None", 0, #selector(timerChanged(_:))),
+            ("3 Seconds", 3, #selector(timerChanged(_:))),
+            ("5 Seconds", 5, #selector(timerChanged(_:))),
+            ("10 Seconds", 10, #selector(timerChanged(_:))),
+            ("15 Seconds", 15, #selector(timerChanged(_:))),
+            ("30 Seconds", 30, #selector(timerChanged(_:))),
+            ("60 Seconds", 60, #selector(timerChanged(_:)))
+        ])
+        if let sub = settingsPopUp.menu?.item(withTitle: "Countdown Timer")?.submenu {
+            for item in sub.items {
+                item.state = (item.tag == currentSettings.timer) ? .on : .off
+            }
+        }
 
 
 
@@ -2710,24 +3937,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 
         // ---- CLOSE BUTTON ----
-        closeButton = NSButton()
+        closeButton = HoverIconButton()
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.bezelStyle = .regularSquare
         closeButton.isBordered = false
         closeButton.imagePosition = .imageOnly
-        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 18, weight: .regular))
+        closeButton.wantsLayer = true
+        closeButton.layer?.cornerRadius = 7
+        closeButton.toolTip = "Hide Toolbar"
+        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Hide Toolbar")?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 18, weight: .regular))
         closeButton.target = self
         closeButton.action = #selector(hidePanel)
 
         // ---- MODE POPUP ----
-        modePopUp = NSPopUpButton()
+        modePopUp = HoverPopUpButton()
         modePopUp.translatesAutoresizingMaskIntoConstraints = false
         modePopUp.removeAllItems()
         modePopUp.isBordered = false
         modePopUp.imagePosition = .imageOnly
         modePopUp.pullsDown = true
+        (modePopUp.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         modePopUp.wantsLayer = true
-        modePopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        modePopUp.layer?.cornerRadius = 7
+        modePopUp.toolTip = "Recording Area & Mode"
+        modePopUp.widthAnchor.constraint(equalToConstant: 32).isActive = true
         modePopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -2752,43 +3985,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modePopUp.menu?.addItem(item)
         }
 
-        // ---- TIMER POPUP ----
-        timerPopUp = NSPopUpButton()
-        timerPopUp.translatesAutoresizingMaskIntoConstraints = false
-        timerPopUp.removeAllItems()
-        timerPopUp.isBordered = false
-        timerPopUp.imagePosition = .imageOnly
-        timerPopUp.pullsDown = true
-        timerPopUp.wantsLayer = true
-        timerPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
-        timerPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
-
-        let timerGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        timerGearItem.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)?.withSymbolConfiguration(config)
-        timerPopUp.menu?.addItem(timerGearItem)
-
-        let timerItems = [
-            ("None", 0),
-            ("5 Seconds", 1),
-            ("10 Seconds", 2)
-        ]
-        for (title, idx) in timerItems {
-            let item = NSMenuItem(title: title, action: #selector(timerChanged(_:)), keyEquivalent: "")
-            item.tag = idx
-            item.target = self
-            if currentSettings.timer == (idx == 0 ? 0 : (idx == 1 ? 5 : 10)) { item.state = .on }
-            timerPopUp.menu?.addItem(item)
-        }
-
         // ---- CAMERA POPUP ----
-        cameraPopUp = NSPopUpButton()
+        cameraPopUp = HoverPopUpButton()
         cameraPopUp.translatesAutoresizingMaskIntoConstraints = false
         cameraPopUp.removeAllItems()
         cameraPopUp.isBordered = false
         cameraPopUp.imagePosition = .imageOnly
         cameraPopUp.pullsDown = true
+        (cameraPopUp.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         cameraPopUp.wantsLayer = true
-        cameraPopUp.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        cameraPopUp.layer?.cornerRadius = 7
+        cameraPopUp.toolTip = "Camera Overlay & Face Cam"
+        cameraPopUp.widthAnchor.constraint(equalToConstant: 32).isActive = true
         cameraPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         let cameraGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -2823,37 +4031,113 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cameraPopUp.menu?.addItem(mirrorItem)
 
         // ---- PAUSE BUTTON ----
-        pauseButton = NSButton()
+        pauseButton = HoverIconButton()
         pauseButton.translatesAutoresizingMaskIntoConstraints = false
         pauseButton.bezelStyle = .regularSquare
         pauseButton.isBordered = false
         pauseButton.imagePosition = .imageOnly
+        pauseButton.wantsLayer = true
+        pauseButton.layer?.cornerRadius = 7
+        pauseButton.toolTip = "Pause / Resume Recording"
         pauseButton.image = NSImage(systemSymbolName: "pause.circle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 26, weight: .regular))
         pauseButton.target = self
         pauseButton.action = #selector(togglePause)
         pauseButton.isHidden = true // Only visible when recording
         
-        cameraRecordButton = NSButton()
+        cameraRecordButton = HoverIconButton()
         cameraRecordButton.translatesAutoresizingMaskIntoConstraints = false
         cameraRecordButton.isBordered = false
         cameraRecordButton.imagePosition = .imageOnly
+        cameraRecordButton.wantsLayer = true
+        cameraRecordButton.layer?.cornerRadius = 7
+        cameraRecordButton.toolTip = "Toggle Camera"
         cameraRecordButton.target = self
         cameraRecordButton.action = #selector(toggleCameraHotkey)
         cameraRecordButton.isHidden = true
-        cameraRecordButton.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        cameraRecordButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
         cameraRecordButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
+        audioRecordIndicator = HoverIconButton()
+        audioRecordIndicator.translatesAutoresizingMaskIntoConstraints = false
+        audioRecordIndicator.isBordered = false
+        audioRecordIndicator.imagePosition = .imageOnly
+        audioRecordIndicator.wantsLayer = true
+        audioRecordIndicator.layer?.cornerRadius = 7
+        audioRecordIndicator.toolTip = "Audio Recording Active"
+        audioRecordIndicator.isHidden = true
+        audioRecordIndicator.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        audioRecordIndicator.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        // ---- LIVE TIMER STACK (Floating Bar) ----
+        liveTimerDot = NSImageView()
+        liveTimerDot.translatesAutoresizingMaskIntoConstraints = false
+        let dotConfig = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
+        liveTimerDot.image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(dotConfig)
+        liveTimerDot.contentTintColor = .systemRed
+        liveTimerDot.widthAnchor.constraint(equalToConstant: 10).isActive = true
+        liveTimerDot.heightAnchor.constraint(equalToConstant: 10).isActive = true
+
+        liveTimerLabel = NSTextField(labelWithString: "00:00")
+        liveTimerLabel.translatesAutoresizingMaskIntoConstraints = false
+        liveTimerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .semibold)
+        liveTimerLabel.textColor = .white
+        liveTimerLabel.isBordered = false
+        liveTimerLabel.drawsBackground = false
+        liveTimerLabel.alignment = .center
+
+        liveTimerStack = NSStackView(views: [liveTimerDot, liveTimerLabel])
+        liveTimerStack.translatesAutoresizingMaskIntoConstraints = false
+        liveTimerStack.orientation = .horizontal
+        liveTimerStack.spacing = 6
+        liveTimerStack.alignment = .centerY
+        liveTimerStack.isHidden = true
+
+        // ---- HAIRLINE DIVIDERS ----
+        let makeDivider = { () -> NSBox in
+            let div = NSBox()
+            div.boxType = .custom
+            div.isTransparent = false
+            div.borderWidth = 0
+            div.fillColor = NSColor.white.withAlphaComponent(0.14)
+            div.translatesAutoresizingMaskIntoConstraints = false
+            div.widthAnchor.constraint(equalToConstant: 1).isActive = true
+            div.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            return div
+        }
+
+        idleDivider1 = makeDivider()
+        idleDivider2 = makeDivider()
+        idleDivider3 = makeDivider()
+        idleDivider4 = makeDivider()
+        recDivider1 = makeDivider()
+        recDivider2 = makeDivider()
+
         // ---- STACK VIEW ----
-        let stackView = NSStackView(views: [closeButton, settingsPopUp, cameraRecordButton, cameraPopUp, audioPopUp, timerPopUp, modePopUp])
+        let stackView = NSStackView(views: [
+            closeButton,
+            idleDivider1,
+            settingsPopUp,
+            idleDivider2,
+            cameraPopUp,
+            audioPopUp,
+            idleDivider3,
+            modePopUp,
+            idleDivider4,
+            cameraRecordButton,
+            audioRecordIndicator,
+            recDivider1,
+            liveTimerStack,
+            recDivider2
+        ])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
-        stackView.spacing = 16
+        stackView.spacing = 10
         stackView.alignment = .centerY
 
         let actionStackView = NSStackView(views: [pauseButton, recordButton])
         actionStackView.translatesAutoresizingMaskIntoConstraints = false
         actionStackView.orientation = .horizontal
-        actionStackView.spacing = 12
+        actionStackView.spacing = 10
         actionStackView.alignment = .centerY
 
         contentView.addSubview(stackView)
@@ -2890,12 +4174,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             self.updateButtonImage()
             self.updateMenuBarPill()
-            self.modePopUp.isEnabled = false
-            self.audioPopUp.isEnabled = false
-            self.timerPopUp.isEnabled = false
-            self.settingsPopUp.isEnabled = false
-            self.cameraPopUp.isHidden = true
-            self.cameraRecordButton.isHidden = false
+            self.updateRecordingTimeDisplay()
             if let rect = self.recorder.captureRect, rect != .zero, let screen = self.recorder.captureScreen {
                 self.recordingOverlay = RecordingOverlayWindow(screen: screen, holeRect: rect)
                 self.recordingOverlay?.makeKeyAndOrderFront(nil)
@@ -2911,20 +4190,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.recordingOverlay?.close(); self.recordingOverlay = nil
             self.updateButtonImage()
             self.updateMenuBarPill()
-            self.modePopUp.isEnabled = true
-            self.audioPopUp.isEnabled = true
-            self.timerPopUp.isEnabled = true
-            self.settingsPopUp.isEnabled = true
-            self.cameraPopUp.isHidden = false
-            self.cameraRecordButton.isHidden = true
-            let alert = NSAlert()
-            alert.messageText = "Recording Saved"
-            alert.informativeText = "Saved to \(url.lastPathComponent)"
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: "Show in Finder")
-            alert.addButton(withTitle: "OK")
+
+            self.finishedWindow?.close()
+            let win = RecordingFinishedWindow(fileURL: url)
+            win.onDismiss = { [weak self] in
+                self?.finishedWindow = nil
+            }
+            self.finishedWindow = win
+            win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
-            if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.activateFileViewerSelecting([url]) }
         }
         recorder.onError = { [weak self] error in
             guard let self = self else { return }
@@ -2936,12 +4210,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.recordingOverlay?.close(); self.recordingOverlay = nil
             self.updateButtonImage()
             self.updateMenuBarPill()
-            self.modePopUp.isEnabled = true
-            self.audioPopUp.isEnabled = true
-            self.timerPopUp.isEnabled = true
-            self.settingsPopUp.isEnabled = true
-            self.cameraPopUp.isHidden = false
-            self.cameraRecordButton.isHidden = true
             let alert = NSAlert()
             alert.messageText = "Recording Error"
             alert.informativeText = error.localizedDescription
@@ -2955,29 +4223,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let isActive = level > -35.0
             if isActive != isMicActive {
                 isMicActive = isActive
-                let baseSymbol: String
-                switch currentSettings.audioSource {
-                case 0: baseSymbol = "speaker.wave.2"
-                case 1: baseSymbol = "mic"
-                case 2: baseSymbol = "mic.and.signal.meter"
-                case 3: baseSymbol = "speaker.slash"
-                default: baseSymbol = "speaker.wave.2"
-                }
-                
-                let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
-                guard let img = NSImage(systemSymbolName: baseSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return }
-                
-                if isActive && (currentSettings.audioSource == 1 || currentSettings.audioSource == 2) {
-                    let size = img.size
-                    let tinted = NSImage(size: size)
-                    tinted.lockFocus()
-                    img.draw(in: NSRect(origin: .zero, size: size))
-                    NSColor.systemGreen.set()
-                    NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
-                    tinted.unlockFocus()
-                    self.audioPopUp.menu?.item(at: 0)?.image = tinted
-                } else {
-                    self.audioPopUp.menu?.item(at: 0)?.image = img
+                if currentSettings.audioSource == 1 || currentSettings.audioSource == 2 {
+                    self.audioRecordIndicator?.contentTintColor = isActive ? .systemGreen : .systemCyan
                 }
             }
         }
@@ -3072,10 +4319,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else if modeIndex == 3 { // Last Selected Area
             if let savedScreen = currentSettings.savedLastScreen(),
                let savedRect = currentSettings.savedLastRect {
-                recorder.captureApp = nil
-                recorder.captureRect = savedRect
-                recorder.captureScreen = savedScreen
-                startCountdownAndRecord()
+                for window in regionSelectionWindows { window.close() }
+                regionSelectionWindows.removeAll()
+
+                let window = RegionSelectionWindow(screen: savedScreen)
+                if let view = window.contentView as? RegionSelectionView {
+                    view.currentRect = savedRect
+                    view.isLastSelectedAreaPreview = true
+
+                    view.onCancel = { [weak self] in
+                        for w in self?.regionSelectionWindows ?? [] { w.close() }
+                        self?.regionSelectionWindows.removeAll()
+                    }
+
+                    view.onSelectionComplete = { [weak self] rect in
+                        guard let self = self else { return }
+                        self.recorder.captureApp = nil
+                        self.recorder.captureRect = rect
+                        self.recorder.captureScreen = savedScreen
+
+                        currentSettings.saveLastSelectedArea(rect: rect, screen: savedScreen)
+
+                        for w in self.regionSelectionWindows { w.close() }
+                        self.regionSelectionWindows.removeAll()
+
+                        self.startCountdownAndRecord()
+                    }
+                }
+                regionSelectionWindows.append(window)
+                window.makeKeyAndOrderFront(nil)
+                if let view = window.contentView as? RegionSelectionView {
+                    window.makeFirstResponder(view)
+                }
+                NSApp.activate(ignoringOtherApps: true)
             } else {
                 currentSettings.recordMode = 2
                 startRecordingProcess()
@@ -3127,7 +4403,65 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func updateButtonImage() {
-        pauseButton.isHidden = !recorder.isRecording
+        let isRec = recorder.isRecording
+
+        // Hide configuration controls and dividers that cannot be modified during recording
+        closeButton.isHidden = isRec
+        idleDivider1?.isHidden = isRec
+        settingsPopUp.isHidden = isRec
+        idleDivider2?.isHidden = isRec
+        cameraPopUp.isHidden = isRec
+        audioPopUp.isHidden = isRec
+        idleDivider3?.isHidden = isRec
+        modePopUp.isHidden = isRec
+        idleDivider4?.isHidden = isRec
+
+        // Show live recording controls and dividers
+        cameraRecordButton.isHidden = !isRec
+        audioRecordIndicator.isHidden = !isRec
+        recDivider1?.isHidden = !isRec
+        liveTimerStack.isHidden = !isRec
+        recDivider2?.isHidden = !isRec
+        pauseButton.isHidden = !isRec
+
+        let audioConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let audioSymbol: String
+        let audioTitle: String
+        switch currentSettings.audioSource {
+        case 0:
+            audioSymbol = "speaker.wave.2"
+            audioTitle = "System Audio"
+        case 1:
+            audioSymbol = "mic"
+            audioTitle = "Microphone"
+        case 2:
+            audioSymbol = "mic.and.signal.meter"
+            audioTitle = "System Audio + Mic"
+        case 3:
+            audioSymbol = "speaker.slash"
+            audioTitle = "No Audio (Muted)"
+        default:
+            audioSymbol = "speaker.wave.2"
+            audioTitle = "System Audio"
+        }
+        audioRecordIndicator?.image = NSImage(systemSymbolName: audioSymbol, accessibilityDescription: audioTitle)?.withSymbolConfiguration(audioConfig)
+        let isAudioCapturing = (currentSettings.audioSource != 3)
+        audioRecordIndicator?.contentTintColor = isAudioCapturing ? .systemCyan : .tertiaryLabelColor
+        audioRecordIndicator?.toolTip = "Recording Audio: \(audioTitle)"
+
+        if !isRec {
+            liveTimerLabel.stringValue = "00:00"
+            liveTimerDot.contentTintColor = .systemRed
+            liveTimerLabel.textColor = .white
+        } else {
+            if recorder.isPaused {
+                liveTimerDot.contentTintColor = .systemOrange
+                liveTimerLabel.textColor = .systemOrange
+            } else {
+                liveTimerDot.contentTintColor = .systemRed
+                liveTimerLabel.textColor = .white
+            }
+        }
         
         let pauseSymbol = recorder.isPaused ? "play.circle.fill" : "pause.circle.fill"
         let pauseConfig = NSImage.SymbolConfiguration(pointSize: 26, weight: .regular)
@@ -3184,17 +4518,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             recordButton.image = tintedImage
         }
         
-        // Re-layout panel to fix UI gap when pause button is hidden
-        if let contentView = panel.contentView {
-            contentView.layoutSubtreeIfNeeded()
-            let newSize = contentView.fittingSize
-            if panel.frame.size != newSize {
-                var newFrame = panel.frame
-                newFrame.size = newSize
-                panel.setFrame(newFrame, display: true, animate: true)
-            }
-        }
-        
         let camConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
         let camIsActive = (cameraWindow != nil && cameraWindow!.isVisible)
         let camSymbol = camIsActive ? "video.fill" : "video.slash"
@@ -3202,6 +4525,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         cameraRecordButton.image = camImage
         cameraRecordButton.contentTintColor = camIsActive ? .systemGreen : .labelColor
+        cameraRecordButton.toolTip = camIsActive ? "Hide Camera Overlay" : "Show Camera Overlay"
         
         if let topItem = cameraPopUp?.menu?.item(at: 0) {
             topItem.image = camImage
@@ -3210,6 +4534,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cameraPopUp?.contentTintColor = camIsActive ? .systemGreen : .labelColor
         cameraPopUp?.synchronizeTitleAndSelectedItem()
         cameraPopUp?.needsDisplay = true
+
+        let activeCamID = camIsActive ? currentSettings.cameraID : "None"
+        for item in cameraItems {
+            item.state = (item.identifier?.rawValue == activeCamID) ? .on : .off
+        }
+
+        recordButton.toolTip = isRec ? "Stop and Save Recording (⌘R)" : "Start Recording (⌘R)"
+        pauseButton.toolTip = recorder.isPaused ? "Resume Recording" : "Pause Recording"
+
+        // Re-layout panel to adapt size with smooth animation
+        if let contentView = panel.contentView {
+            contentView.layoutSubtreeIfNeeded()
+            let newSize = contentView.fittingSize
+            if panel.frame.size != newSize {
+                var newFrame = panel.frame
+                let diffX = newSize.width - newFrame.width
+                newFrame.origin.x -= diffX / 2.0
+                newFrame.size = newSize
+                panel.setFrame(newFrame, display: true, animate: true)
+            }
+        }
 
         // Handle Cursor Highlighter lifecycle
         if recorder.isRecording && currentSettings.highlightCursor {

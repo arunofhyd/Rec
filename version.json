@@ -1,7 +1,20 @@
 {
-  "version": "1.2.9",
+  "version": "1.3.0",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.3.0",
+      "date": "2026-08-24",
+      "changes": [
+        "Interactive Video Trimmer: Trim recordings with 60 FPS ultra-smooth timeline scrubbing, full-track playhead cursor, loop preview bounds, and 1-click in-place overwrite saving directly to the original file without duplicate files.",
+        "Audio Mute / Unmute Toggle & Silent Export: Instant 1-click audio muting during trim with dedicated video-only track composition export that strips audio for clean silent clips.",
+        "Dynamic Live Recording Bar: Automatically transforms the floating control bar during recording by hiding unchangeable settings popups and displaying a live elapsed duration timer with pulsating recording/pause status indicators.",
+        "Last Selected Area Preview & Confirmation: Instant visual boundary preview when selecting the mode from the dropdown, plus an interactive pre-recording confirmation banner with live dimension readout and 1-click Enter/Space to start.",
+        "Symmetrical 2x4 Recording Saved Modal: Cleaned up post-recording dialog with a balanced 2x4 action grid (Play, Trim, Share, Finder, Delete, Copy, Rename, Done).",
+        "1-Click Clipboard Copy: Added a dedicated Copy button to instantly copy the video file directly to the macOS clipboard for fast pasting across Slack, Discord, Messages, and Mail.",
+        "In-Place Video Renaming: Added a Rename action button to instantly rename recordings on disk directly from the modal, immediately refreshing the preview card and metadata."
+      ]
+    },
     {
       "version": "1.2.9",
       "date": "2026-08-24",
