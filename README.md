@@ -36,18 +36,24 @@ Built with Apple's modern ScreenCaptureKit framework, Rec seamlessly records you
 ## ✨ Key Features
 
 *   **Internal Audio**: 🔊 Seamlessly captures your Mac's internal audio right alongside your video feed using ScreenCaptureKit. No 3rd-party audio loopback drivers needed.
+*   **In-App Video Editor**: ✂️ Trim recordings with smooth timeline scrubbing, audio muting, and 1-click in-place overwrite saving directly to the original file without duplicate clutter.
+*   **Floating HUD Toast**: 🔔 Non-intrusive bottom-right notification toast with 7-second auto-dismiss, hover-to-pause, 1-click clipboard copy, and full right-click shortcuts.
 *   **Multiple Modes**: 🎯 Record your entire screen, click-and-drag to select a specific region, or record a specific application window.
-*   **Custom Quality**: ⚙️ Adjust your Framerate (30 or 60 FPS), Resolution (Native Retina, 1080p, or 720p), and Video Encoding Bitrate.
-*   **Floating Controls**: 🪟 A small, unobtrusive control panel that stays out of your way and hides automatically from the final recording.
+*   **Dynamic Controls & Pro FPS**: ⚡️ Live duration timer during recording, Clickity-style tap feedback ripples, and custom framerates from 15 FPS up to 120 FPS ProMotion.
+*   **Custom Quality**: ⚙️ Adjust your Framerate, Resolution (Native Retina, 1080p, or 720p), and Video Encoding Bitrate.
 *   **Camera Overlay**: 📹 Display a circular, floating camera overlay alongside your screen recording to add a personal touch.
 *   **Cursor Highlighting**: 🖱️ Highlight your mouse clicks and cursor movements with customizable colors for clear tutorials and presentations.
 *   **Countdown Timer**: ⏱️ Set a 5 or 10-second countdown delay before recording officially begins.
-*   **Native & Fast**: 🚀 Encodes directly to a multiplexed `.mov` file using hardware acceleration via AVAssetWriter. No post-processing or splicing delays.
+*   **Native & Fast**: 🚀 Encodes directly to a multiplexed `.mov` file using hardware acceleration via AVAssetWriter. No post-processing delays.
 
 ## 📦 Install
 
-The fastest way to install Rec is to run the following one-liner in your **Terminal**:
+### Option 1: Homebrew (Recommended)
+```bash
+brew install arunofhyd/rec/rec
+```
 
+### Option 2: One-Liner Terminal Install
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"
 ```

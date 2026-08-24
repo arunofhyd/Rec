@@ -136,9 +136,11 @@
 
     <!-- Hero -->
     <section class="pt-28 pb-16 px-6 max-w-7xl mx-auto text-center">
-        <div id="version-pill" class="pill inline-block px-3 py-1 mb-6 rounded-full bg-brand-red/10 border border-brand-red/30 text-brand-red text-xs font-mono">
-            Latest Version
-        </div>
+        <a id="version-pill" href="https://github.com/arunofhyd/Rec/releases/latest" target="_blank" rel="noopener noreferrer"
+           class="pill inline-flex items-center gap-1.5 px-3.5 py-1 mb-6 rounded-full bg-brand-red/10 border border-brand-red/30 text-brand-red text-xs font-mono hover:bg-brand-red/20 transition-all cursor-pointer">
+            <span>Latest Version</span>
+            <span class="opacity-60 text-[10px]">↗</span>
+        </a>
 
         <h1 class="text-5xl md:text-7xl font-bold mb-6 tracking-tight">
             Record anything.<br>
@@ -173,9 +175,14 @@
             <h2 class="text-3xl font-bold mb-12 text-center">Why use Rec?</h2>
             <div class="grid md:grid-cols-3 gap-8">
                 <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🚀</div>
-                    <h3 class="text-xl font-bold mb-2">Native & Fast</h3>
-                    <p class="text-gray-400">Built with Apple's ScreenCaptureKit and AVFoundation. Directly encodes to .mov using hardware acceleration.</p>
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">✂️</div>
+                    <h3 class="text-xl font-bold mb-2">In-App Video Editor</h3>
+                    <p class="text-gray-400">Trim recordings with 60 FPS timeline scrubbing, audio muting, and in-place overwrite saving directly to the original file.</p>
+                </div>
+                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🔔</div>
+                    <h3 class="text-xl font-bold mb-2">Floating HUD Toast</h3>
+                    <p class="text-gray-400">Non-intrusive bottom-right toast with 7s auto-dismiss, hover-to-pause, 1-click clipboard copy, and rich right-click shortcuts.</p>
                 </div>
                 <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
                     <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🔊</div>
@@ -183,31 +190,25 @@
                     <p class="text-gray-400">Seamlessly captures your Mac's internal audio right alongside your video feed. No third-party drivers or loopback extensions required.</p>
                 </div>
                 <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">⚡️</div>
+                    <h3 class="text-xl font-bold mb-2">Dynamic Bar & 120 FPS</h3>
+                    <p class="text-gray-400">Live duration timer during recording, tap feedback ripples, and custom framerates from 15 FPS to 120 FPS ProMotion.</p>
+                </div>
+                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
                     <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🎯</div>
                     <h3 class="text-xl font-bold mb-2">Multiple Modes</h3>
                     <p class="text-gray-400">Record your entire screen, select a specific region, or focus exclusively on a specific application window.</p>
                 </div>
                 <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">⚙️</div>
-                    <h3 class="text-xl font-bold mb-2">Custom Quality</h3>
-                    <p class="text-gray-400">Adjust your Framerate (30 or 60 FPS), Resolution (Native Retina, 1080p, or 720p), and set the target Video Bitrate.</p>
-                </div>
-                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">⏱️</div>
-                    <h3 class="text-xl font-bold mb-2">Countdown Timer</h3>
-                    <p class="text-gray-400">Set a 3 or 5-second countdown delay before the recording officially begins, giving you time to prepare your screen.</p>
-                </div>
-                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🪟</div>
-                    <h3 class="text-xl font-bold mb-2">Floating Controls</h3>
-                    <p class="text-gray-400">An unobtrusive floating control panel gives you quick access to start and stop recordings and automatically hides from the final video.</p>
+                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🚀</div>
+                    <h3 class="text-xl font-bold mb-2">Native & Fast</h3>
+                    <p class="text-gray-400">Built with Apple's ScreenCaptureKit and AVFoundation. Directly encodes to .mov using hardware acceleration.</p>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- How it works -->
-    <!-- How it Works -->
     <section id="how-it-works" class="py-20 px-6">
         <div class="max-w-4xl mx-auto">
             <h2 class="text-3xl font-bold mb-16 text-center">How it works</h2>
@@ -223,14 +224,14 @@
                     <div class="flex-shrink-0 w-12 h-12 rounded-full bg-brand-red text-white flex items-center justify-center font-bold text-lg">2</div>
                     <div>
                         <h3 class="text-xl font-bold mb-2 text-brand-red">Hit Record</h3>
-                        <p class="text-gray-400">A clean countdown timer prepares you for the take. The floating control panel will automatically hide from your footage.</p>
+                        <p class="text-gray-400">A clean countdown timer prepares you for the take. The floating control bar transforms into a live duration readout.</p>
                     </div>
                 </div>
                 <div class="flex gap-6">
                     <div class="flex-shrink-0 w-12 h-12 rounded-full bg-brand-ink border border-white/20 flex items-center justify-center font-bold text-lg">3</div>
                     <div>
-                        <h3 class="text-xl font-bold mb-2">Save Instantly</h3>
-                        <p class="text-gray-400">Click the stop button to finish. Your recording is instantly saved as a high-quality .mov file directly to your Downloads folder.</p>
+                        <h3 class="text-xl font-bold mb-2">Instant Toast & Quick Actions</h3>
+                        <p class="text-gray-400">A non-intrusive HUD toast gives you instant playback, 1-click clipboard copy, in-place video editing, or quick Finder reveal.</p>
                     </div>
                 </div>
             </div>
@@ -249,24 +250,24 @@
             </div>
             <div class="grid md:grid-cols-2 gap-6">
                 <div class="bg-white/5 border border-white/10 rounded-xl p-6">
+                    <div class="text-2xl mb-3">✂️</div>
+                    <h3 class="font-bold text-lg mb-2">Built-In Video Editor</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Trim start/end points with smooth timeline scrubbing and mute audio tracks in-place with zero duplicate files.</p>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
+                    <div class="text-2xl mb-3">🔔</div>
+                    <h3 class="font-bold text-lg mb-2">Floating HUD Toast</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">A subtle notification docked at the bottom-right of your screen lets you copy, edit, or share without center popups.</p>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
                     <div class="text-2xl mb-3">🔐</div>
-                    <h3 class="font-bold text-lg mb-2">Internal Audio without the drivers</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">Most screen recorders require you to install messy third-party loopback extensions just to capture system audio. Rec uses modern macOS APIs to capture it natively.</p>
+                    <h3 class="font-bold text-lg mb-2">Internal Audio without drivers</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Most screen recorders require you to install messy third-party loopback extensions. Rec uses native ScreenCaptureKit APIs.</p>
                 </div>
                 <div class="bg-white/5 border border-white/10 rounded-xl p-6">
-                    <div class="text-2xl mb-3">🎚️</div>
-                    <h3 class="font-bold text-lg mb-2">Capture exactly what you need</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">Record your entire screen, click and drag to select a specific region, or lock the recording to a specific app window. The choice is yours.</p>
-                </div>
-                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
-                    <div class="text-2xl mb-3">🛡️</div>
-                    <h3 class="font-bold text-lg mb-2">Floating, out-of-the-way UI</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">A sleek floating control panel lets you start, stop, and configure recordings. Best of all, it automatically hides itself from your final video.</p>
-                </div>
-                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
-                    <div class="text-2xl mb-3">🪶</div>
-                    <h3 class="font-bold text-lg mb-2">Customizable Quality</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">Adjust your framerate, set a countdown timer, and choose between Native Retina, 1080p, or 720p scaling. Export directly to a standard .mov file.</p>
+                    <div class="text-2xl mb-3">⚡️</div>
+                    <h3 class="font-bold text-lg mb-2">Pro Performance & 120 FPS</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Silky smooth recordings from 15 FPS up to 120 FPS ProMotion with hardware-accelerated Apple Silicon encoding.</p>
                 </div>
             </div>
             <p class="text-center text-gray-500 text-sm mt-10">This is just the beginning. Have an idea? <button onclick="copyEmail(this)" class="text-brand-red hover:underline bg-transparent border-none cursor-pointer p-0">Contact Developer</button>.</p>
@@ -278,13 +279,30 @@
         <div class="max-w-6xl mx-auto px-6">
             <h2 class="text-3xl font-bold mb-12 text-center">Installation</h2>
             <div class="max-w-2xl mx-auto space-y-6">
+                <!-- Homebrew Cask -->
+                <div class="bg-black/40 border border-white/10 rounded-2xl p-8">
+                    <h3 class="text-lg font-bold mb-4 text-white flex items-center gap-2">
+                        <span>🍺 Install with Homebrew (Recommended)</span>
+                    </h3>
+                    <p class="text-gray-400 text-sm mb-6 leading-relaxed">
+                        Install and manage Rec automatically with Homebrew:
+                    </p>
+                    <div class="bg-black/60 border border-white/10 rounded-xl p-4 flex items-center justify-between font-mono text-sm overflow-x-auto gap-4">
+                        <span class="text-brand-red select-all break-all text-left">brew install arunofhyd/rec/rec</span>
+                        <button id="btn-copy-brew" onclick="copyToClipboard('brew install arunofhyd/rec/rec', 'btn-copy-brew')"
+                                class="flex-shrink-0 bg-brand-red/10 border border-brand-red/30 text-brand-red hover:bg-brand-red hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold font-sans transition-all">
+                            Copy
+                        </button>
+                    </div>
+                </div>
+
                 <!-- One-liner Command -->
                 <div class="bg-black/40 border border-white/10 rounded-2xl p-8">
                     <h3 class="text-lg font-bold mb-4 text-white flex items-center gap-2">
-                        <span>⚡ One-Click Terminal Install (Recommended)</span>
+                        <span>⚡ One-Click Terminal Install</span>
                     </h3>
                     <p class="text-gray-400 text-sm mb-6 leading-relaxed">
-                        The easiest and fastest way to install Rec. Simply copy and paste this command into your Terminal:
+                        Alternatively, compile and install locally via Terminal:
                     </p>
                     <div class="bg-black/60 border border-white/10 rounded-xl p-4 flex items-center justify-between font-mono text-sm overflow-x-auto gap-4">
                         <span class="text-brand-red select-all break-all text-left">/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"</span>
@@ -307,7 +325,7 @@
                     </ol>
                 </div>
             </div>
-            <div class="mt-6 p-4 bg-black rounded border border-white/10 text-xs text-gray-500 font-mono break-all whitespace-pre-wrap max-w-2xl mx-auto"><span class="text-green-400">user@macbook ~ %</span> /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"<br><span class="text-brand-red">▸</span> Checking for build tools…</div>
+            <div class="mt-6 p-4 bg-black rounded border border-white/10 text-xs text-gray-500 font-mono break-all whitespace-pre-wrap max-w-2xl mx-auto"><span class="text-green-400">user@macbook ~ %</span> brew install arunofhyd/rec/rec<br><span class="text-brand-red">==></span> Downloading Rec.zip…</div>
             <p class="text-center text-gray-500 text-sm mt-6 max-w-2xl mx-auto">First time only: the installer may ask to install Apple's Command Line Tools (a small official Apple download). This lets your Mac build the app locally — which is why macOS trusts it, with no "damaged app" warnings.</p>
         </div>
     </section>
@@ -350,7 +368,10 @@
         fetch('version.json').then(r => r.json()).then(data => {
             if (data.version) {
                 const pill = document.getElementById('version-pill');
-                if (pill) pill.textContent = `v${data.version} Now Available`;
+                if (pill) {
+                    pill.innerHTML = `<span>v${data.version} Now Available</span> <span class="opacity-60 text-[10px]">↗</span>`;
+                    pill.href = `https://github.com/arunofhyd/Rec/releases/tag/v${data.version}`;
+                }
                 
                 document.querySelectorAll('.version-label').forEach(el => el.textContent = 'v' + data.version);
                 document.querySelectorAll('.version-badge').forEach(el => el.textContent = '🎉 Now on v' + data.version);
@@ -373,7 +394,10 @@
                     
                     const header = `<div class="flex items-center justify-between mb-4">
                         <div class="flex items-center gap-2.5">
-                            <span class="text-brand-red font-mono font-bold text-lg">v${release.version}</span>
+                            <a href="https://github.com/arunofhyd/Rec/releases/tag/v${release.version}" target="_blank" rel="noopener noreferrer" class="text-brand-red font-mono font-bold text-lg hover:underline flex items-center gap-1">
+                                <span>v${release.version}</span>
+                                <span class="text-xs opacity-60">↗</span>
+                            </a>
                             ${isLatest ? `<span class="bg-brand-red/20 text-brand-red text-[10px] font-bold px-2 py-0.5 rounded-full border border-brand-red/30 tracking-wider">LATEST</span>` : ''}
                         </div>
                         ${release.date ? `<span class="text-gray-400 text-xs font-mono px-2 py-0.5 rounded bg-white/5 border border-white/5">${release.date}</span>` : ''}
