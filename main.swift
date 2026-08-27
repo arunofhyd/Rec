@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.3.2"
+    return "1.3.3"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -816,7 +816,11 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                     return
                 }
                 targetDisplay = display
-                filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
+                var appsToInclude = [app]
+                if let myApp = content.applications.first(where: { $0.processID == myProcessId }) {
+                    appsToInclude.append(myApp)
+                }
+                filter = SCContentFilter(display: display, including: appsToInclude, exceptingWindows: windowsToExclude)
             } else {
                 if let sID = self.targetScreenID {
                     targetDisplay = content.displays.first { $0.displayID == sID } ?? content.displays.first!
@@ -856,7 +860,12 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             
             let filter: SCContentFilter
             if let app = self.captureApp {
-                filter = SCContentFilter(display: content.displays.first!, including: [app], exceptingWindows: [])
+                let targetDisplay = content.displays.first { $0.displayID == self.targetScreenID } ?? content.displays.first!
+                var appsToInclude = [app]
+                if let myApp = content.applications.first(where: { $0.processID == myProcessId }) {
+                    appsToInclude.append(myApp)
+                }
+                filter = SCContentFilter(display: targetDisplay, including: appsToInclude, exceptingWindows: windowsToExclude)
             } else {
                 let targetDisplay = content.displays.first { $0.displayID == self.targetScreenID } ?? content.displays.first!
                 filter = SCContentFilter(display: targetDisplay, excludingWindows: windowsToExclude)
