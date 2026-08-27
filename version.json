@@ -1,7 +1,14 @@
 {
-  "version": "1.3.2",
+  "version": "1.3.3",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.3.3",
+      "date": "2026-08-24",
+      "changes": [
+        "Fixed Overlay Visibility in App Recording Mode: Included Rec's overlay process in SCContentFilter when recording a specific selected application, ensuring cursor highlights and tap feedback ripples appear reliably across the entire display."
+      ]
+    },
     {
       "version": "1.3.2",
       "date": "2026-08-24",
