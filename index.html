@@ -279,30 +279,13 @@
         <div class="max-w-6xl mx-auto px-6">
             <h2 class="text-3xl font-bold mb-12 text-center">Installation</h2>
             <div class="max-w-2xl mx-auto space-y-6">
-                <!-- Homebrew Cask -->
-                <div class="bg-black/40 border border-white/10 rounded-2xl p-8">
-                    <h3 class="text-lg font-bold mb-4 text-white flex items-center gap-2">
-                        <span>🍺 Install with Homebrew (Recommended)</span>
-                    </h3>
-                    <p class="text-gray-400 text-sm mb-6 leading-relaxed">
-                        Install and manage Rec automatically with Homebrew:
-                    </p>
-                    <div class="bg-black/60 border border-white/10 rounded-xl p-4 flex items-center justify-between font-mono text-sm overflow-x-auto gap-4">
-                        <span class="text-brand-red select-all break-all text-left">brew install arunofhyd/rec/rec</span>
-                        <button id="btn-copy-brew" onclick="copyToClipboard('brew install arunofhyd/rec/rec', 'btn-copy-brew')"
-                                class="flex-shrink-0 bg-brand-red/10 border border-brand-red/30 text-brand-red hover:bg-brand-red hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold font-sans transition-all">
-                            Copy
-                        </button>
-                    </div>
-                </div>
-
                 <!-- One-liner Command -->
                 <div class="bg-black/40 border border-white/10 rounded-2xl p-8">
                     <h3 class="text-lg font-bold mb-4 text-white flex items-center gap-2">
-                        <span>⚡ One-Click Terminal Install</span>
+                        <span>⚡ One-Click Terminal Install (Recommended)</span>
                     </h3>
                     <p class="text-gray-400 text-sm mb-6 leading-relaxed">
-                        Alternatively, compile and install locally via Terminal:
+                        Compile and install Rec locally on your Mac with one command:
                     </p>
                     <div class="bg-black/60 border border-white/10 rounded-xl p-4 flex items-center justify-between font-mono text-sm overflow-x-auto gap-4">
                         <span class="text-brand-red select-all break-all text-left">/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"</span>
@@ -325,7 +308,7 @@
                     </ol>
                 </div>
             </div>
-            <div class="mt-6 p-4 bg-black rounded border border-white/10 text-xs text-gray-500 font-mono break-all whitespace-pre-wrap max-w-2xl mx-auto"><span class="text-green-400">user@macbook ~ %</span> brew install arunofhyd/rec/rec<br><span class="text-brand-red">==></span> Downloading Rec.zip…</div>
+            <div class="mt-6 p-4 bg-black rounded border border-white/10 text-xs text-gray-500 font-mono break-all whitespace-pre-wrap max-w-2xl mx-auto"><span class="text-green-400">user@macbook ~ %</span> /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"<br><span class="text-brand-red">==></span> Compiling and installing Rec…</div>
             <p class="text-center text-gray-500 text-sm mt-6 max-w-2xl mx-auto">First time only: the installer may ask to install Apple's Command Line Tools (a small official Apple download). This lets your Mac build the app locally — which is why macOS trusts it, with no "damaged app" warnings.</p>
         </div>
     </section>

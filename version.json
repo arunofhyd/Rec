@@ -1,7 +1,14 @@
 {
-  "version": "1.3.5",
+  "version": "1.3.6",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.3.6",
+      "date": "2026-08-28",
+      "changes": [
+        "Docs & Landing Page Refresh: Standardized One-Liner Terminal Install as the primary installation method and removed legacy Homebrew references."
+      ]
+    },
     {
       "version": "1.3.5",
       "date": "2026-08-28",

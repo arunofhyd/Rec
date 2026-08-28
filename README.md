@@ -48,12 +48,7 @@ Built with Apple's modern ScreenCaptureKit framework, Rec seamlessly records you
 
 ## 📦 Install
 
-### Option 1: Homebrew (Recommended)
-```bash
-brew install arunofhyd/rec/rec
-```
-
-### Option 2: One-Liner Terminal Install
+### One-Liner Terminal Install (Recommended)
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"
 ```
