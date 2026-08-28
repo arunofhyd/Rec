@@ -68,16 +68,31 @@
             });
         }
         function copyToClipboard(text, elementId) {
-            navigator.clipboard.writeText(text).then(() => {
-                const toast = document.getElementById(elementId);
-                if (toast) {
-                    const originalText = toast.innerText;
-                    toast.innerText = 'Copied!';
-                    setTimeout(() => {
-                        toast.innerText = originalText;
-                    }, 2000);
+            // Select the command text so the user can ⌘C — avoids uBlock ClickFix
+            const btn = document.getElementById(elementId);
+            const codeSpan = btn ? btn.parentElement.querySelector('span') : null;
+            if (codeSpan) {
+                const range = document.createRange();
+                range.selectNodeContents(codeSpan);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                // Try to copy — if blocked by extension, the text is still selected for manual ⌘C
+                try {
+                    document.execCommand('copy');
+                    if (btn) {
+                        const originalText = btn.innerText;
+                        btn.innerText = 'Copied!';
+                        setTimeout(() => { btn.innerText = originalText; }, 2000);
+                    }
+                } catch(e) {
+                    if (btn) {
+                        const originalText = btn.innerText;
+                        btn.innerText = 'Selected — press ⌘C';
+                        setTimeout(() => { btn.innerText = originalText; }, 3000);
+                    }
                 }
-            });
+            }
         }
     </script>
     <style>
