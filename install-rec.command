@@ -6,16 +6,22 @@
 # =============================================================================
 
 APP_NAME="Rec"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 APP_VERSION=""
+# Try local version.json first, then fetch from GitHub
 if [ -f version.json ]; then
     APP_VERSION=$(python3 -c "import json; print(json.load(open('version.json'))['version'])" 2>/dev/null || true)
 elif [ -f "$SCRIPT_DIR/version.json" ]; then
     APP_VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || true)
 fi
+# If no local version.json, fetch it from the repo
+if [ -z "$APP_VERSION" ]; then
+    APP_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" 2>/dev/null || true)
+fi
 if [ -z "$APP_VERSION" ]; then
     APP_VERSION=$(grep -m1 'appVersion' main.swift 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
 fi
-if [ -z "$APP_VERSION" ]; then APP_VERSION="1.2.8"; fi
+if [ -z "$APP_VERSION" ]; then APP_VERSION="1.3.6"; fi
 REPO_RAW="." # Use current directory for now, but usually from github
 
 # ---- Terminal styling ------------------------------------
@@ -208,7 +214,12 @@ fi
 # ---- Step 5: Install to /Applications -------------------------------------
 step "Installing Rec to /Applications…"
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+pkill -9 -x "$APP_NAME" >/dev/null 2>&1 || true
+# Wait for process to fully exit (up to 5s)
+for _i in $(seq 1 10); do
+    pgrep -x "$APP_NAME" >/dev/null 2>&1 || break
+    sleep 0.5
+done
 DEST="/Applications/$APP_NAME.app"
 INSTALLED=false
 

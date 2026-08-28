@@ -61,12 +61,23 @@ chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 echo "🔏 Ad-hoc code signing..."
 codesign --force --deep --sign - --requirements '=designated => identifier "com.aoh.rec"' "$APP_DIR" >/dev/null 2>&1 || true
 
-# 7. Install to /Applications
+# 7. Install to /Applications — force-kill any running instance first
 echo "🚀 Installing to $DEST_APP..."
-pkill -x "$APP_NAME" 2>/dev/null || true
-sleep 0.5
+pkill -9 -x "$APP_NAME" 2>/dev/null || true
+# Wait until the process is actually gone (up to 5s)
+for i in $(seq 1 10); do
+    pgrep -x "$APP_NAME" >/dev/null 2>&1 || break
+    sleep 0.5
+done
 rm -rf "$DEST_APP" 2>/dev/null || true
 cp -R "$APP_DIR" "$DEST_APP"
+# Verify the installed version matches
+INSTALLED_VER=$(defaults read "$DEST_APP/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo "unknown")
+if [ "$INSTALLED_VER" != "$VERSION" ]; then
+    echo "⚠️  WARNING: Installed version ($INSTALLED_VER) does not match expected ($VERSION)!"
+else
+    echo "✅ Verified installed version: $INSTALLED_VER"
+fi
 
 # 8. Refresh LaunchServices icon cache
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST_APP" 2>/dev/null || true
