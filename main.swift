@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.3.4"
+    return "1.3.5"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -1326,9 +1326,26 @@ class FloatingPanel: NSPanel {
 // ============================================================
 
 class HoverIconButton: NSButton {
+    override var mouseDownCanMoveWindow: Bool {
+        return false
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let localPoint = convert(point, from: superview)
+        if bounds.contains(localPoint) && !isHidden && alphaValue > 0 {
+            return self
+        }
+        return nil
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
+        layer?.cornerRadius = 7
     }
 
     convenience init() {
@@ -1338,10 +1355,14 @@ class HoverIconButton: NSButton {
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         wantsLayer = true
+        layer?.cornerRadius = 7
     }
 }
 
 class HoverPopUpButton: NSPopUpButton {
+    override var mouseDownCanMoveWindow: Bool {
+        return false
+    }
     private var trackingAreaObj: NSTrackingArea?
     private let iconImageView = NSImageView()
     private let arrowImageView = NSImageView()
@@ -1440,10 +1461,11 @@ class HoverPopUpButton: NSPopUpButton {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        if bounds.contains(point) && !isHidden && alphaValue > 0 {
+        let localPoint = convert(point, from: superview)
+        if bounds.contains(localPoint) && !isHidden && alphaValue > 0 {
             return self
         }
-        return super.hitTest(point)
+        return nil
     }
 }
 
@@ -4440,10 +4462,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         closeButton.isBordered = false
         closeButton.imagePosition = .imageOnly
         closeButton.wantsLayer = true
+        closeButton.layer?.cornerRadius = 7
         closeButton.toolTip = "Hide Toolbar"
-        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Hide Toolbar")?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 16.0, weight: .regular))
+        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Hide Toolbar")?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 18, weight: .regular))
         closeButton.target = self
         closeButton.action = #selector(hidePanel)
+        closeButton.widthAnchor.constraint(equalToConstant: 22).isActive = true
+        closeButton.heightAnchor.constraint(equalToConstant: 22).isActive = true
 
         // ---- MODE POPUP ----
         modePopUp = HoverPopUpButton()

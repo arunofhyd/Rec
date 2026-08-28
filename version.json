@@ -1,7 +1,14 @@
 {
-  "version": "1.3.4",
+  "version": "1.3.5",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.3.5",
+      "date": "2026-08-28",
+      "changes": [
+        "Floating Toolbar Close Button Fix: Corrected coordinate space conversion in custom hit-testing and prevented window-drag interception on the close button to ensure reliable one-click toolbar dismissal to the menu bar."
+      ]
+    },
     {
       "version": "1.3.4",
       "date": "2026-08-28",
