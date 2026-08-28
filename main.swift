@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.3.3"
+    return "1.3.4"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -1322,12 +1322,13 @@ class FloatingPanel: NSPanel {
 // ============================================================
 // Interactive Hover Controls for Floating Toolbar
 // ============================================================
+// MARK: - Hover PopUp & Icon Buttons (HUD Style)
+// ============================================================
 
 class HoverIconButton: NSButton {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.cornerRadius = 7
     }
 
     convenience init() {
@@ -1337,31 +1338,112 @@ class HoverIconButton: NSButton {
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         wantsLayer = true
-        layer?.cornerRadius = 7
     }
 }
 
 class HoverPopUpButton: NSPopUpButton {
+    private var trackingAreaObj: NSTrackingArea?
+    private let iconImageView = NSImageView()
+    private let arrowImageView = NSImageView()
+
     override init(frame frameRect: NSRect, pullsDown flag: Bool) {
         super.init(frame: frameRect, pullsDown: flag)
-        wantsLayer = true
-        layer?.cornerRadius = 7
+        setupViews()
     }
 
     override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect, pullsDown: false)
-        wantsLayer = true
-        layer?.cornerRadius = 7
+        super.init(frame: frameRect, pullsDown: true)
+        setupViews()
     }
 
     convenience init() {
-        self.init(frame: .zero, pullsDown: false)
+        self.init(frame: .zero, pullsDown: true)
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        setupViews()
+    }
+
+    private func setupViews() {
         wantsLayer = true
-        layer?.cornerRadius = 7
+        title = ""
+        isBordered = false
+        imagePosition = .noImage
+        (cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+
+        iconImageView.translatesAutoresizingMaskIntoConstraints = false
+        iconImageView.imageScaling = .scaleProportionallyDown
+        iconImageView.contentTintColor = .white
+        iconImageView.wantsLayer = true
+
+        arrowImageView.translatesAutoresizingMaskIntoConstraints = false
+        arrowImageView.imageScaling = .scaleProportionallyDown
+        let arrowConfig = NSImage.SymbolConfiguration(pointSize: 5.0, weight: .bold)
+        arrowImageView.image = NSImage(systemSymbolName: "arrowtriangle.down.fill", accessibilityDescription: nil)?.withSymbolConfiguration(arrowConfig)
+        arrowImageView.contentTintColor = .white
+        arrowImageView.alphaValue = 0.6
+        arrowImageView.wantsLayer = true
+
+        addSubview(iconImageView)
+        addSubview(arrowImageView)
+
+        NSLayoutConstraint.activate([
+            iconImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            iconImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 17),
+            iconImageView.heightAnchor.constraint(equalToConstant: 17),
+
+            arrowImageView.leadingAnchor.constraint(equalTo: iconImageView.trailingAnchor, constant: 3),
+            arrowImageView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            arrowImageView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 0.5),
+            arrowImageView.widthAnchor.constraint(equalToConstant: 6),
+            arrowImageView.heightAnchor.constraint(equalToConstant: 6)
+        ])
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // Suppress NSPopUpButtonCell default text & icon drawing to eliminate duplicate/ghosted rendering
+    }
+
+    func setMainIcon(_ image: NSImage?, tint: NSColor? = nil) {
+        iconImageView.image = image
+        if let tint = tint {
+            iconImageView.contentTintColor = tint
+        }
+    }
+
+    func setIconTintColor(_ tint: NSColor) {
+        iconImageView.contentTintColor = tint
+    }
+
+    func setArrowTintColor(_ tint: NSColor) {
+        arrowImageView.contentTintColor = tint
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingAreaObj { removeTrackingArea(existing) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingAreaObj = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        arrowImageView.animator().alphaValue = 1.0
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        arrowImageView.animator().alphaValue = 0.6
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if bounds.contains(point) && !isHidden && alphaValue > 0 {
+            return self
+        }
+        return super.hitTest(point)
     }
 }
 
@@ -3940,15 +4022,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             currentSettings.micID = sender.identifier?.rawValue ?? ""
         }
 
-        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
         let initialAudioSymbols = ["speaker.wave.2", "mic", "mic.and.signal.meter", "speaker.slash"]
         let symbol = (0...3).contains(currentSettings.audioSource) ? initialAudioSymbols[currentSettings.audioSource] : "speaker.wave.2"
+        let audioImg = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
 
         let transition = CATransition()
         transition.type = .fade
         transition.duration = 0.2
         audioPopUp.layer?.add(transition, forKey: "fade")
-        audioPopUp.menu?.item(at: 0)?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        audioPopUp.setMainIcon(audioImg)
 
         currentSettings.save()
     }
@@ -3988,7 +4071,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         transition.type = .fade
         transition.duration = 0.2
         modePopUp.layer?.add(transition, forKey: "fade")
-        modePopUp.menu?.item(at: 0)?.image = sender.image
+        modePopUp.setMainIcon(sender.image)
 
         currentSettings.recordMode = sender.tag
         currentSettings.save()
@@ -4133,7 +4216,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         recordButton.target = self
         recordButton.action = #selector(toggleRecording)
 
-        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
+        let gearConfig = NSImage.SymbolConfiguration(pointSize: 13.5, weight: .regular)
 
         // ---- AUDIO POPUP (FIXED) ----
         audioPopUp = HoverPopUpButton()
@@ -4144,10 +4228,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioPopUp.pullsDown = true
         (audioPopUp.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         audioPopUp.wantsLayer = true
-        audioPopUp.layer?.cornerRadius = 7
         audioPopUp.toolTip = "Audio Input Source"
-        audioPopUp.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        audioPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        audioPopUp.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        audioPopUp.heightAnchor.constraint(equalToConstant: 22).isActive = true
 
         audioMainItems.removeAll()
         audioMicItems.removeAll()
@@ -4156,7 +4239,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let initialAudioSymbols = ["speaker.wave.2", "mic", "mic.and.signal.meter", "speaker.slash"]
         let initialAudioSymbol = (0...3).contains(currentSettings.audioSource) ? initialAudioSymbols[currentSettings.audioSource] : "speaker.wave.2"
-        audioGearItem.image = NSImage(systemSymbolName: initialAudioSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let initialAudioImg = NSImage(systemSymbolName: initialAudioSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        audioPopUp.setMainIcon(initialAudioImg)
         audioPopUp.menu?.addItem(audioGearItem)
 
         let audioMainData = [
@@ -4216,13 +4300,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsPopUp.pullsDown = true
         (settingsPopUp.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         settingsPopUp.wantsLayer = true
-        settingsPopUp.layer?.cornerRadius = 7
         settingsPopUp.toolTip = "Settings & Video Quality"
-        settingsPopUp.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        settingsPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        settingsPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        settingsPopUp.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        settingsPopUp.heightAnchor.constraint(equalToConstant: 22).isActive = true
         let gearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        gearItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let gearImg = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: nil)?.withSymbolConfiguration(gearConfig)
+        settingsPopUp.setMainIcon(gearImg)
         settingsPopUp.menu?.addItem(gearItem)
 
         let addSubmenu = { [weak self] (title: String, symbol: String, items: [(String, Int, Selector)]) -> Void in
@@ -4357,9 +4440,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         closeButton.isBordered = false
         closeButton.imagePosition = .imageOnly
         closeButton.wantsLayer = true
-        closeButton.layer?.cornerRadius = 7
         closeButton.toolTip = "Hide Toolbar"
-        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Hide Toolbar")?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 18, weight: .regular))
+        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Hide Toolbar")?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 16.0, weight: .regular))
         closeButton.target = self
         closeButton.action = #selector(hidePanel)
 
@@ -4372,16 +4454,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         modePopUp.pullsDown = true
         (modePopUp.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         modePopUp.wantsLayer = true
-        modePopUp.layer?.cornerRadius = 7
         modePopUp.toolTip = "Recording Area & Mode"
-        modePopUp.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        modePopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        modePopUp.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        modePopUp.heightAnchor.constraint(equalToConstant: 22).isActive = true
 
         let modeGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
 
         let initialModeSymbols = ["macwindow", "macwindow.badge.plus", "crop", "rectangle.dashed"]
         let initialModeSymbol = (0...3).contains(currentSettings.recordMode) ? initialModeSymbols[currentSettings.recordMode] : "macwindow"
-        modeGearItem.image = NSImage(systemSymbolName: initialModeSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let initialModeImg = NSImage(systemSymbolName: initialModeSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        modePopUp.setMainIcon(initialModeImg)
         modePopUp.menu?.addItem(modeGearItem)
 
         let modeItems = [
@@ -4408,15 +4490,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cameraPopUp.pullsDown = true
         (cameraPopUp.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         cameraPopUp.wantsLayer = true
-        cameraPopUp.layer?.cornerRadius = 7
         cameraPopUp.toolTip = "Camera Overlay & Face Cam"
-        cameraPopUp.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        cameraPopUp.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        cameraPopUp.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        cameraPopUp.heightAnchor.constraint(equalToConstant: 22).isActive = true
 
         let cameraGearItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let camIsActive = (cameraWindow != nil && cameraWindow!.isVisible)
         let camSymbol = camIsActive ? "video.fill" : "video.slash"
-        cameraGearItem.image = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let initialCamImg = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        cameraPopUp.setMainIcon(initialCamImg)
+        cameraPopUp.setIconTintColor(camIsActive ? .systemGreen : .white)
         cameraPopUp.menu?.addItem(cameraGearItem)
 
         let noCamItem = NSMenuItem(title: "None", action: #selector(cameraChanged(_:)), keyEquivalent: "")
@@ -4545,13 +4628,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
-        stackView.spacing = 10
+        stackView.spacing = 14
         stackView.alignment = .centerY
 
         let actionStackView = NSStackView(views: [pauseButton, recordButton])
         actionStackView.translatesAutoresizingMaskIntoConstraints = false
         actionStackView.orientation = .horizontal
-        actionStackView.spacing = 10
+        actionStackView.spacing = 12
         actionStackView.alignment = .centerY
 
         contentView.addSubview(stackView)
@@ -4561,7 +4644,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
             stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
 
-            actionStackView.leadingAnchor.constraint(equalTo: stackView.trailingAnchor, constant: 16),
+            actionStackView.leadingAnchor.constraint(equalTo: stackView.trailingAnchor, constant: 18),
             actionStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             actionStackView.centerYAnchor.constraint(equalTo: stackView.centerYAnchor)
         ])
@@ -4843,7 +4926,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         recDivider2?.isHidden = !isRec
         pauseButton.isHidden = !isRec
 
-        let audioConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let audioConfig = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
         let audioSymbol: String
         let audioTitle: String
         switch currentSettings.audioSource {
@@ -4937,7 +5020,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             recordButton.image = tintedImage
         }
         
-        let camConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let camConfig = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
         let camIsActive = (cameraWindow != nil && cameraWindow!.isVisible)
         let camSymbol = camIsActive ? "video.fill" : "video.slash"
         let camImage = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(camConfig)
@@ -4946,11 +5029,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cameraRecordButton.contentTintColor = camIsActive ? .systemGreen : .labelColor
         cameraRecordButton.toolTip = camIsActive ? "Hide Camera Overlay" : "Show Camera Overlay"
         
-        if let topItem = cameraPopUp?.menu?.item(at: 0) {
-            topItem.image = camImage
-        }
+        cameraPopUp?.setMainIcon(camImage)
+        cameraPopUp?.setIconTintColor(camIsActive ? .systemGreen : .white)
         cameraPopUp?.selectItem(at: 0)
-        cameraPopUp?.contentTintColor = camIsActive ? .systemGreen : .labelColor
         cameraPopUp?.synchronizeTitleAndSelectedItem()
         cameraPopUp?.needsDisplay = true
 
