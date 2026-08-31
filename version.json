@@ -1,7 +1,16 @@
 {
-  "version": "1.3.8",
+  "version": "1.3.9",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.3.9",
+      "date": "2026-08-31",
+      "changes": [
+        "Live Microphone Mute & Audio Waveform: Added live 1-click microphone mute/unmute toggle on the floating pill during recording with zero-drift silent PCM streaming, plus real-time visual speech waveform feedback.",
+        "Dual Audio Live Activity: Independent speaker and microphone indicators with real-time audio power level metering for both system audio and external voice narration.",
+        "Adaptive Floating Theme Polish: Refined light/dark appearance with subtle 8% muted dividers and crisp white record ring in dark mode."
+      ]
+    },
     {
       "version": "1.3.8",
       "date": "2026-08-31",
