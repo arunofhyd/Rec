@@ -1338,7 +1338,52 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
 // UI Components
 // ============================================================
 
+class FloatingToolbarVisualEffectView: NSVisualEffectView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setup()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setup()
+    }
+
+    private func setup() {
+        material = .popover
+        state = .active
+        blendingMode = .withinWindow
+        wantsLayer = true
+        layer?.cornerRadius = 18
+        if #available(macOS 10.15, *) {
+            layer?.cornerCurve = .continuous
+        }
+        layer?.masksToBounds = true
+        layer?.borderWidth = 1.0
+        updateColors()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColors()
+    }
+
+    func updateColors() {
+        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if isDark {
+            layer?.backgroundColor = NSColor(white: 0.12, alpha: 0.88).cgColor
+            layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        } else {
+            // Crisp, near-opaque solid off-white in light mode (eliminates washed-out frosted contrast issues)
+            layer?.backgroundColor = NSColor(white: 0.98, alpha: 0.96).cgColor
+            layer?.borderColor = NSColor.black.withAlphaComponent(0.12).cgColor
+        }
+    }
+}
+
 class FloatingPanel: NSPanel {
+    var toolbarEffectView: FloatingToolbarVisualEffectView?
+
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
         super.init(contentRect: contentRect, styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView], backing: backingStoreType, defer: flag)
         self.isFloatingPanel = true
@@ -1354,23 +1399,9 @@ class FloatingPanel: NSPanel {
         self.standardWindowButton(.miniaturizeButton)?.isHidden = true
         self.standardWindowButton(.zoomButton)?.isHidden = true
 
-        let visualEffectView = NSVisualEffectView()
-        visualEffectView.material = .popover
-        visualEffectView.state = .active
-        visualEffectView.blendingMode = .withinWindow
-        visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 18
-        if #available(macOS 10.15, *) {
-            visualEffectView.layer?.cornerCurve = .continuous
-        }
-        visualEffectView.layer?.masksToBounds = true
-        visualEffectView.layer?.borderWidth = 1.0
-        visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { appearance in
-            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                ? NSColor.white.withAlphaComponent(0.18)
-                : NSColor.black.withAlphaComponent(0.12)
-        }).cgColor
-        self.contentView = visualEffectView
+        let effectView = FloatingToolbarVisualEffectView()
+        self.toolbarEffectView = effectView
+        self.contentView = effectView
     }
 }
 
@@ -3222,6 +3253,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main) { [weak self] _ in
+            self?.panel?.toolbarEffectView?.updateColors()
             self?.updateButtonImage()
         }
     }
