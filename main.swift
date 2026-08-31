@@ -1399,9 +1399,28 @@ class FloatingPanel: NSPanel {
         self.standardWindowButton(.miniaturizeButton)?.isHidden = true
         self.standardWindowButton(.zoomButton)?.isHidden = true
 
+        let shadowContainer = NSView()
+        shadowContainer.translatesAutoresizingMaskIntoConstraints = false
+        shadowContainer.wantsLayer = true
+        shadowContainer.layer?.masksToBounds = false
+        shadowContainer.layer?.shadowColor = NSColor.black.cgColor
+        shadowContainer.layer?.shadowOpacity = 0.10
+        shadowContainer.layer?.shadowRadius = 6.0
+        shadowContainer.layer?.shadowOffset = CGSize(width: 0, height: -2)
+
         let effectView = FloatingToolbarVisualEffectView()
+        effectView.translatesAutoresizingMaskIntoConstraints = false
         self.toolbarEffectView = effectView
-        self.contentView = effectView
+
+        shadowContainer.addSubview(effectView)
+        NSLayoutConstraint.activate([
+            effectView.leadingAnchor.constraint(equalTo: shadowContainer.leadingAnchor),
+            effectView.trailingAnchor.constraint(equalTo: shadowContainer.trailingAnchor),
+            effectView.topAnchor.constraint(equalTo: shadowContainer.topAnchor),
+            effectView.bottomAnchor.constraint(equalTo: shadowContainer.bottomAnchor)
+        ])
+
+        self.contentView = shadowContainer
     }
 }
 
@@ -4350,7 +4369,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let screen = NSScreen.main else { return }
         let rect = NSRect(x: screen.frame.width / 2, y: 100, width: 10, height: 10)
         panel = FloatingPanel(contentRect: rect, styleMask: [], backing: .buffered, defer: false)
-        guard let contentView = panel.contentView else { return }
+        guard let contentView = panel.toolbarEffectView ?? panel.contentView else { return }
 
         recordButton = HoverRecordButton()
         recordButton.translatesAutoresizingMaskIntoConstraints = false
