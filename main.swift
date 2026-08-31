@@ -764,6 +764,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     var onRecordingStarted: (() -> Void)?
     var onRecordingStopped: ((URL) -> Void)?
     var onError: ((Error) -> Void)?
+    var onSystemAudioLevel: ((Float) -> Void)?
     var onMicAudioLevel: ((Float) -> Void)?
 
     func startRecording() {
@@ -1174,6 +1175,30 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
             if let videoInput = videoInput, videoInput.isReadyForMoreMediaData { videoInput.append(adjustedBuffer) }
         } else if type == .audio {
             if let audioInput = audioInput, audioInput.isReadyForMoreMediaData { audioInput.append(adjustedBuffer) }
+            
+            // Calculate system audio level for live visual feedback
+            if let blockBuffer = CMSampleBufferGetDataBuffer(adjustedBuffer) {
+                var length = 0
+                var dataPointer: UnsafeMutablePointer<Int8>?
+                if CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer) == noErr,
+                   let dataPointer = dataPointer, length > 0 {
+                    let floatCount = length / MemoryLayout<Float>.size
+                    if floatCount > 0 {
+                        let floatPtr = UnsafeMutableRawPointer(dataPointer).assumingMemoryBound(to: Float.self)
+                        var sum: Float = 0
+                        let strideVal = max(1, floatCount / 64)
+                        var samplesCount = 0
+                        for i in stride(from: 0, to: floatCount, by: strideVal) {
+                            let val = floatPtr[i]
+                            sum += val * val
+                            samplesCount += 1
+                        }
+                        let rms = samplesCount > 0 ? sqrt(sum / Float(samplesCount)) : 0
+                        let db: Float = rms > 0.0001 ? 20.0 * log10(rms) : -100.0
+                        DispatchQueue.main.async { self.onSystemAudioLevel?(db) }
+                    }
+                }
+            }
         }
     }
 
@@ -3126,7 +3151,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var audioPopUp: HoverPopUpButton!
     var cameraPopUp: HoverPopUpButton!
     var cameraRecordButton: HoverIconButton!
-    var audioRecordIndicator: HoverIconButton!
+    var systemAudioRecordIndicator: HoverIconButton!
+    var micRecordButton: HoverIconButton!
     var liveTimerStack: NSStackView!
     var liveTimerDot: NSImageView!
     var liveTimerLabel: NSTextField!
@@ -4613,18 +4639,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cameraRecordButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
         cameraRecordButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
-        audioRecordIndicator = HoverIconButton()
-        audioRecordIndicator.translatesAutoresizingMaskIntoConstraints = false
-        audioRecordIndicator.isBordered = false
-        audioRecordIndicator.imagePosition = .imageOnly
-        audioRecordIndicator.wantsLayer = true
-        audioRecordIndicator.layer?.cornerRadius = 7
-        audioRecordIndicator.target = self
-        audioRecordIndicator.action = #selector(toggleMicMute)
-        audioRecordIndicator.toolTip = "Audio Recording Active"
-        audioRecordIndicator.isHidden = true
-        audioRecordIndicator.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        audioRecordIndicator.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        // ---- SYSTEM AUDIO RECORD INDICATOR ----
+        systemAudioRecordIndicator = HoverIconButton()
+        systemAudioRecordIndicator.translatesAutoresizingMaskIntoConstraints = false
+        systemAudioRecordIndicator.isBordered = false
+        systemAudioRecordIndicator.imagePosition = .imageOnly
+        systemAudioRecordIndicator.wantsLayer = true
+        systemAudioRecordIndicator.layer?.cornerRadius = 7
+        systemAudioRecordIndicator.toolTip = "Recording System Audio"
+        systemAudioRecordIndicator.isHidden = true
+        systemAudioRecordIndicator.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        systemAudioRecordIndicator.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        // ---- MIC RECORD BUTTON (LIVE MUTE TOGGLE) ----
+        micRecordButton = HoverIconButton()
+        micRecordButton.translatesAutoresizingMaskIntoConstraints = false
+        micRecordButton.isBordered = false
+        micRecordButton.imagePosition = .imageOnly
+        micRecordButton.wantsLayer = true
+        micRecordButton.layer?.cornerRadius = 7
+        micRecordButton.target = self
+        micRecordButton.action = #selector(toggleMicMute)
+        micRecordButton.toolTip = "Microphone Active (Click to Mute)"
+        micRecordButton.isHidden = true
+        micRecordButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        micRecordButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
         // ---- LIVE TIMER STACK (Floating Bar) ----
         liveTimerDot = NSImageView()
@@ -4686,7 +4725,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             modePopUp,
             idleDivider4,
             cameraRecordButton,
-            audioRecordIndicator,
+            systemAudioRecordIndicator,
+            micRecordButton,
             recDivider1,
             liveTimerStack,
             recDivider2
@@ -4784,6 +4824,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.runModal()
         }
         
+        var isSysAudioActive = false
+        recorder.onSystemAudioLevel = { [weak self] level in
+            guard let self = self else { return }
+            guard self.recorder.isRecording else { return }
+            let hasSysAudio = (currentSettings.audioSource == 0 || currentSettings.audioSource == 2)
+            guard hasSysAudio else { return }
+            
+            let isActive = level > -45.0
+            if isActive != isSysAudioActive {
+                isSysAudioActive = isActive
+                self.systemAudioRecordIndicator?.contentTintColor = isActive ? .systemGreen : .systemCyan
+            }
+        }
+
         var isMicActive = false
         recorder.onMicAudioLevel = { [weak self] level in
             guard let self = self else { return }
@@ -4794,7 +4848,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if self.recorder.isMicMuted {
                 if isMicActive {
                     isMicActive = false
-                    self.audioRecordIndicator?.contentTintColor = .systemRed
+                    self.micRecordButton?.contentTintColor = .systemRed
                 }
                 return
             }
@@ -4802,7 +4856,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let isActive = level > -38.0
             if isActive != isMicActive {
                 isMicActive = isActive
-                self.audioRecordIndicator?.contentTintColor = isActive ? .systemGreen : .systemCyan
+                self.micRecordButton?.contentTintColor = isActive ? .systemGreen : .systemCyan
             }
         }
     }
@@ -5003,44 +5057,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Show live recording controls and dividers
         cameraRecordButton.isHidden = !isRec
-        audioRecordIndicator.isHidden = !isRec
         recDivider1?.isHidden = !isRec
         liveTimerStack.isHidden = !isRec
         recDivider2?.isHidden = !isRec
         pauseButton.isHidden = !isRec
 
+        let isSysAudioEnabled = (currentSettings.audioSource == 0 || currentSettings.audioSource == 2)
         let isMicEnabled = (currentSettings.audioSource == 1 || currentSettings.audioSource == 2)
+        let isMutedSource = (currentSettings.audioSource == 3)
+
+        // 1. System Audio Indicator
+        if isSysAudioEnabled {
+            systemAudioRecordIndicator.isHidden = !isRec
+            let sysConfig = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
+            systemAudioRecordIndicator.image = NSImage(systemSymbolName: "speaker.wave.2.fill", accessibilityDescription: "System Audio Active")?.withSymbolConfiguration(sysConfig)
+            systemAudioRecordIndicator.contentTintColor = .systemCyan
+            systemAudioRecordIndicator.toolTip = "Recording System Audio"
+        } else if isMutedSource {
+            systemAudioRecordIndicator.isHidden = !isRec
+            let sysConfig = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
+            systemAudioRecordIndicator.image = NSImage(systemSymbolName: "speaker.slash", accessibilityDescription: "Audio Muted")?.withSymbolConfiguration(sysConfig)
+            systemAudioRecordIndicator.contentTintColor = .tertiaryLabelColor
+            systemAudioRecordIndicator.toolTip = "No Audio Recording"
+        } else {
+            systemAudioRecordIndicator.isHidden = true
+        }
+
+        // 2. Microphone Indicator & Live Mute Toggle
         if isMicEnabled {
+            micRecordButton.isHidden = !isRec
             if recorder.isMicMuted {
                 let mutedConfig = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .semibold)
-                audioRecordIndicator?.image = NSImage(systemSymbolName: "mic.slash.fill", accessibilityDescription: "Microphone Muted")?.withSymbolConfiguration(mutedConfig)
-                audioRecordIndicator?.contentTintColor = .systemRed
-                audioRecordIndicator?.toolTip = "Microphone Muted (Click to Unmute)"
+                micRecordButton.image = NSImage(systemSymbolName: "mic.slash.fill", accessibilityDescription: "Microphone Muted")?.withSymbolConfiguration(mutedConfig)
+                micRecordButton.contentTintColor = .systemRed
+                micRecordButton.toolTip = "Microphone Muted (Click to Unmute)"
             } else {
                 let micConfig = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
-                audioRecordIndicator?.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Microphone Active")?.withSymbolConfiguration(micConfig)
-                audioRecordIndicator?.contentTintColor = .systemCyan
-                audioRecordIndicator?.toolTip = "Microphone Active (Click to Mute)"
+                micRecordButton.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Microphone Active")?.withSymbolConfiguration(micConfig)
+                micRecordButton.contentTintColor = .systemCyan
+                micRecordButton.toolTip = "Microphone Active (Click to Mute)"
             }
         } else {
-            let audioConfig = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
-            let audioSymbol: String
-            let audioTitle: String
-            switch currentSettings.audioSource {
-            case 0:
-                audioSymbol = "speaker.wave.2"
-                audioTitle = "System Audio"
-            case 3:
-                audioSymbol = "speaker.slash"
-                audioTitle = "No Audio (Muted)"
-            default:
-                audioSymbol = "speaker.wave.2"
-                audioTitle = "System Audio"
-            }
-            audioRecordIndicator?.image = NSImage(systemSymbolName: audioSymbol, accessibilityDescription: audioTitle)?.withSymbolConfiguration(audioConfig)
-            let isAudioCapturing = (currentSettings.audioSource != 3)
-            audioRecordIndicator?.contentTintColor = isAudioCapturing ? .systemCyan : .tertiaryLabelColor
-            audioRecordIndicator?.toolTip = "Recording Audio: \(audioTitle)"
+            micRecordButton.isHidden = true
         }
 
         if !isRec {
