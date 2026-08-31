@@ -1301,17 +1301,21 @@ class FloatingPanel: NSPanel {
         self.isMovableByWindowBackground = true
         self.backgroundColor = .clear
         self.isOpaque = false
-        self.hasShadow = true
+        self.appearance = NSAppearance(named: .vibrantDark)
         self.standardWindowButton(.closeButton)?.isHidden = true
         self.standardWindowButton(.miniaturizeButton)?.isHidden = true
         self.standardWindowButton(.zoomButton)?.isHidden = true
 
         let visualEffectView = NSVisualEffectView()
+        visualEffectView.appearance = NSAppearance(named: .vibrantDark)
         visualEffectView.material = .hudWindow
         visualEffectView.state = .active
-        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.blendingMode = .withinWindow
         visualEffectView.wantsLayer = true
         visualEffectView.layer?.cornerRadius = 18
+        if #available(macOS 10.15, *) {
+            visualEffectView.layer?.cornerCurve = .continuous
+        }
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
         visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
