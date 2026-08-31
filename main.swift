@@ -4631,7 +4631,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             div.boxType = .custom
             div.isTransparent = false
             div.borderWidth = 0
-            div.fillColor = NSColor.separatorColor
+            div.fillColor = NSColor(name: nil, dynamicProvider: { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor.white.withAlphaComponent(0.12)
+                    : NSColor.black.withAlphaComponent(0.08)
+            })
             div.translatesAutoresizingMaskIntoConstraints = false
             div.widthAnchor.constraint(equalToConstant: 1).isActive = true
             div.heightAnchor.constraint(equalToConstant: 18).isActive = true
