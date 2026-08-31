@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.3.6"
+    return "1.3.7"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -2194,7 +2194,10 @@ class RecordingToastWindow: NSWindow {
         self.level = .floating
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
+        self.appearance = NSAppearance(named: .vibrantDark)
+
         let visualEffectView = NSVisualEffectView(frame: NSRect(origin: .zero, size: initialRect.size))
+        visualEffectView.appearance = NSAppearance(named: .vibrantDark)
         visualEffectView.autoresizingMask = [.width, .height]
         visualEffectView.material = .hudWindow
         visualEffectView.state = .active
@@ -2206,11 +2209,7 @@ class RecordingToastWindow: NSWindow {
         }
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
-        visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
-            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                ? NSColor.white.withAlphaComponent(0.18)
-                : NSColor.black.withAlphaComponent(0.12)
-        }).cgColor
+        visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
         self.contentView = visualEffectView
 
         setupUI(in: visualEffectView)
@@ -2226,7 +2225,7 @@ class RecordingToastWindow: NSWindow {
         thumbnailView.layer?.cornerRadius = 8
         thumbnailView.layer?.masksToBounds = true
         thumbnailView.layer?.borderWidth = 1.0
-        thumbnailView.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        thumbnailView.layer?.borderColor = NSColor.white.withAlphaComponent(0.20).cgColor
         thumbnailView.imageScaling = .scaleProportionallyUpOrDown
 
         let filmConfig = NSImage.SymbolConfiguration(pointSize: 22, weight: .regular)
@@ -2240,11 +2239,11 @@ class RecordingToastWindow: NSWindow {
         let checkIcon = NSImageView()
         checkIcon.translatesAutoresizingMaskIntoConstraints = false
         checkIcon.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Saved")?.withSymbolConfiguration(checkConfig)
-        checkIcon.contentTintColor = .systemGreen
+        checkIcon.contentTintColor = NSColor(red: 0.20, green: 0.85, blue: 0.40, alpha: 1.0)
 
         titleLabel = NSTextField(labelWithString: "Recording Saved")
         titleLabel.font = NSFont.systemFont(ofSize: 12.5, weight: .bold)
-        titleLabel.textColor = .labelColor
+        titleLabel.textColor = .white
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -2257,7 +2256,7 @@ class RecordingToastWindow: NSWindow {
         // 3. File name (Strictly truncated with low compression resistance so it never expands window)
         fileNameLabel = NSTextField(labelWithString: fileURL.lastPathComponent)
         fileNameLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
-        fileNameLabel.textColor = .labelColor
+        fileNameLabel.textColor = NSColor(white: 0.95, alpha: 1.0)
         fileNameLabel.lineBreakMode = .byTruncatingMiddle
         fileNameLabel.cell?.wraps = false
         fileNameLabel.cell?.isScrollable = false
@@ -2274,7 +2273,7 @@ class RecordingToastWindow: NSWindow {
         }
         metaLabel = NSTextField(labelWithString: "\(sizeStr)  •  Right-click for options")
         metaLabel.font = NSFont.systemFont(ofSize: 10.5, weight: .regular)
-        metaLabel.textColor = .secondaryLabelColor
+        metaLabel.textColor = NSColor(white: 0.70, alpha: 1.0)
         metaLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         metaLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -2292,7 +2291,7 @@ class RecordingToastWindow: NSWindow {
         closeBtn.title = ""
         let closeConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .bold)
         closeBtn.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Dismiss")?.withSymbolConfiguration(closeConfig)
-        closeBtn.contentTintColor = NSColor.secondaryLabelColor
+        closeBtn.contentTintColor = NSColor(white: 0.65, alpha: 1.0)
         closeBtn.target = self
         closeBtn.action = #selector(dismissAnimated)
         closeBtn.translatesAutoresizingMaskIntoConstraints = false
@@ -2443,7 +2442,7 @@ class RecordingToastWindow: NSWindow {
         metaLabel.textColor = .systemGreen
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self = self else { return }
-            self.metaLabel.textColor = .secondaryLabelColor
+            self.metaLabel.textColor = NSColor(white: 0.70, alpha: 1.0)
             self.refreshToast(with: self.fileURL)
         }
     }
