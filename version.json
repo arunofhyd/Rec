@@ -1,7 +1,16 @@
 {
-  "version": "1.3.9",
+  "version": "1.3.10",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.3.10",
+      "date": "2026-08-31",
+      "changes": [
+        "Unified 85% Frosted Glass Styling: Standardized a balanced 85% opacity frosted glass tint across the floating control pill, HUD toast, recording saved dialog, video trim editor, about, and permissions windows in both Light and Dark mode.",
+        "Subtle Floating Elevation: Replaced heavy macOS system window shadows with a delicate, diffused 10% custom layer elevation for a refined, modern HUD aesthetic.",
+        "Adaptive HUD Toast: Enabled dynamic Light & Dark mode adaptation on the bottom-right recording completion toast with borderless in-window blending and continuous squircle corners."
+      ]
+    },
     {
       "version": "1.3.9",
       "date": "2026-08-31",
