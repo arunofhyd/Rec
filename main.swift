@@ -2183,11 +2183,10 @@ class RecordingToastWindow: NSWindow {
             height: toastHeight
         )
 
-        super.init(contentRect: initialRect, styleMask: [.borderless, .fullSizeContentView], backing: .buffered, defer: false)
+        super.init(contentRect: initialRect, styleMask: .borderless, backing: .buffered, defer: false)
 
         self.setFrame(initialRect, display: true)
         self.isReleasedWhenClosed = false
-        self.titlebarAppearsTransparent = true
         self.isMovableByWindowBackground = true
         self.backgroundColor = .clear
         self.isOpaque = false
@@ -2196,25 +2195,23 @@ class RecordingToastWindow: NSWindow {
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let visualEffectView = NSVisualEffectView(frame: NSRect(origin: .zero, size: initialRect.size))
-        visualEffectView.translatesAutoresizingMaskIntoConstraints = false
-        visualEffectView.material = .popover
+        visualEffectView.autoresizingMask = [.width, .height]
+        visualEffectView.material = .hudWindow
         visualEffectView.state = .active
-        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.blendingMode = .withinWindow
         visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 16
+        visualEffectView.layer?.cornerRadius = 14
+        if #available(macOS 10.15, *) {
+            visualEffectView.layer?.cornerCurve = .continuous
+        }
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
         visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
             app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                ? NSColor.white.withAlphaComponent(0.2)
+                ? NSColor.white.withAlphaComponent(0.18)
                 : NSColor.black.withAlphaComponent(0.12)
         }).cgColor
         self.contentView = visualEffectView
-
-        NSLayoutConstraint.activate([
-            visualEffectView.widthAnchor.constraint(equalToConstant: toastWidth),
-            visualEffectView.heightAnchor.constraint(equalToConstant: toastHeight)
-        ])
 
         setupUI(in: visualEffectView)
         setupTrackingArea(in: visualEffectView)
@@ -2557,16 +2554,20 @@ class RecordingFinishedWindow: NSWindow {
         self.level = .floating
 
         let visualEffectView = NSVisualEffectView(frame: rect)
-        visualEffectView.material = .popover
+        visualEffectView.autoresizingMask = [.width, .height]
+        visualEffectView.material = .hudWindow
         visualEffectView.state = .active
-        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.blendingMode = .withinWindow
         visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 20
+        visualEffectView.layer?.cornerRadius = 18
+        if #available(macOS 10.15, *) {
+            visualEffectView.layer?.cornerCurve = .continuous
+        }
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
         visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
             app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                ? NSColor.white.withAlphaComponent(0.2)
+                ? NSColor.white.withAlphaComponent(0.18)
                 : NSColor.black.withAlphaComponent(0.12)
         }).cgColor
         self.contentView = visualEffectView
