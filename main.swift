@@ -1371,12 +1371,12 @@ class FloatingToolbarVisualEffectView: NSVisualEffectView {
     func updateColors() {
         let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         if isDark {
-            layer?.backgroundColor = NSColor(white: 0.12, alpha: 0.88).cgColor
+            layer?.backgroundColor = NSColor(white: 0.12, alpha: 0.85).cgColor
             layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
         } else {
-            // Crisp, near-opaque solid off-white in light mode (eliminates washed-out frosted contrast issues)
-            layer?.backgroundColor = NSColor(white: 0.98, alpha: 0.96).cgColor
-            layer?.borderColor = NSColor.black.withAlphaComponent(0.12).cgColor
+            // Balanced 85% opacity frosted surface in light mode
+            layer?.backgroundColor = NSColor(white: 0.98, alpha: 0.85).cgColor
+            layer?.borderColor = NSColor.black.withAlphaComponent(0.10).cgColor
         }
     }
 }
@@ -1802,15 +1802,23 @@ class VideoTrimmerWindow: NSWindow {
         let visualEffectView = NSVisualEffectView(frame: rect)
         visualEffectView.material = .popover
         visualEffectView.state = .active
-        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.blendingMode = .withinWindow
         visualEffectView.wantsLayer = true
         visualEffectView.layer?.cornerRadius = 18
+        if #available(macOS 10.15, *) {
+            visualEffectView.layer?.cornerCurve = .continuous
+        }
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
+        visualEffectView.layer?.backgroundColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 0.12, alpha: 0.85)
+                : NSColor(white: 0.98, alpha: 0.85)
+        }).cgColor
         visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
             app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                ? NSColor.white.withAlphaComponent(0.2)
-                : NSColor.black.withAlphaComponent(0.12)
+                ? NSColor.white.withAlphaComponent(0.18)
+                : NSColor.black.withAlphaComponent(0.10)
         }).cgColor
         self.contentView = visualEffectView
 
@@ -2278,12 +2286,9 @@ class RecordingToastWindow: NSWindow {
         self.level = .floating
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        self.appearance = NSAppearance(named: .vibrantDark)
-
         let visualEffectView = NSVisualEffectView(frame: NSRect(origin: .zero, size: initialRect.size))
-        visualEffectView.appearance = NSAppearance(named: .vibrantDark)
         visualEffectView.autoresizingMask = [.width, .height]
-        visualEffectView.material = .hudWindow
+        visualEffectView.material = .popover
         visualEffectView.state = .active
         visualEffectView.blendingMode = .withinWindow
         visualEffectView.wantsLayer = true
@@ -2293,7 +2298,16 @@ class RecordingToastWindow: NSWindow {
         }
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
-        visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        visualEffectView.layer?.backgroundColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 0.12, alpha: 0.85)
+                : NSColor(white: 0.98, alpha: 0.85)
+        }).cgColor
+        visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor.white.withAlphaComponent(0.18)
+                : NSColor.black.withAlphaComponent(0.10)
+        }).cgColor
         self.contentView = visualEffectView
 
         setupUI(in: visualEffectView)
@@ -2309,7 +2323,11 @@ class RecordingToastWindow: NSWindow {
         thumbnailView.layer?.cornerRadius = 8
         thumbnailView.layer?.masksToBounds = true
         thumbnailView.layer?.borderWidth = 1.0
-        thumbnailView.layer?.borderColor = NSColor.white.withAlphaComponent(0.20).cgColor
+        thumbnailView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor.white.withAlphaComponent(0.20)
+                : NSColor.black.withAlphaComponent(0.10)
+        }).cgColor
         thumbnailView.imageScaling = .scaleProportionallyUpOrDown
 
         let filmConfig = NSImage.SymbolConfiguration(pointSize: 22, weight: .regular)
@@ -2327,7 +2345,7 @@ class RecordingToastWindow: NSWindow {
 
         titleLabel = NSTextField(labelWithString: "Recording Saved")
         titleLabel.font = NSFont.systemFont(ofSize: 12.5, weight: .bold)
-        titleLabel.textColor = .white
+        titleLabel.textColor = .labelColor
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -2340,7 +2358,7 @@ class RecordingToastWindow: NSWindow {
         // 3. File name (Strictly truncated with low compression resistance so it never expands window)
         fileNameLabel = NSTextField(labelWithString: fileURL.lastPathComponent)
         fileNameLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
-        fileNameLabel.textColor = NSColor(white: 0.95, alpha: 1.0)
+        fileNameLabel.textColor = .labelColor
         fileNameLabel.lineBreakMode = .byTruncatingMiddle
         fileNameLabel.cell?.wraps = false
         fileNameLabel.cell?.isScrollable = false
@@ -2357,7 +2375,7 @@ class RecordingToastWindow: NSWindow {
         }
         metaLabel = NSTextField(labelWithString: "\(sizeStr)  •  Right-click for options")
         metaLabel.font = NSFont.systemFont(ofSize: 10.5, weight: .regular)
-        metaLabel.textColor = NSColor(white: 0.70, alpha: 1.0)
+        metaLabel.textColor = .secondaryLabelColor
         metaLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         metaLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -2638,7 +2656,7 @@ class RecordingFinishedWindow: NSWindow {
 
         let visualEffectView = NSVisualEffectView(frame: rect)
         visualEffectView.autoresizingMask = [.width, .height]
-        visualEffectView.material = .hudWindow
+        visualEffectView.material = .popover
         visualEffectView.state = .active
         visualEffectView.blendingMode = .withinWindow
         visualEffectView.wantsLayer = true
@@ -2648,10 +2666,15 @@ class RecordingFinishedWindow: NSWindow {
         }
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
+        visualEffectView.layer?.backgroundColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 0.12, alpha: 0.85)
+                : NSColor(white: 0.98, alpha: 0.85)
+        }).cgColor
         visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { app in
             app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                 ? NSColor.white.withAlphaComponent(0.18)
-                : NSColor.black.withAlphaComponent(0.12)
+                : NSColor.black.withAlphaComponent(0.10)
         }).cgColor
         self.contentView = visualEffectView
 
@@ -3554,8 +3577,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let bg = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: finalHeight))
         bg.material = .popover
-        bg.blendingMode = .behindWindow
+        bg.blendingMode = .withinWindow
         bg.state = .active
+        bg.wantsLayer = true
+        bg.layer?.backgroundColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 0.12, alpha: 0.85)
+                : NSColor(white: 0.98, alpha: 0.85)
+        }).cgColor
         
         let icon = NSImageView(frame: NSRect(x: (width - 64)/2, y: finalHeight - 88, width: 64, height: 64))
         icon.image = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
@@ -3692,8 +3721,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let bg = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         bg.material = .popover
-        bg.blendingMode = .behindWindow
+        bg.blendingMode = .withinWindow
         bg.state = .active
+        bg.wantsLayer = true
+        bg.layer?.backgroundColor = NSColor(name: nil, dynamicProvider: { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 0.12, alpha: 0.85)
+                : NSColor(white: 0.98, alpha: 0.85)
+        }).cgColor
 
         // App Icon
         let icon = NSImageView(frame: NSRect(x: (width - 56)/2, y: 424, width: 56, height: 56))
