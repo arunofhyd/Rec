@@ -1301,14 +1301,13 @@ class FloatingPanel: NSPanel {
         self.isMovableByWindowBackground = true
         self.backgroundColor = .clear
         self.isOpaque = false
-        self.appearance = NSAppearance(named: .vibrantDark)
+        self.hasShadow = true
         self.standardWindowButton(.closeButton)?.isHidden = true
         self.standardWindowButton(.miniaturizeButton)?.isHidden = true
         self.standardWindowButton(.zoomButton)?.isHidden = true
 
         let visualEffectView = NSVisualEffectView()
-        visualEffectView.appearance = NSAppearance(named: .vibrantDark)
-        visualEffectView.material = .hudWindow
+        visualEffectView.material = .popover
         visualEffectView.state = .active
         visualEffectView.blendingMode = .withinWindow
         visualEffectView.wantsLayer = true
@@ -1318,7 +1317,11 @@ class FloatingPanel: NSPanel {
         }
         visualEffectView.layer?.masksToBounds = true
         visualEffectView.layer?.borderWidth = 1.0
-        visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        visualEffectView.layer?.borderColor = NSColor(name: nil, dynamicProvider: { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor.white.withAlphaComponent(0.18)
+                : NSColor.black.withAlphaComponent(0.12)
+        }).cgColor
         self.contentView = visualEffectView
     }
 }
@@ -1399,15 +1402,15 @@ class HoverPopUpButton: NSPopUpButton {
 
         iconImageView.translatesAutoresizingMaskIntoConstraints = false
         iconImageView.imageScaling = .scaleProportionallyDown
-        iconImageView.contentTintColor = .white
+        iconImageView.contentTintColor = .labelColor
         iconImageView.wantsLayer = true
 
         arrowImageView.translatesAutoresizingMaskIntoConstraints = false
         arrowImageView.imageScaling = .scaleProportionallyDown
         let arrowConfig = NSImage.SymbolConfiguration(pointSize: 5.0, weight: .bold)
         arrowImageView.image = NSImage(systemSymbolName: "arrowtriangle.down.fill", accessibilityDescription: nil)?.withSymbolConfiguration(arrowConfig)
-        arrowImageView.contentTintColor = .white
-        arrowImageView.alphaValue = 0.6
+        arrowImageView.contentTintColor = .secondaryLabelColor
+        arrowImageView.alphaValue = 0.65
         arrowImageView.wantsLayer = true
 
         addSubview(iconImageView)
@@ -1433,9 +1436,7 @@ class HoverPopUpButton: NSPopUpButton {
 
     func setMainIcon(_ image: NSImage?, tint: NSColor? = nil) {
         iconImageView.image = image
-        if let tint = tint {
-            iconImageView.contentTintColor = tint
-        }
+        iconImageView.contentTintColor = tint ?? .labelColor
     }
 
     func setIconTintColor(_ tint: NSColor) {
@@ -3170,6 +3171,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.recorder.updateStreamFilter()
             }
         }
+        
+        DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main) { [weak self] _ in
+            self?.updateButtonImage()
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -4469,6 +4474,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         closeButton.layer?.cornerRadius = 7
         closeButton.toolTip = "Hide Toolbar"
         closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Hide Toolbar")?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 18, weight: .regular))
+        closeButton.contentTintColor = .secondaryLabelColor
         closeButton.target = self
         closeButton.action = #selector(hidePanel)
         closeButton.widthAnchor.constraint(equalToConstant: 22).isActive = true
@@ -4528,7 +4534,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let camSymbol = camIsActive ? "video.fill" : "video.slash"
         let initialCamImg = NSImage(systemSymbolName: camSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
         cameraPopUp.setMainIcon(initialCamImg)
-        cameraPopUp.setIconTintColor(camIsActive ? .systemGreen : .white)
+        cameraPopUp.setIconTintColor(camIsActive ? .systemGreen : .labelColor)
         cameraPopUp.menu?.addItem(cameraGearItem)
 
         let noCamItem = NSMenuItem(title: "None", action: #selector(cameraChanged(_:)), keyEquivalent: "")
@@ -4566,6 +4572,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pauseButton.layer?.cornerRadius = 7
         pauseButton.toolTip = "Pause / Resume Recording"
         pauseButton.image = NSImage(systemSymbolName: "pause.circle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 26, weight: .regular))
+        pauseButton.contentTintColor = .labelColor
         pauseButton.target = self
         pauseButton.action = #selector(togglePause)
         pauseButton.isHidden = true // Only visible when recording
@@ -4606,7 +4613,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         liveTimerLabel = NSTextField(labelWithString: "00:00")
         liveTimerLabel.translatesAutoresizingMaskIntoConstraints = false
         liveTimerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .semibold)
-        liveTimerLabel.textColor = .white
+        liveTimerLabel.textColor = .labelColor
         liveTimerLabel.isBordered = false
         liveTimerLabel.drawsBackground = false
         liveTimerLabel.alignment = .center
@@ -4624,7 +4631,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             div.boxType = .custom
             div.isTransparent = false
             div.borderWidth = 0
-            div.fillColor = NSColor.white.withAlphaComponent(0.14)
+            div.fillColor = NSColor.separatorColor
             div.translatesAutoresizingMaskIntoConstraints = false
             div.widthAnchor.constraint(equalToConstant: 1).isActive = true
             div.heightAnchor.constraint(equalToConstant: 18).isActive = true
@@ -4983,29 +4990,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !isRec {
             liveTimerLabel.stringValue = "00:00"
             liveTimerDot.contentTintColor = .systemRed
-            liveTimerLabel.textColor = .white
+            liveTimerLabel.textColor = .labelColor
         } else {
             if recorder.isPaused {
                 liveTimerDot.contentTintColor = .systemOrange
                 liveTimerLabel.textColor = .systemOrange
             } else {
                 liveTimerDot.contentTintColor = .systemRed
-                liveTimerLabel.textColor = .white
+                liveTimerLabel.textColor = .labelColor
             }
         }
         
         let pauseSymbol = recorder.isPaused ? "play.circle.fill" : "pause.circle.fill"
         let pauseConfig = NSImage.SymbolConfiguration(pointSize: 26, weight: .regular)
-        if let pauseImg = NSImage(systemSymbolName: pauseSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(pauseConfig) {
-            let size = pauseImg.size
-            let tinted = NSImage(size: size)
-            tinted.lockFocus()
-            pauseImg.draw(in: NSRect(origin: .zero, size: size))
-            NSColor.white.set()
-            NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
-            tinted.unlockFocus()
-            pauseButton.image = tinted
-        }
+        pauseButton.image = NSImage(systemSymbolName: pauseSymbol, accessibilityDescription: nil)?.withSymbolConfiguration(pauseConfig)
+        pauseButton.contentTintColor = .labelColor
 
         let config = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
         let symbolName = recorder.isRecording ? "stop.circle.fill" : "record.circle"
@@ -5021,7 +5020,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                     let outerPath = NSBezierPath(ovalIn: NSRect(x: 30, y: 30, width: 60, height: 60))
                     outerPath.lineWidth = 6
-                    NSColor.white.setStroke()
+                    let isDark = (self.panel?.effectiveAppearance ?? NSApp.effectiveAppearance).bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    if isDark {
+                        NSColor.white.setStroke()
+                    } else {
+                        NSColor(white: 0.20, alpha: 0.85).setStroke()
+                    }
                     outerPath.stroke()
 
                     let innerPath = NSBezierPath(ovalIn: NSRect(x: 40, y: 40, width: 40, height: 40))
@@ -5059,7 +5063,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cameraRecordButton.toolTip = camIsActive ? "Hide Camera Overlay" : "Show Camera Overlay"
         
         cameraPopUp?.setMainIcon(camImage)
-        cameraPopUp?.setIconTintColor(camIsActive ? .systemGreen : .white)
+        cameraPopUp?.setIconTintColor(camIsActive ? .systemGreen : .labelColor)
         cameraPopUp?.selectItem(at: 0)
         cameraPopUp?.synchronizeTitleAndSelectedItem()
         cameraPopUp?.needsDisplay = true
