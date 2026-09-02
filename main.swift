@@ -4014,22 +4014,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             let dl = (json["downloadURL"] as? String) ?? "https://rec-aoh.netlify.app/#install"
+            let newer = self.isNewer(remote, than: appVersion)
             var notes = ""
             if let logs = json["changelog"] as? [[String: Any]] {
-                let unreadEntries = logs.filter { entry in
-                    if let v = entry["version"] as? String {
-                        return self.isNewer(v, than: appVersion)
+                let targetEntries: [[String: Any]]
+                if newer {
+                    targetEntries = logs.filter { entry in
+                        if let v = entry["version"] as? String {
+                            return self.isNewer(v, than: appVersion)
+                        }
+                        return false
                     }
-                    return false
+                } else {
+                    targetEntries = Array(logs.prefix(2))
                 }
-                notes = unreadEntries.compactMap { entry -> String? in
+                notes = targetEntries.compactMap { entry -> String? in
                     guard let v = entry["version"] as? String,
                           let changes = entry["changes"] as? [String] else { return nil }
                     let changeList = changes.map { "•  \($0)" }.joined(separator: "\n")
                     return "Version \(v):\n\(changeList)"
                 }.joined(separator: "\n\n")
             }
-            let newer = self.isNewer(remote, than: appVersion)
             DispatchQueue.main.async {
                 if newer {
                     self.showUpdateResult(remote, changelog: notes, newer: true, downloadURL: dl)
@@ -4070,12 +4075,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 downloadAndInstallUpdate()
             }
         } else if remote != nil {
-            alert.messageText = "You're up to date"
-            alert.informativeText = "Rec v\(appVersion) is the latest version."
+            alert.messageText = "You're Up to Date!"
+            alert.informativeText = "Rec v\(appVersion) is the latest version. Recent updates:"
+            if !changelog.isEmpty {
+                alert.accessoryView = createChangelogView(changelog: changelog)
+            }
             alert.addButton(withTitle: "OK")
             alert.runModal()
         } else {
-            alert.messageText = "Couldn't check for updates"
+            alert.messageText = "Couldn't Check for Updates"
             alert.informativeText = "Please check your internet connection and try again."
             alert.addButton(withTitle: "OK")
             alert.runModal()
