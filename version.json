@@ -1,7 +1,17 @@
 {
-  "version": "1.3.11",
+  "version": "1.4.0",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.0",
+      "date": "2026-09-05",
+      "changes": [
+        "Live Screen Annotation Suite (Apple Markup Style): Draw directly on your screen while recording or idle with floating glass HUD palette, Pen, Brush, Highlighter, Magic Laser Writer (auto-fading glowing trails), Shapes (Arrow, Rectangle, Oval), Color Swatches + Color Picker, Stroke Width selector, Eraser, and Undo/Redo/Clear shortcuts.",
+        "Invisible Annotation HUD in Recordings: ScreenCaptureKit capture stream automatically excludes the floating annotation palette while capturing all on-screen drawings cleanly.",
+        "Adaptive Frosted Glass & Precision Crosshair: Annotation toolbar shares unified 85% frosted popover styling in Dark and Light mode with 6-dot drag grip and pixel-accurate crosshair cursor.",
+        "Recording HUD Annotation Toggle: Integrated the screen annotation toggle directly into the live recording toolbar (positioned to the right of the microphone toggle) for rapid 1-click access during active recordings."
+      ]
+    },
     {
       "version": "1.3.11",
       "date": "2026-09-02",

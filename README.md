@@ -35,6 +35,7 @@ Built with Apple's modern ScreenCaptureKit framework, Rec seamlessly records you
 
 ## ✨ Key Features
 
+*   **Live Screen Annotations**: ✏️ Apple Markup-style floating HUD with Pen, Brush, Highlighter, Magic Laser Writer (auto-fading glowing trails), Shapes (Arrow, Rectangle, Oval), Color Swatches + Picker, and Eraser. Palette is automatically excluded from recordings while drawings are captured cleanly.
 *   **Internal Audio**: 🔊 Seamlessly captures your Mac's internal audio right alongside your video feed using ScreenCaptureKit. No 3rd-party audio loopback drivers needed.
 *   **In-App Video Editor**: ✂️ Trim recordings with smooth timeline scrubbing, audio muting, and 1-click in-place overwrite saving directly to the original file without duplicate clutter.
 *   **Floating HUD Toast**: 🔔 Non-intrusive bottom-right notification toast with 7-second auto-dismiss, hover-to-pause, 1-click clipboard copy, and full right-click shortcuts.
@@ -45,6 +46,17 @@ Built with Apple's modern ScreenCaptureKit framework, Rec seamlessly records you
 *   **Cursor Highlighting**: 🖱️ Highlight your mouse clicks and cursor movements with customizable colors for clear tutorials and presentations.
 *   **Countdown Timer**: ⏱️ Set a 5 or 10-second countdown delay before recording officially begins.
 *   **Native & Fast**: 🚀 Encodes directly to a multiplexed `.mov` file using hardware acceleration via AVAssetWriter. No post-processing delays.
+
+## ⌨️ Shortcuts
+
+| Shortcut | Action |
+| :--- | :--- |
+| `⌘R` | Start / Stop Screen Recording |
+| `⌥A` | Toggle Screen Annotation Palette (Anytime) |
+| `1` .. `8` | Quick-Switch Tool (1: Pen, 2: Brush, 3: Highlighter, 4: Magic, 5: Arrow, 6: Rect, 7: Oval, 8: Eraser) |
+| `⌘Z` / `⇧⌘Z` | Undo / Redo Annotation Stroke |
+| `⌘K` | Clear All Annotations |
+| `Esc` | Close Annotation Mode |
 
 ## 📦 Install
 

@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.3.10"
+    return "1.4.0"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -659,6 +659,1612 @@ class CountdownWindow: NSWindow {
 }
 
 // ============================================================
+// Screen Annotation System (Apple Markup & Magic Writer)
+// ============================================================
+
+enum AnnotationTool: Int, CaseIterable {
+    case pen = 0
+    case brush = 1
+    case highlighter = 2
+    case magicWriter = 3
+    case arrow = 4
+    case rectangle = 5
+    case circle = 6
+    case eraser = 7
+
+    var symbolName: String {
+        switch self {
+        case .pen: return "pencil.tip"
+        case .brush: return "paintbrush.fill"
+        case .highlighter: return "highlighter"
+        case .magicWriter: return "sparkles"
+        case .arrow: return "arrow.up.right"
+        case .rectangle: return "square"
+        case .circle: return "circle"
+        case .eraser: return "eraser.fill"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .pen: return "Pen (1)"
+        case .brush: return "Brush (2)"
+        case .highlighter: return "Highlighter (3)"
+        case .magicWriter: return "Magic Writer (4)"
+        case .arrow: return "Arrow (5)"
+        case .rectangle: return "Rectangle (6)"
+        case .circle: return "Oval (7)"
+        case .eraser: return "Eraser (8)"
+        }
+    }
+}
+
+enum AnnotationStrokeWidth: Int, CaseIterable {
+    case thin = 0
+    case medium = 1
+    case thick = 2
+
+    func width(for tool: AnnotationTool) -> CGFloat {
+        switch tool {
+        case .pen:
+            switch self {
+            case .thin: return 3.0
+            case .medium: return 6.0
+            case .thick: return 12.0
+            }
+        case .brush:
+            switch self {
+            case .thin: return 6.0
+            case .medium: return 12.0
+            case .thick: return 22.0
+            }
+        case .highlighter:
+            switch self {
+            case .thin: return 20.0
+            case .medium: return 34.0
+            case .thick: return 50.0
+            }
+        case .magicWriter:
+            switch self {
+            case .thin: return 4.0
+            case .medium: return 8.0
+            case .thick: return 14.0
+            }
+        case .arrow, .rectangle, .circle:
+            switch self {
+            case .thin: return 3.5
+            case .medium: return 6.0
+            case .thick: return 10.0
+            }
+        case .eraser:
+            switch self {
+            case .thin: return 18.0
+            case .medium: return 32.0
+            case .thick: return 52.0
+            }
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .thin: return "Thin"
+        case .medium: return "Medium"
+        case .thick: return "Thick"
+        }
+    }
+}
+
+struct AnnotationColorItem {
+    let name: String
+    let color: NSColor
+}
+
+let annotationPresetColors: [AnnotationColorItem] = [
+    AnnotationColorItem(name: "Red", color: NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0)),
+    AnnotationColorItem(name: "Orange", color: NSColor(red: 1.0, green: 0.58, blue: 0.0, alpha: 1.0)),
+    AnnotationColorItem(name: "Yellow", color: NSColor(red: 1.0, green: 0.80, blue: 0.0, alpha: 1.0)),
+    AnnotationColorItem(name: "Green", color: NSColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 1.0)),
+    AnnotationColorItem(name: "Cyan", color: NSColor(red: 0.0, green: 0.78, blue: 0.75, alpha: 1.0)),
+    AnnotationColorItem(name: "Blue", color: NSColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)),
+    AnnotationColorItem(name: "Purple", color: NSColor(red: 0.69, green: 0.32, blue: 0.87, alpha: 1.0)),
+    AnnotationColorItem(name: "White", color: NSColor.white),
+    AnnotationColorItem(name: "Black", color: NSColor(white: 0.10, alpha: 1.0))
+]
+
+class AnnotationStroke {
+    var tool: AnnotationTool
+    var color: NSColor
+    var width: CGFloat
+    var points: [NSPoint] = []
+    var startPoint: NSPoint = .zero
+    var endPoint: NSPoint = .zero
+    var createdAt: Date = Date()
+    var opacity: CGFloat = 1.0
+
+    init(tool: AnnotationTool, color: NSColor, width: CGFloat) {
+        self.tool = tool
+        self.color = color
+        self.width = width
+        self.createdAt = Date()
+        self.opacity = 1.0
+    }
+
+    func hitTest(screenPoint: NSPoint, radius: CGFloat) -> Bool {
+        let threshold = radius + width / 2.0 + 4.0
+        let thresholdSq = threshold * threshold
+
+        switch tool {
+        case .pen, .brush, .highlighter, .magicWriter:
+            if points.isEmpty { return false }
+            if points.count == 1 {
+                let dx = screenPoint.x - points[0].x
+                let dy = screenPoint.y - points[0].y
+                return (dx*dx + dy*dy) <= thresholdSq
+            }
+            for i in 0..<(points.count - 1) {
+                let p1 = points[i]
+                let p2 = points[i + 1]
+                if distSqToSegment(p: screenPoint, v: p1, w: p2) <= thresholdSq {
+                    return true
+                }
+            }
+            return false
+
+        case .arrow:
+            return distSqToSegment(p: screenPoint, v: startPoint, w: endPoint) <= thresholdSq
+
+        case .rectangle:
+            let rect = NSRect(x: min(startPoint.x, endPoint.x),
+                              y: min(startPoint.y, endPoint.y),
+                              width: max(1, abs(endPoint.x - startPoint.x)),
+                              height: max(1, abs(endPoint.y - startPoint.y)))
+            let outer = rect.insetBy(dx: -threshold, dy: -threshold)
+            let inner = rect.insetBy(dx: threshold, dy: threshold)
+            return outer.contains(screenPoint) && !inner.contains(screenPoint)
+
+        case .circle:
+            let rect = NSRect(x: min(startPoint.x, endPoint.x),
+                              y: min(startPoint.y, endPoint.y),
+                              width: max(1, abs(endPoint.x - startPoint.x)),
+                              height: max(1, abs(endPoint.y - startPoint.y)))
+            let center = NSPoint(x: rect.midX, y: rect.midY)
+            let rx = rect.width / 2.0
+            let ry = rect.height / 2.0
+            if rx < 2 || ry < 2 { return false }
+            let dx = screenPoint.x - center.x
+            let dy = screenPoint.y - center.y
+            let distNorm = (dx * dx) / ((rx + threshold) * (rx + threshold)) + (dy * dy) / ((ry + threshold) * (ry + threshold))
+            let distNormInner = (dx * dx) / (max(1, rx - threshold) * max(1, rx - threshold)) + (dy * dy) / (max(1, ry - threshold) * max(1, ry - threshold))
+            return distNorm <= 1.0 && distNormInner >= 1.0
+
+        case .eraser:
+            return false
+        }
+    }
+
+    private func distSqToSegment(p: NSPoint, v: NSPoint, w: NSPoint) -> CGFloat {
+        let l2 = (w.x - v.x) * (w.x - v.x) + (w.y - v.y) * (w.y - v.y)
+        if l2 == 0 {
+            let dx = p.x - v.x
+            let dy = p.y - v.y
+            return dx * dx + dy * dy
+        }
+        var t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2
+        t = max(0, min(1, t))
+        let projX = v.x + t * (w.x - v.x)
+        let projY = v.y + t * (w.y - v.y)
+        let dx = p.x - projX
+        let dy = p.y - projY
+        return dx * dx + dy * dy
+    }
+
+    func draw(in view: NSView, screenOrigin origin: NSPoint) {
+        let alpha = opacity
+        if alpha <= 0.01 { return }
+
+        let toView = { (sp: NSPoint) -> NSPoint in
+            return NSPoint(x: sp.x - origin.x, y: sp.y - origin.y)
+        }
+
+        switch tool {
+        case .pen:
+            guard !points.isEmpty else { return }
+            let path = NSBezierPath()
+            let v0 = toView(points[0])
+            if points.count == 1 {
+                let dotRect = NSRect(x: v0.x - width/2, y: v0.y - width/2, width: width, height: width)
+                color.withAlphaComponent(alpha).setFill()
+                NSBezierPath(ovalIn: dotRect).fill()
+                return
+            }
+            path.move(to: v0)
+            if points.count == 2 {
+                path.line(to: toView(points[1]))
+            } else {
+                for i in 1..<(points.count - 1) {
+                    let curr = toView(points[i])
+                    let next = toView(points[i + 1])
+                    let mid = NSPoint(x: (curr.x + next.x) / 2.0, y: (curr.y + next.y) / 2.0)
+                    path.curve(to: mid, controlPoint1: curr, controlPoint2: curr)
+                }
+                if let last = points.last { path.line(to: toView(last)) }
+            }
+            path.lineWidth = width
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            color.withAlphaComponent(alpha).setStroke()
+            path.stroke()
+
+        case .brush:
+            guard !points.isEmpty else { return }
+            let path = NSBezierPath()
+            let v0 = toView(points[0])
+            if points.count == 1 {
+                let dotRect = NSRect(x: v0.x - width*0.75, y: v0.y - width*0.75, width: width*1.5, height: width*1.5)
+                color.withAlphaComponent(0.35 * alpha).setFill()
+                NSBezierPath(ovalIn: dotRect).fill()
+                let coreRect = NSRect(x: v0.x - width/2, y: v0.y - width/2, width: width, height: width)
+                color.withAlphaComponent(0.9 * alpha).setFill()
+                NSBezierPath(ovalIn: coreRect).fill()
+                return
+            }
+            path.move(to: v0)
+            if points.count == 2 {
+                path.line(to: toView(points[1]))
+            } else {
+                for i in 1..<(points.count - 1) {
+                    let curr = toView(points[i])
+                    let next = toView(points[i + 1])
+                    let mid = NSPoint(x: (curr.x + next.x) / 2.0, y: (curr.y + next.y) / 2.0)
+                    path.curve(to: mid, controlPoint1: curr, controlPoint2: curr)
+                }
+                if let last = points.last { path.line(to: toView(last)) }
+            }
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+
+            // Soft halo
+            path.lineWidth = width * 1.5
+            color.withAlphaComponent(0.25 * alpha).setStroke()
+            path.stroke()
+
+            // Velvety core
+            path.lineWidth = width
+            color.withAlphaComponent(0.85 * alpha).setStroke()
+            path.stroke()
+
+        case .highlighter:
+            guard !points.isEmpty else { return }
+            let path = NSBezierPath()
+            let v0 = toView(points[0])
+            if points.count == 1 {
+                let dotRect = NSRect(x: v0.x - width/2, y: v0.y - width/2, width: width, height: width)
+                color.withAlphaComponent(0.38 * alpha).setFill()
+                NSBezierPath(ovalIn: dotRect).fill()
+                return
+            }
+            path.move(to: v0)
+            if points.count == 2 {
+                path.line(to: toView(points[1]))
+            } else {
+                for i in 1..<(points.count - 1) {
+                    let curr = toView(points[i])
+                    let next = toView(points[i + 1])
+                    let mid = NSPoint(x: (curr.x + next.x) / 2.0, y: (curr.y + next.y) / 2.0)
+                    path.curve(to: mid, controlPoint1: curr, controlPoint2: curr)
+                }
+                if let last = points.last { path.line(to: toView(last)) }
+            }
+            path.lineWidth = width
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            color.withAlphaComponent(0.38 * alpha).setStroke()
+            path.stroke()
+
+        case .magicWriter:
+            guard !points.isEmpty else { return }
+            let path = NSBezierPath()
+            let v0 = toView(points[0])
+            if points.count == 1 {
+                let glowRect = NSRect(x: v0.x - width*1.3, y: v0.y - width*1.3, width: width*2.6, height: width*2.6)
+                color.withAlphaComponent(0.4 * alpha).setFill()
+                NSBezierPath(ovalIn: glowRect).fill()
+                let coreRect = NSRect(x: v0.x - width*0.5, y: v0.y - width*0.5, width: width, height: width)
+                NSColor.white.withAlphaComponent(0.95 * alpha).setFill()
+                NSBezierPath(ovalIn: coreRect).fill()
+                return
+            }
+            path.move(to: v0)
+            if points.count == 2 {
+                path.line(to: toView(points[1]))
+            } else {
+                for i in 1..<(points.count - 1) {
+                    let curr = toView(points[i])
+                    let next = toView(points[i + 1])
+                    let mid = NSPoint(x: (curr.x + next.x) / 2.0, y: (curr.y + next.y) / 2.0)
+                    path.curve(to: mid, controlPoint1: curr, controlPoint2: curr)
+                }
+                if let last = points.last { path.line(to: toView(last)) }
+            }
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+
+            // Pass 1: Neon outer aura
+            path.lineWidth = width * 2.4
+            color.withAlphaComponent(0.35 * alpha).setStroke()
+            path.stroke()
+
+            // Pass 2: Intense laser stroke
+            path.lineWidth = width * 1.3
+            color.withAlphaComponent(0.85 * alpha).setStroke()
+            path.stroke()
+
+            // Pass 3: White hot center laser core
+            path.lineWidth = width * 0.45
+            NSColor.white.withAlphaComponent(0.95 * alpha).setStroke()
+            path.stroke()
+
+        case .arrow:
+            let vStart = toView(startPoint)
+            let vEnd = toView(endPoint)
+            let dx = vEnd.x - vStart.x
+            let dy = vEnd.y - vStart.y
+            let len = hypot(dx, dy)
+            if len < 4 { return }
+
+            let ux = dx / len
+            let uy = dy / len
+            let px = -uy
+            let py = ux
+
+            let headLen = max(16.0, width * 3.2)
+            let headHalfWidth = max(9.0, width * 1.8)
+            let shaftEnd = NSPoint(x: vEnd.x - headLen * ux * 0.85, y: vEnd.y - headLen * uy * 0.85)
+
+            let shaft = NSBezierPath()
+            shaft.move(to: vStart)
+            shaft.line(to: shaftEnd)
+            shaft.lineWidth = width
+            shaft.lineCapStyle = .round
+            color.withAlphaComponent(alpha).setStroke()
+            shaft.stroke()
+
+            // Arrow head
+            let headPath = NSBezierPath()
+            headPath.move(to: vEnd)
+            let corner1 = NSPoint(x: vEnd.x - headLen * ux + headHalfWidth * px,
+                                  y: vEnd.y - headLen * uy + headHalfWidth * py)
+            let corner2 = NSPoint(x: vEnd.x - headLen * ux - headHalfWidth * px,
+                                  y: vEnd.y - headLen * uy - headHalfWidth * py)
+            headPath.line(to: corner1)
+            headPath.line(to: corner2)
+            headPath.close()
+            color.withAlphaComponent(alpha).setFill()
+            headPath.fill()
+
+        case .rectangle:
+            let vStart = toView(startPoint)
+            let vEnd = toView(endPoint)
+            let rect = NSRect(x: min(vStart.x, vEnd.x),
+                              y: min(vStart.y, vEnd.y),
+                              width: max(1, abs(vEnd.x - vStart.x)),
+                              height: max(1, abs(vEnd.y - vStart.y)))
+            guard rect.width > 2 && rect.height > 2 else { return }
+            let cornerR = min(12.0, min(rect.width, rect.height) / 4.0)
+            let path = NSBezierPath(roundedRect: rect, xRadius: cornerR, yRadius: cornerR)
+            path.lineWidth = width
+            color.withAlphaComponent(alpha).setStroke()
+            path.stroke()
+
+        case .circle:
+            let vStart = toView(startPoint)
+            let vEnd = toView(endPoint)
+            let rect = NSRect(x: min(vStart.x, vEnd.x),
+                              y: min(vStart.y, vEnd.y),
+                              width: max(1, abs(vEnd.x - vStart.x)),
+                              height: max(1, abs(vEnd.y - vStart.y)))
+            guard rect.width > 2 && rect.height > 2 else { return }
+            let path = NSBezierPath(ovalIn: rect)
+            path.lineWidth = width
+            color.withAlphaComponent(alpha).setStroke()
+            path.stroke()
+
+        case .eraser:
+            break
+        }
+    }
+}
+
+// MARK: - Annotation Canvas View & Window
+
+class AnnotationCanvasView: NSView {
+    var activeStroke: AnnotationStroke?
+    var currentMousePoint: NSPoint = .zero
+    var isErasing: Bool = false
+    private var lastEraserScreenPoint: NSPoint?
+    private var trackingAreaRef: NSTrackingArea?
+
+    override var isOpaque: Bool { return false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+    override var acceptsFirstResponder: Bool { return true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingAreaRef {
+            removeTrackingArea(existing)
+        }
+        let tracking = NSTrackingArea(rect: bounds,
+                                      options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                      owner: self,
+                                      userInfo: nil)
+        addTrackingArea(tracking)
+        self.trackingAreaRef = tracking
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .crosshair)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        currentMousePoint = NSPoint(x: -1000, y: -1000)
+        if AnnotationManager.shared.currentTool == .eraser {
+            needsDisplay = true
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let win = self.window else { return }
+        let origin = win.frame.origin
+
+        // 1. Draw all existing strokes
+        for stroke in AnnotationManager.shared.strokes {
+            stroke.draw(in: self, screenOrigin: origin)
+        }
+
+        // 2. Draw live active stroke
+        if let live = activeStroke {
+            live.draw(in: self, screenOrigin: origin)
+        }
+
+        // 3. Eraser hover indicator
+        if AnnotationManager.shared.currentTool == .eraser && bounds.contains(currentMousePoint) {
+            let radius = max(16.0, AnnotationManager.shared.currentWidth.width(for: .eraser) / 2.0)
+            let circleRect = NSRect(x: currentMousePoint.x - radius,
+                                    y: currentMousePoint.y - radius,
+                                    width: radius * 2.0,
+                                    height: radius * 2.0)
+            NSColor.white.withAlphaComponent(0.22).setFill()
+            NSBezierPath(ovalIn: circleRect).fill()
+            NSColor.white.withAlphaComponent(0.95).setStroke()
+            let strokePath = NSBezierPath(ovalIn: circleRect)
+            strokePath.lineWidth = 1.5
+            strokePath.stroke()
+
+            // Center target dot
+            let dotRadius: CGFloat = 2.0
+            let dotRect = NSRect(x: currentMousePoint.x - dotRadius, y: currentMousePoint.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
+            NSColor.white.setFill()
+            NSBezierPath(ovalIn: dotRect).fill()
+        }
+    }
+
+    private func screenPoint(for event: NSEvent) -> NSPoint {
+        guard let win = self.window else { return event.locationInWindow }
+        return win.convertPoint(toScreen: event.locationInWindow)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        currentMousePoint = convert(event.locationInWindow, from: nil)
+        if AnnotationManager.shared.currentTool == .eraser {
+            needsDisplay = true
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let sp = screenPoint(for: event)
+        currentMousePoint = convert(event.locationInWindow, from: nil)
+        let tool = AnnotationManager.shared.currentTool
+
+        if tool == .eraser {
+            isErasing = true
+            lastEraserScreenPoint = sp
+            let radius = max(24.0, AnnotationManager.shared.currentWidth.width(for: .eraser) / 2.0 + 8.0)
+            AnnotationManager.shared.eraseStrokes(near: sp, radius: radius)
+            needsDisplay = true
+        } else {
+            let width = AnnotationManager.shared.currentWidth.width(for: tool)
+            let color = AnnotationManager.shared.currentColor
+            let stroke = AnnotationStroke(tool: tool, color: color, width: width)
+            stroke.startPoint = sp
+            stroke.endPoint = sp
+            stroke.points = [sp]
+            self.activeStroke = stroke
+
+            if tool == .magicWriter {
+                AnnotationManager.shared.startMagicTimerIfNeeded()
+            }
+            needsDisplay = true
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let sp = screenPoint(for: event)
+        currentMousePoint = convert(event.locationInWindow, from: nil)
+        let tool = AnnotationManager.shared.currentTool
+
+        if tool == .eraser {
+            let radius = max(24.0, AnnotationManager.shared.currentWidth.width(for: .eraser) / 2.0 + 8.0)
+            if let prev = lastEraserScreenPoint {
+                AnnotationManager.shared.eraseStrokesAlongLine(from: prev, to: sp, radius: radius)
+            } else {
+                AnnotationManager.shared.eraseStrokes(near: sp, radius: radius)
+            }
+            lastEraserScreenPoint = sp
+            needsDisplay = true
+        } else if let stroke = activeStroke {
+            switch stroke.tool {
+            case .pen, .brush, .highlighter, .magicWriter:
+                stroke.points.append(sp)
+                needsDisplay = true
+            case .arrow, .rectangle, .circle:
+                stroke.endPoint = sp
+                needsDisplay = true
+            case .eraser:
+                break
+            }
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let sp = screenPoint(for: event)
+        currentMousePoint = convert(event.locationInWindow, from: nil)
+        let tool = AnnotationManager.shared.currentTool
+
+        if tool == .eraser {
+            isErasing = false
+            lastEraserScreenPoint = nil
+            needsDisplay = true
+        } else if let stroke = activeStroke {
+            switch stroke.tool {
+            case .pen, .brush, .highlighter, .magicWriter:
+                stroke.points.append(sp)
+            case .arrow, .rectangle, .circle:
+                stroke.endPoint = sp
+            case .eraser:
+                break
+            }
+            stroke.createdAt = Date()
+            self.activeStroke = nil
+            AnnotationManager.shared.addStroke(stroke)
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { // Esc
+            AnnotationManager.shared.stopAnnotationMode()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+}
+
+class AnnotationCanvasWindow: NSWindow {
+    override var canBecomeKey: Bool { return true }
+    override var canBecomeMain: Bool { return true }
+
+    init(screen: NSScreen) {
+        super.init(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.level = .screenSaver
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        self.ignoresMouseEvents = false
+        self.isReleasedWhenClosed = false
+
+        let canvasView = AnnotationCanvasView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        self.contentView = canvasView
+    }
+}
+
+// MARK: - Annotation Floating Toolbar (Apple Markup Style)
+
+class AnnotationToolbarButton: NSButton {
+    var isToolActive: Bool = false {
+        didSet {
+            updateVisualState()
+        }
+    }
+
+    override var mouseDownCanMoveWindow: Bool { return false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.bezelStyle = .regularSquare
+        self.isBordered = false
+        self.imagePosition = .imageOnly
+        self.imageScaling = .scaleProportionallyDown
+        self.wantsLayer = true
+        self.layer?.cornerRadius = 8
+        self.setContentCompressionResistancePriority(.required, for: .horizontal)
+        self.setContentHuggingPriority(.required, for: .horizontal)
+        updateVisualState()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateVisualState()
+    }
+
+    func updateVisualState() {
+        if isToolActive {
+            layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.24).cgColor
+            contentTintColor = .controlAccentColor
+        } else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+            contentTintColor = .labelColor
+        }
+    }
+}
+
+class AnnotationColorSwatchView: NSView {
+    let color: NSColor
+    var isSelected: Bool = false {
+        didSet { needsDisplay = true }
+    }
+    var onClick: (() -> Void)?
+
+    init(color: NSColor) {
+        self.color = color
+        super.init(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
+        self.wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let center = NSPoint(x: bounds.midX, y: bounds.midY)
+        let dotRadius: CGFloat = 8.5
+        let dotRect = NSRect(x: center.x - dotRadius, y: center.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
+
+        color.setFill()
+        NSBezierPath(ovalIn: dotRect).fill()
+
+        // Luminance check to guarantee visibility on dark or light glass
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        let rgbColor = color.usingColorSpace(.sRGB) ?? color
+        rgbColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+
+        if luminance < 0.22 {
+            // Dark / Black swatch: crisp frosted white rim so it pops beautifully on dark glass!
+            NSColor(white: 1.0, alpha: 0.45).setStroke()
+            let rim = NSBezierPath(ovalIn: dotRect)
+            rim.lineWidth = 0.75
+            rim.stroke()
+        } else if luminance > 0.82 {
+            // White / bright swatch: subtle dark hairline rim
+            NSColor(white: 0.0, alpha: 0.22).setStroke()
+            let rim = NSBezierPath(ovalIn: dotRect)
+            rim.lineWidth = 0.75
+            rim.stroke()
+        } else {
+            NSColor(white: 0.0, alpha: 0.10).setStroke()
+            let rim = NSBezierPath(ovalIn: dotRect)
+            rim.lineWidth = 0.5
+            rim.stroke()
+        }
+
+        if isSelected {
+            let ringRadius: CGFloat = 10.5
+            let ringRect = NSRect(x: center.x - ringRadius, y: center.y - ringRadius, width: ringRadius * 2, height: ringRadius * 2)
+            let ringPath = NSBezierPath(ovalIn: ringRect)
+            ringPath.lineWidth = 1.8
+
+            // Every color (including black) uses its OWN color for the spaced selection ring
+            color.setStroke()
+            ringPath.stroke()
+
+            // For black/very dark colors, add a subtle hairline outer rim so the black ring is clearly defined on dark glass
+            if luminance < 0.22 {
+                NSColor.white.withAlphaComponent(0.40).setStroke()
+                let outerRim = NSBezierPath(ovalIn: ringRect.insetBy(dx: -0.9, dy: -0.9))
+                outerRim.lineWidth = 0.6
+                outerRim.stroke()
+            } else if luminance > 0.82 {
+                NSColor.black.withAlphaComponent(0.20).setStroke()
+                let outerRim = NSBezierPath(ovalIn: ringRect.insetBy(dx: -0.9, dy: -0.9))
+                outerRim.lineWidth = 0.6
+                outerRim.stroke()
+            }
+        }
+    }
+}
+
+class AnnotationColorPickerButton: NSButton {
+    var isCustomSelected: Bool = false {
+        didSet { needsDisplay = true }
+    }
+
+    override var mouseDownCanMoveWindow: Bool { return false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.bezelStyle = .regularSquare
+        self.isBordered = false
+        self.imagePosition = .imageOnly
+        self.wantsLayer = true
+        self.toolTip = "Custom Color Picker..."
+        self.setContentCompressionResistancePriority(.required, for: .horizontal)
+        self.setContentHuggingPriority(.required, for: .horizontal)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let center = NSPoint(x: bounds.midX, y: bounds.midY)
+        let dotRadius: CGFloat = 8.5
+        let dotRect = NSRect(x: center.x - dotRadius, y: center.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
+
+        let ctx = NSGraphicsContext.current?.cgContext
+        ctx?.saveGState()
+        let clipPath = CGPath(ellipseIn: dotRect, transform: nil)
+        ctx?.addPath(clipPath)
+        ctx?.clip()
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let rainbowColors = [
+            NSColor.systemRed.cgColor,
+            NSColor.systemOrange.cgColor,
+            NSColor.systemYellow.cgColor,
+            NSColor.systemGreen.cgColor,
+            NSColor.systemTeal.cgColor,
+            NSColor.systemBlue.cgColor,
+            NSColor.systemPurple.cgColor
+        ] as CFArray
+
+        if let gradient = CGGradient(colorsSpace: colorSpace, colors: rainbowColors, locations: [0.0, 0.17, 0.33, 0.5, 0.67, 0.83, 1.0]) {
+            ctx?.drawLinearGradient(gradient, start: CGPoint(x: dotRect.minX, y: dotRect.minY), end: CGPoint(x: dotRect.maxX, y: dotRect.maxY), options: [])
+        }
+        ctx?.restoreGState()
+
+        NSColor.white.withAlphaComponent(0.40).setStroke()
+        let rim = NSBezierPath(ovalIn: dotRect)
+        rim.lineWidth = 0.5
+        rim.stroke()
+
+        if isCustomSelected {
+            let ringRadius: CGFloat = 10.5
+            let ringRect = NSRect(x: center.x - ringRadius, y: center.y - ringRadius, width: ringRadius * 2, height: ringRadius * 2)
+            let ringPath = NSBezierPath(ovalIn: ringRect)
+            ringPath.lineWidth = 2.0
+            NSColor.controlAccentColor.setStroke()
+            ringPath.stroke()
+        }
+    }
+}
+
+class AnnotationGripView: NSView {
+    override var mouseDownCanMoveWindow: Bool { return true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.toolTip = "Drag to Move Palette"
+        self.wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .openHand)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let dotColor = isDark ? NSColor(white: 1.0, alpha: 0.38) : NSColor(white: 0.0, alpha: 0.32)
+        dotColor.setFill()
+
+        // 6 dots: 2 columns of 3 dots (three on left, three on right)
+        let col1X = bounds.midX - 3.5
+        let col2X = bounds.midX + 3.5
+        let centerY = bounds.midY
+        let rowYs = [centerY - 6.5, centerY, centerY + 6.5]
+        let dotRadius: CGFloat = 1.75
+
+        for x in [col1X, col2X] {
+            for y in rowYs {
+                let rect = NSRect(x: x - dotRadius, y: y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
+                NSBezierPath(ovalIn: rect).fill()
+            }
+        }
+    }
+}
+
+class AnnotationActionButton: NSButton {
+    private var trackingAreaObj: NSTrackingArea?
+    var isHovered: Bool = false {
+        didSet { updateAppearance() }
+    }
+
+    override var mouseDownCanMoveWindow: Bool { return false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.bezelStyle = .regularSquare
+        self.isBordered = false
+        self.imagePosition = .imageOnly
+        self.wantsLayer = true
+        self.layer?.cornerRadius = 8
+        self.setContentCompressionResistancePriority(.required, for: .horizontal)
+        self.setContentHuggingPriority(.required, for: .horizontal)
+        updateAppearance()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingAreaObj { removeTrackingArea(existing) }
+        let tracking = NSTrackingArea(rect: bounds,
+                                      options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                      owner: self, userInfo: nil)
+        addTrackingArea(tracking)
+        trackingAreaObj = tracking
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
+    }
+
+    func updateAppearance() {
+        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if isHovered {
+            layer?.backgroundColor = isDark
+                ? NSColor.white.withAlphaComponent(0.14).cgColor
+                : NSColor.black.withAlphaComponent(0.08).cgColor
+        } else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+        }
+        layer?.borderWidth = 0
+        layer?.borderColor = nil
+        contentTintColor = .labelColor
+    }
+}
+
+class AnnotationDoneButton: NSButton {
+    private var trackingAreaObj: NSTrackingArea?
+    var isHovered: Bool = false {
+        didSet { updateAppearance() }
+    }
+
+    override var mouseDownCanMoveWindow: Bool { return false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.bezelStyle = .regularSquare
+        self.isBordered = false
+        self.imagePosition = .imageOnly
+        self.title = ""
+        self.wantsLayer = true
+        self.layer?.cornerRadius = 8
+        let checkCfg = NSImage.SymbolConfiguration(pointSize: 13.5, weight: .bold)
+        self.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "Done (Esc)")?.withSymbolConfiguration(checkCfg)
+        self.toolTip = "Done (Esc)"
+        self.setContentCompressionResistancePriority(.required, for: .horizontal)
+        self.setContentHuggingPriority(.required, for: .horizontal)
+        updateAppearance()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingAreaObj { removeTrackingArea(existing) }
+        let tracking = NSTrackingArea(rect: bounds,
+                                      options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                      owner: self, userInfo: nil)
+        addTrackingArea(tracking)
+        trackingAreaObj = tracking
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
+    }
+
+    func updateAppearance() {
+        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if isHovered {
+            layer?.backgroundColor = isDark
+                ? NSColor.white.withAlphaComponent(0.16).cgColor
+                : NSColor.black.withAlphaComponent(0.08).cgColor
+            contentTintColor = .controlAccentColor
+        } else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+            contentTintColor = .labelColor
+        }
+        layer?.borderWidth = 0
+        layer?.borderColor = nil
+    }
+}
+
+class AnnotationToolbarWindow: NSPanel {
+    var toolbarEffectView: FloatingToolbarVisualEffectView?
+    private var gripIcon: AnnotationGripView?
+    private var toolButtons: [AnnotationTool: AnnotationToolbarButton] = [:]
+    private var swatchViews: [AnnotationColorSwatchView] = []
+    private var colorPickerBtn: AnnotationColorPickerButton!
+    private var sizeButton: HoverIconButton!
+
+    init() {
+        let initialWidth: CGFloat = 860
+        let initialHeight: CGFloat = 50
+        guard let screen = NSScreen.main else {
+            super.init(contentRect: NSRect(x: 200, y: 100, width: initialWidth, height: initialHeight),
+                       styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView],
+                       backing: .buffered, defer: false)
+            self.sharingType = .none
+            return
+        }
+
+        let x = (screen.frame.width - initialWidth) / 2.0 + screen.frame.minX
+        let y = screen.frame.minY + 70.0
+        let rect = NSRect(x: x, y: y, width: initialWidth, height: initialHeight)
+
+        super.init(contentRect: rect, styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+        self.isFloatingPanel = true
+        self.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        self.titlebarAppearsTransparent = true
+        self.titleVisibility = .hidden
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = false
+        self.isMovableByWindowBackground = true
+        self.isReleasedWhenClosed = false
+        self.sharingType = .none
+        self.standardWindowButton(.closeButton)?.isHidden = true
+        self.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        self.standardWindowButton(.zoomButton)?.isHidden = true
+
+        setupUI(screen: screen)
+    }
+
+    private func setupUI(screen: NSScreen) {
+        let height: CGFloat = 50.0
+
+        let makeDivider = { () -> NSBox in
+            let div = NSBox()
+            div.boxType = .custom
+            div.isTransparent = false
+            div.borderWidth = 0
+            div.fillColor = NSColor(name: nil, dynamicProvider: { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor.white.withAlphaComponent(0.14)
+                    : NSColor.black.withAlphaComponent(0.08)
+            })
+            div.translatesAutoresizingMaskIntoConstraints = false
+            div.widthAnchor.constraint(equalToConstant: 1).isActive = true
+            div.heightAnchor.constraint(equalToConstant: 22).isActive = true
+            return div
+        }
+
+        // 1. Drag Grip (6 Dots: 3 on left, 3 on right with native performDrag)
+        let gripIcon = AnnotationGripView(frame: NSRect(x: 0, y: 0, width: 18, height: 30))
+        gripIcon.translatesAutoresizingMaskIntoConstraints = false
+        gripIcon.widthAnchor.constraint(equalToConstant: 18).isActive = true
+        gripIcon.heightAnchor.constraint(equalToConstant: 30).isActive = true
+
+        // 2. Tool Buttons
+        var toolViews: [NSView] = []
+        let toolCfg = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
+        for tool in AnnotationTool.allCases {
+            let btn = AnnotationToolbarButton(frame: .zero)
+            btn.translatesAutoresizingMaskIntoConstraints = false
+            btn.image = NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: tool.displayName)?.withSymbolConfiguration(toolCfg)
+            btn.toolTip = tool.displayName
+            btn.target = self
+            btn.action = #selector(toolButtonClicked(_:))
+            btn.tag = tool.rawValue
+            btn.widthAnchor.constraint(equalToConstant: 32).isActive = true
+            btn.heightAnchor.constraint(equalToConstant: 32).isActive = true
+            toolButtons[tool] = btn
+            toolViews.append(btn)
+        }
+
+        let toolStack = NSStackView(views: toolViews)
+        toolStack.translatesAutoresizingMaskIntoConstraints = false
+        toolStack.orientation = .horizontal
+        toolStack.spacing = 5
+        toolStack.alignment = .centerY
+
+        // 3. Color Swatches + Color Picker
+        var swatchList: [NSView] = []
+        for item in annotationPresetColors {
+            let swatch = AnnotationColorSwatchView(color: item.color)
+            swatch.toolTip = item.name
+            swatch.onClick = { [weak self] in
+                AnnotationManager.shared.currentColor = item.color
+                self?.updateColorSelection()
+                AnnotationManager.shared.refreshAllCanvases()
+            }
+            swatch.translatesAutoresizingMaskIntoConstraints = false
+            swatch.widthAnchor.constraint(equalToConstant: 22).isActive = true
+            swatch.heightAnchor.constraint(equalToConstant: 22).isActive = true
+            swatchViews.append(swatch)
+            swatchList.append(swatch)
+        }
+
+        // Custom Color Picker Button
+        colorPickerBtn = AnnotationColorPickerButton(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
+        colorPickerBtn.translatesAutoresizingMaskIntoConstraints = false
+        colorPickerBtn.widthAnchor.constraint(equalToConstant: 22).isActive = true
+        colorPickerBtn.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        colorPickerBtn.target = self
+        colorPickerBtn.action = #selector(openColorPicker)
+        swatchList.append(colorPickerBtn)
+
+        let colorStack = NSStackView(views: swatchList)
+        colorStack.translatesAutoresizingMaskIntoConstraints = false
+        colorStack.orientation = .horizontal
+        colorStack.spacing = 5
+        colorStack.alignment = .centerY
+
+        // 4. Size Toggle Button
+        sizeButton = HoverIconButton()
+        sizeButton.translatesAutoresizingMaskIntoConstraints = false
+        sizeButton.isBordered = false
+        sizeButton.imagePosition = .imageOnly
+        sizeButton.wantsLayer = true
+        sizeButton.layer?.cornerRadius = 8
+        sizeButton.target = self
+        sizeButton.action = #selector(cycleStrokeWidth)
+        sizeButton.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        sizeButton.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        sizeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        updateSizeButtonIcon()
+
+        // 5. Actions: Undo, Redo, Clear All (Matching Glass Theme)
+        let actCfg = NSImage.SymbolConfiguration(pointSize: 13.5, weight: .medium)
+        let undoBtn = AnnotationActionButton()
+        undoBtn.translatesAutoresizingMaskIntoConstraints = false
+        undoBtn.image = NSImage(systemSymbolName: "arrow.uturn.backward", accessibilityDescription: "Undo")?.withSymbolConfiguration(actCfg)
+        undoBtn.toolTip = "Undo (⌘Z)"
+        undoBtn.target = self
+        undoBtn.action = #selector(undoAction)
+        undoBtn.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        undoBtn.heightAnchor.constraint(equalToConstant: 30).isActive = true
+
+        let redoBtn = AnnotationActionButton()
+        redoBtn.translatesAutoresizingMaskIntoConstraints = false
+        redoBtn.image = NSImage(systemSymbolName: "arrow.uturn.forward", accessibilityDescription: "Redo")?.withSymbolConfiguration(actCfg)
+        redoBtn.toolTip = "Redo (⇧⌘Z)"
+        redoBtn.target = self
+        redoBtn.action = #selector(redoAction)
+        redoBtn.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        redoBtn.heightAnchor.constraint(equalToConstant: 30).isActive = true
+
+        let clearBtn = AnnotationActionButton()
+        clearBtn.translatesAutoresizingMaskIntoConstraints = false
+        clearBtn.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Clear All")?.withSymbolConfiguration(actCfg)
+        clearBtn.toolTip = "Clear All Annotations (⌘K)"
+        clearBtn.target = self
+        clearBtn.action = #selector(clearAction)
+        clearBtn.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        clearBtn.heightAnchor.constraint(equalToConstant: 30).isActive = true
+
+        let actionStack = NSStackView(views: [undoBtn, redoBtn, clearBtn])
+        actionStack.translatesAutoresizingMaskIntoConstraints = false
+        actionStack.orientation = .horizontal
+        actionStack.spacing = 5
+        actionStack.alignment = .centerY
+
+        // 6. Done Button (Icon-only checkmark matching theme)
+        let doneBtn = AnnotationDoneButton()
+        doneBtn.translatesAutoresizingMaskIntoConstraints = false
+        doneBtn.target = self
+        doneBtn.action = #selector(doneAction)
+        doneBtn.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        doneBtn.heightAnchor.constraint(equalToConstant: 30).isActive = true
+
+        // Master Stack View with comfortable spacing
+        let masterStack = NSStackView(views: [
+            gripIcon,
+            makeDivider(),
+            toolStack,
+            makeDivider(),
+            colorStack,
+            makeDivider(),
+            sizeButton,
+            makeDivider(),
+            actionStack,
+            makeDivider(),
+            doneBtn
+        ])
+        masterStack.translatesAutoresizingMaskIntoConstraints = false
+        masterStack.orientation = .horizontal
+        masterStack.spacing = 11
+        masterStack.alignment = .centerY
+
+        // Compute needed width so nothing is ever squished
+        masterStack.layoutSubtreeIfNeeded()
+        let neededWidth = ceil(masterStack.fittingSize.width) + 36.0
+
+        // Shadow container matching main FloatingPanel HUD
+        let shadowContainer = NSView(frame: NSRect(x: 0, y: 0, width: neededWidth, height: height))
+        shadowContainer.translatesAutoresizingMaskIntoConstraints = false
+        shadowContainer.wantsLayer = true
+        shadowContainer.layer?.masksToBounds = false
+        shadowContainer.layer?.shadowColor = NSColor.black.cgColor
+        shadowContainer.layer?.shadowOpacity = 0.10
+        shadowContainer.layer?.shadowRadius = 6.0
+        shadowContainer.layer?.shadowOffset = CGSize(width: 0, height: -2)
+
+        // Frosted Glass Effect matching main FloatingToolbarVisualEffectView (popover material, 85% opacity in dark/light)
+        let effectView = FloatingToolbarVisualEffectView()
+        self.toolbarEffectView = effectView
+        self.gripIcon = gripIcon
+        effectView.translatesAutoresizingMaskIntoConstraints = false
+        shadowContainer.addSubview(effectView)
+        NSLayoutConstraint.activate([
+            effectView.leadingAnchor.constraint(equalTo: shadowContainer.leadingAnchor),
+            effectView.trailingAnchor.constraint(equalTo: shadowContainer.trailingAnchor),
+            effectView.topAnchor.constraint(equalTo: shadowContainer.topAnchor),
+            effectView.bottomAnchor.constraint(equalTo: shadowContainer.bottomAnchor)
+        ])
+
+        effectView.addSubview(masterStack)
+        NSLayoutConstraint.activate([
+            masterStack.leadingAnchor.constraint(equalTo: effectView.leadingAnchor, constant: 18),
+            masterStack.trailingAnchor.constraint(equalTo: effectView.trailingAnchor, constant: -18),
+            masterStack.centerYAnchor.constraint(equalTo: effectView.centerYAnchor)
+        ])
+
+        self.contentView = shadowContainer
+        self.setContentSize(NSSize(width: neededWidth, height: height))
+        let originX = (screen.frame.width - neededWidth) / 2.0 + screen.frame.minX
+        self.setFrameOrigin(NSPoint(x: originX, y: screen.frame.minY + 70.0))
+
+        updateSelection()
+    }
+
+    @objc private func openColorPicker() {
+        let panel = NSColorPanel.shared
+        panel.color = AnnotationManager.shared.currentColor
+        panel.setTarget(self)
+        panel.setAction(#selector(colorPanelChanged(_:)))
+        panel.isContinuous = true
+        panel.orderFront(nil)
+    }
+
+    @objc private func colorPanelChanged(_ sender: NSColorPanel) {
+        AnnotationManager.shared.currentColor = sender.color
+        updateColorSelection()
+        AnnotationManager.shared.refreshAllCanvases()
+    }
+
+    @objc private func toolButtonClicked(_ sender: NSButton) {
+        guard let tool = AnnotationTool(rawValue: sender.tag) else { return }
+        AnnotationManager.shared.currentTool = tool
+        updateToolSelection()
+        AnnotationManager.shared.refreshAllCanvases()
+    }
+
+    @objc private func cycleStrokeWidth() {
+        let current = AnnotationManager.shared.currentWidth
+        let next: AnnotationStrokeWidth
+        switch current {
+        case .thin: next = .medium
+        case .medium: next = .thick
+        case .thick: next = .thin
+        }
+        AnnotationManager.shared.currentWidth = next
+        updateSizeButtonIcon()
+        AnnotationManager.shared.refreshAllCanvases()
+    }
+
+    @objc private func undoAction() {
+        AnnotationManager.shared.undo()
+    }
+
+    @objc private func redoAction() {
+        AnnotationManager.shared.redo()
+    }
+
+    @objc private func clearAction() {
+        AnnotationManager.shared.clearAll()
+    }
+
+    @objc private func doneAction() {
+        AnnotationManager.shared.stopAnnotationMode()
+    }
+
+    func updateColors() {
+        toolbarEffectView?.updateColors()
+        gripIcon?.needsDisplay = true
+        for swatch in swatchViews { swatch.needsDisplay = true }
+        colorPickerBtn?.needsDisplay = true
+        for (_, btn) in toolButtons { btn.updateVisualState() }
+    }
+
+    func updateSelection() {
+        updateToolSelection()
+        updateColorSelection()
+        updateSizeButtonIcon()
+    }
+
+    func updateToolSelection() {
+        let activeTool = AnnotationManager.shared.currentTool
+        for (tool, btn) in toolButtons {
+            btn.isToolActive = (tool == activeTool)
+        }
+    }
+
+    func updateColorSelection() {
+        let activeColor = AnnotationManager.shared.currentColor
+        var matchedPreset = false
+        for swatch in swatchViews {
+            let matches = (swatch.color == activeColor)
+            swatch.isSelected = matches
+            if matches { matchedPreset = true }
+        }
+        colorPickerBtn?.isCustomSelected = !matchedPreset
+    }
+
+    func updateSizeButtonIcon() {
+        let widthEnum = AnnotationManager.shared.currentWidth
+        sizeButton.toolTip = "Stroke Width: \(widthEnum.title) (Click to cycle)"
+
+        let ptSize: CGFloat
+        switch widthEnum {
+        case .thin: ptSize = 7
+        case .medium: ptSize = 11
+        case .thick: ptSize = 15
+        }
+        let dotCfg = NSImage.SymbolConfiguration(pointSize: ptSize, weight: .bold)
+        sizeButton.image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: widthEnum.title)?.withSymbolConfiguration(dotCfg)
+        sizeButton.contentTintColor = .labelColor
+    }
+}
+
+// MARK: - Annotation Manager (Coordinator & Controller)
+
+class AnnotationManager {
+    static let shared = AnnotationManager()
+
+    var isActive: Bool = false
+    var currentTool: AnnotationTool = .pen
+    var currentColor: NSColor = NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0)
+    var currentWidth: AnnotationStrokeWidth = .medium
+
+    var strokes: [AnnotationStroke] = []
+    var redoStack: [[AnnotationStroke]] = []
+
+    var canvasWindows: [AnnotationCanvasWindow] = []
+    var toolbarWindow: AnnotationToolbarWindow?
+
+    private var magicTimer: Timer?
+    private var localKeyMonitor: Any?
+    private var globalKeyMonitor: Any?
+
+    private init() {}
+
+    func startAnnotationMode() {
+        guard !isActive else { return }
+        isActive = true
+
+        // 1. Create fullscreen canvas overlay for all monitors
+        for screen in NSScreen.screens {
+            let win = AnnotationCanvasWindow(screen: screen)
+            win.orderFrontRegardless()
+            canvasWindows.append(win)
+        }
+
+        // 2. Create and display floating toolbar FIRST
+        NSApp.activate(ignoringOtherApps: true)
+        let toolbar = AnnotationToolbarWindow()
+        self.toolbarWindow = toolbar
+        toolbar.makeKeyAndOrderFront(nil)
+
+        // 3. Register window numbers in Recorder and update capture filter
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.recorder.annotationCanvasWindowIDs = canvasWindows.compactMap { $0.windowNumber }
+            delegate.recorder.updateStreamFilter()
+            delegate.updateAnnotationButtonState()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                delegate.recorder.updateStreamFilter()
+            }
+        }
+
+        setupGlobalHotkeys()
+    }
+
+    func stopAnnotationMode() {
+        guard isActive else { return }
+        isActive = false
+
+        for win in canvasWindows {
+            win.close()
+        }
+        canvasWindows.removeAll()
+
+        toolbarWindow?.close()
+        toolbarWindow = nil
+        if NSColorPanel.sharedColorPanelExists {
+            NSColorPanel.shared.close()
+        }
+
+        magicTimer?.invalidate()
+        magicTimer = nil
+
+
+
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.recorder.annotationCanvasWindowIDs.removeAll()
+            delegate.recorder.updateStreamFilter()
+            delegate.updateAnnotationButtonState()
+        }
+    }
+
+    func toggleAnnotationMode() {
+        if isActive {
+            stopAnnotationMode()
+        } else {
+            startAnnotationMode()
+        }
+    }
+
+    func addStroke(_ stroke: AnnotationStroke) {
+        strokes.append(stroke)
+        redoStack.removeAll()
+        if stroke.tool == .magicWriter {
+            startMagicTimerIfNeeded()
+        }
+        refreshAllCanvases()
+    }
+
+    func eraseStrokes(near screenPoint: NSPoint, radius: CGFloat) {
+        var hitAny = false
+        var remaining: [AnnotationStroke] = []
+        var erased: [AnnotationStroke] = []
+
+        for stroke in strokes {
+            if stroke.hitTest(screenPoint: screenPoint, radius: radius) {
+                hitAny = true
+                erased.append(stroke)
+            } else {
+                remaining.append(stroke)
+            }
+        }
+
+        if hitAny {
+            redoStack.append(erased)
+            strokes = remaining
+            refreshAllCanvases()
+        }
+    }
+
+    func eraseStrokesAlongLine(from start: NSPoint, to end: NSPoint, radius: CGFloat) {
+        let dist = hypot(end.x - start.x, end.y - start.y)
+        let steps = max(1, Int(ceil(dist / 8.0)))
+        var hitAny = false
+        var remaining: [AnnotationStroke] = []
+        var erased: [AnnotationStroke] = []
+
+        for stroke in strokes {
+            var strokeHit = false
+            for s in 0...steps {
+                let t = CGFloat(s) / CGFloat(steps)
+                let pt = NSPoint(x: start.x + t * (end.x - start.x), y: start.y + t * (end.y - start.y))
+                if stroke.hitTest(screenPoint: pt, radius: radius) {
+                    strokeHit = true
+                    break
+                }
+            }
+            if strokeHit {
+                hitAny = true
+                erased.append(stroke)
+            } else {
+                remaining.append(stroke)
+            }
+        }
+
+        if hitAny {
+            redoStack.append(erased)
+            strokes = remaining
+            refreshAllCanvases()
+        }
+    }
+
+    func undo() {
+        guard !strokes.isEmpty else { return }
+        let popped = strokes.removeLast()
+        redoStack.append([popped])
+        refreshAllCanvases()
+    }
+
+    func redo() {
+        guard !redoStack.isEmpty else { return }
+        let toRestore = redoStack.removeLast()
+        strokes.append(contentsOf: toRestore)
+        refreshAllCanvases()
+    }
+
+    func clearAll() {
+        guard !strokes.isEmpty else { return }
+        redoStack.append(strokes)
+        strokes.removeAll()
+        refreshAllCanvases()
+    }
+
+    func refreshAllCanvases() {
+        for win in canvasWindows {
+            win.contentView?.needsDisplay = true
+        }
+    }
+
+    func handleScreenParametersChanged() {
+        guard isActive else { return }
+        for win in canvasWindows { win.close() }
+        canvasWindows.removeAll()
+        for screen in NSScreen.screens {
+            let win = AnnotationCanvasWindow(screen: screen)
+            win.orderFrontRegardless()
+            canvasWindows.append(win)
+        }
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.recorder.annotationCanvasWindowIDs = canvasWindows.compactMap { $0.windowNumber }
+            delegate.recorder.updateStreamFilter()
+        }
+        refreshAllCanvases()
+    }
+
+    func startMagicTimerIfNeeded() {
+        guard magicTimer == nil else { return }
+        magicTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.tickMagicWriter()
+        }
+    }
+
+    private func tickMagicWriter() {
+        let now = Date()
+        var hasVanishing = false
+        var changed = false
+
+        strokes.removeAll { stroke in
+            if stroke.tool == .magicWriter {
+                let age = now.timeIntervalSince(stroke.createdAt)
+                if age >= 2.2 {
+                    changed = true
+                    return true // Disappear completely
+                } else if age >= 1.2 {
+                    stroke.opacity = max(0.0, 1.0 - CGFloat((age - 1.2) / 1.0))
+                    hasVanishing = true
+                    changed = true
+                } else {
+                    hasVanishing = true
+                }
+            }
+            return false
+        }
+
+        if changed {
+            refreshAllCanvases()
+        }
+
+        if !hasVanishing {
+            magicTimer?.invalidate()
+            magicTimer = nil
+        }
+    }
+
+    func setupGlobalHotkeys() {
+        if localKeyMonitor == nil {
+            localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self = self else { return event }
+                // ⌥A (Option + A, keyCode 0) toggles annotation mode anytime
+                if event.modifierFlags.contains(.option) && event.keyCode == 0 {
+                    self.toggleAnnotationMode()
+                    return nil
+                }
+                if self.isActive {
+                    if event.keyCode == 53 { // Esc
+                        self.stopAnnotationMode()
+                        return nil
+                    }
+                    let isCmd = event.modifierFlags.contains(.command)
+                    let isShift = event.modifierFlags.contains(.shift)
+
+                    if isCmd && !isShift && event.charactersIgnoringModifiers == "z" {
+                        self.undo()
+                        return nil
+                    }
+                    if isCmd && isShift && event.charactersIgnoringModifiers?.lowercased() == "z" {
+                        self.redo()
+                        return nil
+                    }
+                    if isCmd && event.charactersIgnoringModifiers == "k" {
+                        self.clearAll()
+                        return nil
+                    }
+
+                    // Keys 1..8 for tools
+                    if let chars = event.charactersIgnoringModifiers, let num = Int(chars), (1...8).contains(num) {
+                        let tool = AnnotationTool(rawValue: num - 1) ?? .pen
+                        self.currentTool = tool
+                        self.toolbarWindow?.updateSelection()
+                        self.refreshAllCanvases()
+                        return nil
+                    }
+                }
+                return event
+            }
+        }
+
+        if globalKeyMonitor == nil {
+            globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if event.modifierFlags.contains(.option) && event.keyCode == 0 {
+                    DispatchQueue.main.async {
+                        self?.toggleAnnotationMode()
+                    }
+                }
+            }
+        }
+    }
+
+    func removeGlobalHotkeys() {
+        if let l = localKeyMonitor {
+            NSEvent.removeMonitor(l)
+            localKeyMonitor = nil
+        }
+        if let g = globalKeyMonitor {
+            NSEvent.removeMonitor(g)
+            globalKeyMonitor = nil
+        }
+    }
+}
+
+// ============================================================
 // App Selection Menu
 // ============================================================
 
@@ -755,6 +2361,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
     var cameraWindowID: Int?
     var cursorWindowID: Int?
     var tapFeedbackWindowIDs: [Int] = []
+    var annotationCanvasWindowIDs: [Int] = []
     var statusItemWindowID: Int?
     var statusItemFrame: CGRect?
     
@@ -800,6 +2407,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                 if let camWinID = self.cameraWindowID, window.windowID == CGWindowID(camWinID) { continue }
                 if let cursorWinID = self.cursorWindowID, window.windowID == CGWindowID(cursorWinID) { continue }
                 if self.tapFeedbackWindowIDs.contains(Int(window.windowID)) { continue }
+                if self.annotationCanvasWindowIDs.contains(Int(window.windowID)) { continue }
                 windowsToExclude.append(window)
             }
 
@@ -848,6 +2456,7 @@ class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOu
                 if let camWinID = self.cameraWindowID, window.windowID == CGWindowID(camWinID) { continue }
                 if let cursorWinID = self.cursorWindowID, window.windowID == CGWindowID(cursorWinID) { continue }
                 if self.tapFeedbackWindowIDs.contains(Int(window.windowID)) { continue }
+                if self.annotationCanvasWindowIDs.contains(Int(window.windowID)) { continue }
                 windowsToExclude.append(window)
             }
 
@@ -2301,9 +3910,22 @@ class RecordingToastWindow: NSWindow {
         self.isMovableByWindowBackground = true
         self.backgroundColor = .clear
         self.isOpaque = false
-        self.hasShadow = true
+        self.hasShadow = false
         self.level = .floating
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        let shadowContainer = NSView(frame: NSRect(origin: .zero, size: initialRect.size))
+        shadowContainer.wantsLayer = true
+        shadowContainer.layer?.masksToBounds = false
+        shadowContainer.layer?.cornerRadius = 14
+        if #available(macOS 10.15, *) {
+            shadowContainer.layer?.cornerCurve = .continuous
+        }
+        shadowContainer.layer?.shadowColor = NSColor.black.cgColor
+        shadowContainer.layer?.shadowOpacity = 0.16
+        shadowContainer.layer?.shadowRadius = 8.0
+        shadowContainer.layer?.shadowOffset = CGSize(width: 0, height: -2)
+        shadowContainer.layer?.shadowPath = CGPath(roundedRect: NSRect(origin: .zero, size: initialRect.size), cornerWidth: 14, cornerHeight: 14, transform: nil)
 
         let visualEffectView = NSVisualEffectView(frame: NSRect(origin: .zero, size: initialRect.size))
         visualEffectView.autoresizingMask = [.width, .height]
@@ -2327,7 +3949,9 @@ class RecordingToastWindow: NSWindow {
                 ? NSColor.white.withAlphaComponent(0.18)
                 : NSColor.black.withAlphaComponent(0.10)
         }).cgColor
-        self.contentView = visualEffectView
+
+        shadowContainer.addSubview(visualEffectView)
+        self.contentView = shadowContainer
 
         setupUI(in: visualEffectView)
         setupTrackingArea(in: visualEffectView)
@@ -3233,6 +4857,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var idleDivider2: NSBox!
     var idleDivider3: NSBox!
     var idleDivider4: NSBox!
+    var idleAnnotateButton: HoverIconButton!
+    var recAnnotateButton: HoverIconButton!
+    var idleDivider5: NSBox!
     var recDivider1: NSBox!
     var recDivider2: NSBox!
     var settingsPopUp: HoverPopUpButton!
@@ -3277,6 +4904,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupUI()
         setupRecorder()
         checkPermissions()
+        AnnotationManager.shared.setupGlobalHotkeys()
         setupCameraIfNeeded()
         
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -3292,11 +4920,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.recorder.tapFeedbackWindowIDs = self.tapFeedbackWindows.compactMap { $0.windowNumber }
                 self.recorder.updateStreamFilter()
             }
+            if AnnotationManager.shared.isActive {
+                AnnotationManager.shared.handleScreenParametersChanged()
+            }
         }
         
         DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main) { [weak self] _ in
             self?.panel?.toolbarEffectView?.updateColors()
             self?.updateButtonImage()
+            AnnotationManager.shared.toolbarWindow?.updateColors()
         }
     }
 
@@ -3387,6 +5019,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.addItem(update)
         
         statusMenu.addItem(NSMenuItem.separator())
+
+        let annotateItem = NSMenuItem(title: "Screen Annotation", action: #selector(toggleAnnotationHotkey), keyEquivalent: "a")
+        annotateItem.keyEquivalentModifierMask = [.option]
+        annotateItem.image = NSImage(systemSymbolName: "pencil.tip.crop.circle", accessibilityDescription: nil)
+        annotateItem.target = self
+        statusMenu.addItem(annotateItem)
 
         let showControlsItem = NSMenuItem(title: "Show Controls", action: #selector(showPanel), keyEquivalent: "s")
         showControlsItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
@@ -3546,6 +5184,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let features: [RecAboutFeature] = [
             RecAboutFeature(symbol: "record.circle", color: .systemRed, title: "Native Screen Capture", desc: "Records full screen, single windows, or cropped regions with ScreenCaptureKit."),
+            RecAboutFeature(symbol: "pencil.tip.crop.circle", color: .systemCyan, title: "Live Screen Annotations", desc: "Apple Markup style floating palette with Pen, Brush, Highlighter, Magic Laser Writer, Shapes, and Eraser."),
             RecAboutFeature(symbol: "speaker.wave.3.fill", color: .systemPurple, title: "Internal System Audio", desc: "Direct hardware capture for crystal-clear system audio without loopback drivers."),
             RecAboutFeature(symbol: "scissors", color: .systemIndigo, title: "In-App Video Editor", desc: "Trim recordings with smooth timeline scrubbing, mute audio tracks, and save edits in-place."),
             RecAboutFeature(symbol: "sparkles", color: .systemTeal, title: "HUD Toast & Quick Actions", desc: "Non-intrusive floating toast with 1-click clipboard copy, in-place renaming, and right-click actions."),
@@ -4783,6 +6422,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         liveTimerStack.alignment = .centerY
         liveTimerStack.isHidden = true
 
+        // ---- ANNOTATION BUTTON (IDLE) ----
+        idleAnnotateButton = HoverIconButton()
+        idleAnnotateButton.translatesAutoresizingMaskIntoConstraints = false
+        idleAnnotateButton.isBordered = false
+        idleAnnotateButton.imagePosition = .imageOnly
+        idleAnnotateButton.wantsLayer = true
+        idleAnnotateButton.layer?.cornerRadius = 7
+        idleAnnotateButton.toolTip = "Screen Annotation (⌥A)"
+        let penCfg = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
+        idleAnnotateButton.image = NSImage(systemSymbolName: "pencil.tip.crop.circle", accessibilityDescription: "Annotate Screen")?.withSymbolConfiguration(penCfg)
+        idleAnnotateButton.target = self
+        idleAnnotateButton.action = #selector(toggleAnnotationHotkey)
+        idleAnnotateButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        idleAnnotateButton.heightAnchor.constraint(equalToConstant: 22).isActive = true
+
+        // ---- ANNOTATION BUTTON (RECORDING) ----
+        recAnnotateButton = HoverIconButton()
+        recAnnotateButton.translatesAutoresizingMaskIntoConstraints = false
+        recAnnotateButton.isBordered = false
+        recAnnotateButton.imagePosition = .imageOnly
+        recAnnotateButton.wantsLayer = true
+        recAnnotateButton.layer?.cornerRadius = 7
+        recAnnotateButton.toolTip = "Screen Annotation (⌥A)"
+        recAnnotateButton.image = NSImage(systemSymbolName: "pencil.tip.crop.circle", accessibilityDescription: "Annotate Screen")?.withSymbolConfiguration(penCfg)
+        recAnnotateButton.target = self
+        recAnnotateButton.action = #selector(toggleAnnotationHotkey)
+        recAnnotateButton.isHidden = true
+        recAnnotateButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        recAnnotateButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
         // ---- HAIRLINE DIVIDERS ----
         let makeDivider = { () -> NSBox in
             let div = NSBox()
@@ -4804,6 +6473,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         idleDivider2 = makeDivider()
         idleDivider3 = makeDivider()
         idleDivider4 = makeDivider()
+        idleDivider5 = makeDivider()
         recDivider1 = makeDivider()
         recDivider2 = makeDivider()
 
@@ -4818,9 +6488,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             idleDivider3,
             modePopUp,
             idleDivider4,
+            idleAnnotateButton,
+            idleDivider5,
             cameraRecordButton,
             systemAudioRecordIndicator,
             micRecordButton,
+            recAnnotateButton,
             recDivider1,
             liveTimerStack,
             recDivider2
@@ -4850,7 +6523,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         stackView.layoutSubtreeIfNeeded()
         updateButtonImage()
-        let fittingSize = contentView.fittingSize
+        let fittingSize = NSSize(width: contentView.fittingSize.width, height: 48.0)
         panel.setContentSize(fittingSize)
         panel.setFrameOrigin(NSPoint(x: (screen.frame.width - fittingSize.width) / 2, y: 100))
         panel.makeKeyAndOrderFront(nil)
@@ -4975,6 +6648,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         updateButtonImage()
         updateMenuBarPill()
+    }
+
+    @objc func toggleAnnotationHotkey() {
+        AnnotationManager.shared.toggleAnnotationMode()
+    }
+
+    func updateAnnotationButtonState() {
+        let active = AnnotationManager.shared.isActive
+        let activeColor = NSColor.systemBlue
+        let normalIdle = NSColor.labelColor
+        let normalRec = NSColor.systemCyan
+
+        idleAnnotateButton?.contentTintColor = active ? activeColor : normalIdle
+        recAnnotateButton?.contentTintColor = active ? activeColor : normalRec
+
+        let penConfig = NSImage.SymbolConfiguration(pointSize: 14.5, weight: active ? .semibold : .regular)
+        let symName = active ? "pencil.tip.crop.circle.fill" : "pencil.tip.crop.circle"
+        idleAnnotateButton?.image = NSImage(systemSymbolName: symName, accessibilityDescription: "Annotate Screen")?.withSymbolConfiguration(penConfig)
+        recAnnotateButton?.image = NSImage(systemSymbolName: symName, accessibilityDescription: "Annotate Screen")?.withSymbolConfiguration(penConfig)
     }
 
     @objc func toggleRecording() {
@@ -5148,9 +6840,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         idleDivider3?.isHidden = isRec
         modePopUp.isHidden = isRec
         idleDivider4?.isHidden = isRec
+        idleAnnotateButton?.isHidden = isRec
+        idleDivider5?.isHidden = isRec
 
         // Show live recording controls and dividers
         cameraRecordButton.isHidden = !isRec
+        recAnnotateButton?.isHidden = !isRec
+        updateAnnotationButtonState()
         recDivider1?.isHidden = !isRec
         liveTimerStack.isHidden = !isRec
         recDivider2?.isHidden = !isRec
@@ -5284,15 +6980,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         recordButton.toolTip = isRec ? "Stop and Save Recording (⌘R)" : "Start Recording (⌘R)"
         pauseButton.toolTip = recorder.isPaused ? "Resume Recording" : "Pause Recording"
 
-        // Re-layout panel to adapt size with smooth animation
+        // Re-layout panel to adapt size with smooth animation, preserving exact uniform 48pt height
         if let contentView = panel.contentView {
             contentView.layoutSubtreeIfNeeded()
-            let newSize = contentView.fittingSize
-            if panel.frame.size != newSize {
+            let newWidth = contentView.fittingSize.width
+            let targetHeight: CGFloat = 48.0
+            if panel.frame.width != newWidth || panel.frame.height != targetHeight {
                 var newFrame = panel.frame
-                let diffX = newSize.width - newFrame.width
+                let diffX = newWidth - newFrame.width
                 newFrame.origin.x -= diffX / 2.0
-                newFrame.size = newSize
+                newFrame.size = NSSize(width: newWidth, height: targetHeight)
                 panel.setFrame(newFrame, display: true, animate: true)
             }
         }
@@ -5331,6 +7028,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         highlighterWindow?.close()
         cameraWindow?.close()
         recordingOverlay?.close()
+        AnnotationManager.shared.stopAnnotationMode()
+        AnnotationManager.shared.removeGlobalHotkeys()
     }
 
     deinit {
