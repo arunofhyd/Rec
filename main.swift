@@ -1273,12 +1273,16 @@ class AnnotationCanvasWindow: NSWindow {
 // MARK: - Annotation Floating Toolbar (Apple Markup Style)
 
 class AnnotationToolbarButton: NSButton {
+    private var trackingAreaObj: NSTrackingArea?
+    var isHovered: Bool = false {
+        didSet { updateVisualState() }
+    }
     var isToolActive: Bool = false {
-        didSet {
-            updateVisualState()
-        }
+        didSet { updateVisualState() }
     }
 
+    override var alignmentRectInsets: NSEdgeInsets { return NSEdgeInsetsZero }
+    override var intrinsicContentSize: NSSize { return NSSize(width: 32, height: 32) }
     override var mouseDownCanMoveWindow: Bool { return false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
 
@@ -1297,15 +1301,39 @@ class AnnotationToolbarButton: NSButton {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingAreaObj { removeTrackingArea(existing) }
+        let tracking = NSTrackingArea(rect: bounds,
+                                      options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                      owner: self, userInfo: nil)
+        addTrackingArea(tracking)
+        trackingAreaObj = tracking
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+    }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         updateVisualState()
     }
 
     func updateVisualState() {
+        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         if isToolActive {
             layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.24).cgColor
             contentTintColor = .controlAccentColor
+        } else if isHovered {
+            layer?.backgroundColor = isDark
+                ? NSColor.white.withAlphaComponent(0.14).cgColor
+                : NSColor.black.withAlphaComponent(0.08).cgColor
+            contentTintColor = .labelColor
         } else {
             layer?.backgroundColor = NSColor.clear.cgColor
             contentTintColor = .labelColor
@@ -1320,10 +1348,14 @@ class AnnotationColorSwatchView: NSView {
     }
     var onClick: (() -> Void)?
 
+    override var intrinsicContentSize: NSSize { return NSSize(width: 22, height: 22) }
+
     init(color: NSColor) {
         self.color = color
         super.init(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
         self.wantsLayer = true
+        self.setContentCompressionResistancePriority(.required, for: .horizontal)
+        self.setContentHuggingPriority(.required, for: .horizontal)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -1399,6 +1431,8 @@ class AnnotationColorPickerButton: NSButton {
         didSet { needsDisplay = true }
     }
 
+    override var alignmentRectInsets: NSEdgeInsets { return NSEdgeInsetsZero }
+    override var intrinsicContentSize: NSSize { return NSSize(width: 22, height: 22) }
     override var mouseDownCanMoveWindow: Bool { return false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
 
@@ -1508,6 +1542,8 @@ class AnnotationActionButton: NSButton {
         didSet { updateAppearance() }
     }
 
+    override var alignmentRectInsets: NSEdgeInsets { return NSEdgeInsetsZero }
+    override var intrinsicContentSize: NSSize { return NSSize(width: 32, height: 32) }
     override var mouseDownCanMoveWindow: Bool { return false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
 
@@ -1569,6 +1605,8 @@ class AnnotationDoneButton: NSButton {
         didSet { updateAppearance() }
     }
 
+    override var alignmentRectInsets: NSEdgeInsets { return NSEdgeInsetsZero }
+    override var intrinsicContentSize: NSSize { return NSSize(width: 32, height: 32) }
     override var mouseDownCanMoveWindow: Bool { return false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
 
@@ -1636,12 +1674,12 @@ class AnnotationToolbarView: NSView {
     private var swatchViews: [AnnotationColorSwatchView] = []
     private var colorPickerBtn: AnnotationColorPickerButton!
     private var sizeButton: HoverIconButton!
-    private(set) var neededWidth: CGFloat = 820.0
+    private(set) var neededWidth: CGFloat = 860.0
 
     override var mouseDownCanMoveWindow: Bool { return true }
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 820, height: 48))
+        super.init(frame: NSRect(x: 0, y: 0, width: 860, height: 48))
         self.wantsLayer = true
         setupUI()
     }
@@ -1679,7 +1717,7 @@ class AnnotationToolbarView: NSView {
         gripIcon.widthAnchor.constraint(equalToConstant: 18).isActive = true
         gripIcon.heightAnchor.constraint(equalToConstant: 30).isActive = true
 
-        // 2. Tool Buttons
+        // 2. Tool Buttons (All 8 tools evenly spaced, uniform 32x32)
         var toolViews: [NSView] = []
         let toolCfg = NSImage.SymbolConfiguration(pointSize: 14.5, weight: .regular)
         for tool in AnnotationTool.allCases {
@@ -1699,7 +1737,8 @@ class AnnotationToolbarView: NSView {
         let toolStack = NSStackView(views: toolViews)
         toolStack.translatesAutoresizingMaskIntoConstraints = false
         toolStack.orientation = .horizontal
-        toolStack.spacing = 5
+        toolStack.distribution = .fillEqually
+        toolStack.spacing = 6
         toolStack.alignment = .centerY
 
         // 3. Color Swatches + Color Picker
@@ -1731,10 +1770,11 @@ class AnnotationToolbarView: NSView {
         let colorStack = NSStackView(views: swatchList)
         colorStack.translatesAutoresizingMaskIntoConstraints = false
         colorStack.orientation = .horizontal
-        colorStack.spacing = 5
+        colorStack.distribution = .fillEqually
+        colorStack.spacing = 6
         colorStack.alignment = .centerY
 
-        // 4. Size Toggle Button
+        // 4. Size Toggle Button (Uniform 32x32)
         sizeButton = HoverIconButton()
         sizeButton.translatesAutoresizingMaskIntoConstraints = false
         sizeButton.isBordered = false
@@ -1743,12 +1783,13 @@ class AnnotationToolbarView: NSView {
         sizeButton.layer?.cornerRadius = 8
         sizeButton.target = self
         sizeButton.action = #selector(cycleStrokeWidth)
-        sizeButton.widthAnchor.constraint(equalToConstant: 30).isActive = true
-        sizeButton.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        sizeButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        sizeButton.heightAnchor.constraint(equalToConstant: 32).isActive = true
         sizeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        sizeButton.setContentHuggingPriority(.required, for: .horizontal)
         updateSizeButtonIcon()
 
-        // 5. Actions: Undo, Redo, Clear All (Matching Glass Theme)
+        // 5. Actions: Undo, Redo, Clear All (Uniform 32x32)
         let actCfg = NSImage.SymbolConfiguration(pointSize: 13.5, weight: .medium)
         let undoBtn = AnnotationActionButton()
         undoBtn.translatesAutoresizingMaskIntoConstraints = false
@@ -1756,8 +1797,8 @@ class AnnotationToolbarView: NSView {
         undoBtn.toolTip = "Undo (⌘Z)"
         undoBtn.target = self
         undoBtn.action = #selector(undoAction)
-        undoBtn.widthAnchor.constraint(equalToConstant: 30).isActive = true
-        undoBtn.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        undoBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        undoBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
         let redoBtn = AnnotationActionButton()
         redoBtn.translatesAutoresizingMaskIntoConstraints = false
@@ -1765,8 +1806,8 @@ class AnnotationToolbarView: NSView {
         redoBtn.toolTip = "Redo (⇧⌘Z)"
         redoBtn.target = self
         redoBtn.action = #selector(redoAction)
-        redoBtn.widthAnchor.constraint(equalToConstant: 30).isActive = true
-        redoBtn.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        redoBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        redoBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
         let clearBtn = AnnotationActionButton()
         clearBtn.translatesAutoresizingMaskIntoConstraints = false
@@ -1774,24 +1815,25 @@ class AnnotationToolbarView: NSView {
         clearBtn.toolTip = "Clear All Annotations (⌘K)"
         clearBtn.target = self
         clearBtn.action = #selector(clearAction)
-        clearBtn.widthAnchor.constraint(equalToConstant: 30).isActive = true
-        clearBtn.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        clearBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        clearBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
         let actionStack = NSStackView(views: [undoBtn, redoBtn, clearBtn])
         actionStack.translatesAutoresizingMaskIntoConstraints = false
         actionStack.orientation = .horizontal
-        actionStack.spacing = 5
+        actionStack.distribution = .fillEqually
+        actionStack.spacing = 6
         actionStack.alignment = .centerY
 
-        // 6. Done Button (Icon-only checkmark matching theme)
+        // 6. Done Button (Icon-only checkmark matching theme, uniform 32x32)
         let doneBtn = AnnotationDoneButton()
         doneBtn.translatesAutoresizingMaskIntoConstraints = false
         doneBtn.target = self
         doneBtn.action = #selector(doneAction)
-        doneBtn.widthAnchor.constraint(equalToConstant: 30).isActive = true
-        doneBtn.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        doneBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        doneBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
-        // Master Stack View with comfortable spacing
+        // Master Stack View with comfortable generous spacing
         let masterStack = NSStackView(views: [
             gripIcon,
             makeDivider(),
@@ -1807,12 +1849,12 @@ class AnnotationToolbarView: NSView {
         ])
         masterStack.translatesAutoresizingMaskIntoConstraints = false
         masterStack.orientation = .horizontal
-        masterStack.spacing = 11
+        masterStack.spacing = 12
         masterStack.alignment = .centerY
 
-        // Compute needed width so nothing is ever squished
+        // Compute needed width so nothing is ever squished or cramped
         masterStack.layoutSubtreeIfNeeded()
-        let neededWidth = ceil(masterStack.fittingSize.width) + 36.0
+        let neededWidth = max(ceil(masterStack.fittingSize.width) + 36.0, 860.0)
         self.neededWidth = neededWidth
 
         // Shadow container matching main FloatingPanel HUD
@@ -1840,9 +1882,10 @@ class AnnotationToolbarView: NSView {
 
         effectView.addSubview(masterStack)
         NSLayoutConstraint.activate([
-            masterStack.leadingAnchor.constraint(equalTo: effectView.leadingAnchor, constant: 18),
-            masterStack.trailingAnchor.constraint(equalTo: effectView.trailingAnchor, constant: -18),
-            masterStack.centerYAnchor.constraint(equalTo: effectView.centerYAnchor)
+            masterStack.centerXAnchor.constraint(equalTo: effectView.centerXAnchor),
+            masterStack.centerYAnchor.constraint(equalTo: effectView.centerYAnchor),
+            masterStack.leadingAnchor.constraint(greaterThanOrEqualTo: effectView.leadingAnchor, constant: 16),
+            masterStack.trailingAnchor.constraint(lessThanOrEqualTo: effectView.trailingAnchor, constant: -16)
         ])
 
         addSubview(shadowContainer)
@@ -6710,9 +6753,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         effectView.layoutSubtreeIfNeeded()
         let bottomWidth = ceil(effectView.fittingSize.width)
         let bottomHeight: CGFloat = 48.0
-        let annotWidth = annotationToolbarView?.neededWidth ?? 820.0
-        let annotHeight: CGFloat = 48.0
-        let gap: CGFloat = 8.0
 
         if isAnnotationActive {
             if annotationToolbarView == nil {
@@ -6722,6 +6762,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.annotationToolbarView = toolbar
             }
             annotationToolbarView?.isHidden = false
+
+            let annotWidth = annotationToolbarView?.neededWidth ?? 860.0
+            let annotHeight: CGFloat = 48.0
+            let gap: CGFloat = 8.0
 
             let totalWidth = max(bottomWidth, annotWidth)
             let totalHeight = bottomHeight + gap + annotHeight
