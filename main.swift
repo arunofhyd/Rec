@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.4.2"
+    return "1.4.3"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -5245,12 +5245,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.addItem(update)
         
         statusMenu.addItem(NSMenuItem.separator())
-
-        let annotateItem = NSMenuItem(title: "Screen Annotation", action: #selector(toggleAnnotationHotkey), keyEquivalent: "a")
-        annotateItem.keyEquivalentModifierMask = [.option]
-        annotateItem.image = NSImage(systemSymbolName: "pencil.tip.crop.circle", accessibilityDescription: nil)
-        annotateItem.target = self
-        statusMenu.addItem(annotateItem)
 
         let showControlsItem = NSMenuItem(title: "Show Controls", action: #selector(showPanel), keyEquivalent: "s")
         showControlsItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)

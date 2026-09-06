@@ -1,7 +1,14 @@
 {
-  "version": "1.4.2",
+  "version": "1.4.3",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.3",
+      "date": "2026-09-06",
+      "changes": [
+        "Menu Bar Cleanup: Removed redundant Screen Annotation option from the menu bar status menu to keep the menu bar clean and lightweight."
+      ]
+    },
     {
       "version": "1.4.2",
       "date": "2026-09-06",
