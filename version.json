@@ -1,7 +1,16 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.1",
+      "date": "2026-09-06",
+      "changes": [
+        "Uniform Annotation Toolbar & Restored Eraser: Fixed uneven button sizes and active highlight pills by neutralizing alignment rect insets across tools; restored all 8 tools including Eraser with uniform 32x32 frames and balanced spacing.",
+        "Elevated Application Layer: Ensured all confirmation dialogs, color pickers, and alerts stay elevated above full-screen annotation canvases.",
+        "Unified Glitch-Free HUD: Attached annotation palette directly atop the main floating HUD pill as a single integrated window entity."
+      ]
+    },
     {
       "version": "1.4.0",
       "date": "2026-09-05",
@@ -69,7 +78,7 @@
       "version": "1.3.4",
       "date": "2026-08-28",
       "changes": [
-        "Floating Bar Visual Refinement: Added sleek filled dropdown indicators (▾) beside popup items for audio source, camera overlay, recording mode, and settings.",
+        "Floating Bar Visual Refinement: Added sleek filled dropdown indicators (\u25be) beside popup items for audio source, camera overlay, recording mode, and settings.",
         "Optical Icon Sizing & Spacing: Fine-tuned icon scales, optically balanced the settings gear silhouette, and increased inter-item toolbar spacing for a clean, distraction-free HUD."
       ]
     },
