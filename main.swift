@@ -6757,6 +6757,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggleRecording() {
         if !regionSelectionWindows.isEmpty {
+            for window in regionSelectionWindows {
+                if let view = window.contentView as? RegionSelectionView,
+                   view.currentRect.width > 5 && view.currentRect.height > 5 {
+                    view.onSelectionComplete?(view.currentRect)
+                    return
+                }
+            }
             for window in regionSelectionWindows { window.close() }
             regionSelectionWindows.removeAll()
             return
