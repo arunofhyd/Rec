@@ -3890,8 +3890,17 @@ class VideoTrimmerWindow: NSWindow {
 extension NSAlert {
     @discardableResult
     func runModalOnTop() -> NSApplication.ModalResponse {
+        NSApp.activate(ignoringOtherApps: true)
+        
+        let canvasWindows = AnnotationManager.shared.canvasWindows
+        canvasWindows.forEach { $0.ignoresMouseEvents = true }
+        defer {
+            canvasWindows.forEach { $0.ignoresMouseEvents = false }
+        }
+
+        self.layout()
+        self.window.center()
         self.window.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 4)
-        self.window.orderFrontRegardless()
         return self.runModal()
     }
 }
