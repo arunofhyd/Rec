@@ -176,7 +176,7 @@ class CameraOverlayWindow: NSWindow {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = true
-        self.level = .floating
+        self.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
         self.collectionBehavior = [.canJoinAllSpaces, .stationary]
         self.isReleasedWhenClosed = false
         self.isMovableByWindowBackground = true
@@ -624,7 +624,7 @@ class CountdownWindow: NSWindow {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = true
-        self.level = .popUpMenu
+        self.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 3)
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         self.ignoresMouseEvents = true
         self.isReleasedWhenClosed = false
@@ -1858,11 +1858,15 @@ class AnnotationToolbarView: NSView {
 
     @objc private func openColorPicker() {
         let panel = NSColorPanel.shared
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 3)
+        panel.sharingType = .none
         panel.color = AnnotationManager.shared.currentColor
         panel.setTarget(self)
         panel.setAction(#selector(colorPanelChanged(_:)))
         panel.isContinuous = true
-        panel.orderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
     }
 
     @objc private func colorPanelChanged(_ sender: NSColorPanel) {
@@ -5388,6 +5392,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bg.addSubview(github)
 
         win.contentView = bg
+        win.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 3)
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.aboutWindow = win
@@ -5542,6 +5547,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bg.addSubview(doneBtn)
 
         win.contentView = bg
+        win.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 3)
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.permissionsWindow = win
@@ -6041,6 +6047,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc func chooseSaveLocation(_ sender: NSMenuItem) {
         let panel = NSOpenPanel()
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 4)
         panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
         panel.prompt = "Select Save Location"
         DispatchQueue.main.async {
