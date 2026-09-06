@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.4.1"
+    return "1.4.2"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -141,6 +141,14 @@ class RecordingOverlayWindow: NSWindow {
 
 class RecordingOverlayView: NSView {
     weak var windowRef: RecordingOverlayWindow?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.wantsLayer = true
+        self.layerContentsRedrawPolicy = .onSetNeedsDisplay
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -424,6 +432,14 @@ class RegionSelectionView: NSView {
 
     override var acceptsFirstResponder: Bool { return true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.wantsLayer = true
+        self.layerContentsRedrawPolicy = .onSetNeedsDisplay
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -790,6 +806,39 @@ class AnnotationStroke {
         self.opacity = 1.0
     }
 
+    func boundingRect(screenOrigin origin: NSPoint) -> NSRect {
+        let pad = width * 2.5 + 24.0
+        switch tool {
+        case .pen, .brush, .highlighter, .magicWriter:
+            if points.isEmpty { return .zero }
+            var minX = points[0].x, maxX = points[0].x
+            var minY = points[0].y, maxY = points[0].y
+            for pt in points {
+                if pt.x < minX { minX = pt.x }
+                if pt.x > maxX { maxX = pt.x }
+                if pt.y < minY { minY = pt.y }
+                if pt.y > maxY { maxY = pt.y }
+            }
+            return NSRect(x: minX - origin.x - pad,
+                          y: minY - origin.y - pad,
+                          width: (maxX - minX) + pad * 2,
+                          height: (maxY - minY) + pad * 2)
+
+        case .arrow, .rectangle, .circle:
+            let minX = min(startPoint.x, endPoint.x)
+            let maxX = max(startPoint.x, endPoint.x)
+            let minY = min(startPoint.y, endPoint.y)
+            let maxY = max(startPoint.y, endPoint.y)
+            return NSRect(x: minX - origin.x - pad,
+                          y: minY - origin.y - pad,
+                          width: (maxX - minX) + pad * 2,
+                          height: (maxY - minY) + pad * 2)
+
+        case .eraser:
+            return .zero
+        }
+    }
+
     func hitTest(screenPoint: NSPoint, radius: CGFloat) -> Bool {
         let threshold = radius + width / 2.0 + 4.0
         let thresholdSq = threshold * threshold
@@ -1084,10 +1133,41 @@ class AnnotationCanvasView: NSView {
     var isErasing: Bool = false
     private var lastEraserScreenPoint: NSPoint?
     private var trackingAreaRef: NSTrackingArea?
+    private var eraserLayer: CALayer?
 
     override var isOpaque: Bool { return false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
     override var acceptsFirstResponder: Bool { return true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.wantsLayer = true
+        self.layerContentsRedrawPolicy = .onSetNeedsDisplay
+        setupEraserLayer()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setupEraserLayer() {
+        guard let root = self.layer else { return }
+        let el = CALayer()
+        el.bounds = CGRect(x: 0, y: 0, width: 32, height: 32)
+        el.cornerRadius = 16
+        el.backgroundColor = NSColor.white.withAlphaComponent(0.22).cgColor
+        el.borderColor = NSColor.white.withAlphaComponent(0.95).cgColor
+        el.borderWidth = 1.5
+        el.isHidden = true
+
+        let dot = CALayer()
+        dot.bounds = CGRect(x: 0, y: 0, width: 4, height: 4)
+        dot.position = CGPoint(x: 16, y: 16)
+        dot.cornerRadius = 2
+        dot.backgroundColor = NSColor.white.cgColor
+        el.addSublayer(dot)
+
+        root.addSublayer(el)
+        self.eraserLayer = el
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -1109,8 +1189,32 @@ class AnnotationCanvasView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         currentMousePoint = NSPoint(x: -1000, y: -1000)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        eraserLayer?.isHidden = true
+        CATransaction.commit()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let pt = convert(event.locationInWindow, from: nil)
+        currentMousePoint = pt
         if AnnotationManager.shared.currentTool == .eraser {
-            needsDisplay = true
+            let radius = max(16.0, AnnotationManager.shared.currentWidth.width(for: .eraser) / 2.0)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            eraserLayer?.bounds = CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2)
+            eraserLayer?.cornerRadius = radius
+            eraserLayer?.sublayers?.first?.position = CGPoint(x: radius, y: radius)
+            eraserLayer?.position = CGPoint(x: pt.x, y: pt.y)
+            eraserLayer?.isHidden = false
+            CATransaction.commit()
+        } else {
+            if eraserLayer?.isHidden == false {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                eraserLayer?.isHidden = true
+                CATransaction.commit()
+            }
         }
     }
 
@@ -1119,48 +1223,24 @@ class AnnotationCanvasView: NSView {
         guard let win = self.window else { return }
         let origin = win.frame.origin
 
-        // 1. Draw all existing strokes
+        // 1. Draw existing strokes that intersect the dirty rect
         for stroke in AnnotationManager.shared.strokes {
-            stroke.draw(in: self, screenOrigin: origin)
+            if stroke.boundingRect(screenOrigin: origin).intersects(dirtyRect) {
+                stroke.draw(in: self, screenOrigin: origin)
+            }
         }
 
-        // 2. Draw live active stroke
+        // 2. Draw live active stroke if it intersects the dirty rect
         if let live = activeStroke {
-            live.draw(in: self, screenOrigin: origin)
-        }
-
-        // 3. Eraser hover indicator
-        if AnnotationManager.shared.currentTool == .eraser && bounds.contains(currentMousePoint) {
-            let radius = max(16.0, AnnotationManager.shared.currentWidth.width(for: .eraser) / 2.0)
-            let circleRect = NSRect(x: currentMousePoint.x - radius,
-                                    y: currentMousePoint.y - radius,
-                                    width: radius * 2.0,
-                                    height: radius * 2.0)
-            NSColor.white.withAlphaComponent(0.22).setFill()
-            NSBezierPath(ovalIn: circleRect).fill()
-            NSColor.white.withAlphaComponent(0.95).setStroke()
-            let strokePath = NSBezierPath(ovalIn: circleRect)
-            strokePath.lineWidth = 1.5
-            strokePath.stroke()
-
-            // Center target dot
-            let dotRadius: CGFloat = 2.0
-            let dotRect = NSRect(x: currentMousePoint.x - dotRadius, y: currentMousePoint.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
-            NSColor.white.setFill()
-            NSBezierPath(ovalIn: dotRect).fill()
+            if live.boundingRect(screenOrigin: origin).intersects(dirtyRect) {
+                live.draw(in: self, screenOrigin: origin)
+            }
         }
     }
 
     private func screenPoint(for event: NSEvent) -> NSPoint {
         guard let win = self.window else { return event.locationInWindow }
         return win.convertPoint(toScreen: event.locationInWindow)
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        currentMousePoint = convert(event.locationInWindow, from: nil)
-        if AnnotationManager.shared.currentTool == .eraser {
-            needsDisplay = true
-        }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -1173,7 +1253,6 @@ class AnnotationCanvasView: NSView {
             lastEraserScreenPoint = sp
             let radius = max(24.0, AnnotationManager.shared.currentWidth.width(for: .eraser) / 2.0 + 8.0)
             AnnotationManager.shared.eraseStrokes(near: sp, radius: radius)
-            needsDisplay = true
         } else {
             let width = AnnotationManager.shared.currentWidth.width(for: tool)
             let color = AnnotationManager.shared.currentColor
@@ -1183,10 +1262,10 @@ class AnnotationCanvasView: NSView {
             stroke.points = [sp]
             self.activeStroke = stroke
 
-            if tool == .magicWriter {
-                AnnotationManager.shared.startMagicTimerIfNeeded()
-            }
-            needsDisplay = true
+            guard let origin = window?.frame.origin else { return }
+            let pad = width * 2 + 10
+            let r = NSRect(x: sp.x - origin.x - pad, y: sp.y - origin.y - pad, width: pad * 2, height: pad * 2)
+            setNeedsDisplay(r)
         }
     }
 
@@ -1203,15 +1282,37 @@ class AnnotationCanvasView: NSView {
                 AnnotationManager.shared.eraseStrokes(near: sp, radius: radius)
             }
             lastEraserScreenPoint = sp
-            needsDisplay = true
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            eraserLayer?.position = CGPoint(x: currentMousePoint.x, y: currentMousePoint.y)
+            CATransaction.commit()
         } else if let stroke = activeStroke {
+            guard let origin = window?.frame.origin else { return }
             switch stroke.tool {
             case .pen, .brush, .highlighter, .magicWriter:
+                let prev = stroke.points.last ?? sp
                 stroke.points.append(sp)
-                needsDisplay = true
+                let pad = stroke.width * 2 + 16
+                let dirty = NSRect(
+                    x: min(prev.x - origin.x, sp.x - origin.x) - pad,
+                    y: min(prev.y - origin.y, sp.y - origin.y) - pad,
+                    width: abs(sp.x - prev.x) + pad * 2,
+                    height: abs(sp.y - prev.y) + pad * 2
+                )
+                setNeedsDisplay(dirty)
             case .arrow, .rectangle, .circle:
+                let prevEnd = stroke.endPoint
                 stroke.endPoint = sp
-                needsDisplay = true
+                let pad = stroke.width * 2 + 20
+                let r1 = NSRect(x: min(stroke.startPoint.x - origin.x, prevEnd.x - origin.x) - pad,
+                                y: min(stroke.startPoint.y - origin.y, prevEnd.y - origin.y) - pad,
+                                width: abs(prevEnd.x - stroke.startPoint.x) + pad * 2,
+                                height: abs(prevEnd.y - stroke.startPoint.y) + pad * 2)
+                let r2 = NSRect(x: min(stroke.startPoint.x - origin.x, sp.x - origin.x) - pad,
+                                y: min(stroke.startPoint.y - origin.y, sp.y - origin.y) - pad,
+                                width: abs(sp.x - stroke.startPoint.x) + pad * 2,
+                                height: abs(sp.y - stroke.startPoint.y) + pad * 2)
+                setNeedsDisplay(r1.union(r2))
             case .eraser:
                 break
             }
@@ -1226,7 +1327,6 @@ class AnnotationCanvasView: NSView {
         if tool == .eraser {
             isErasing = false
             lastEraserScreenPoint = nil
-            needsDisplay = true
         } else if let stroke = activeStroke {
             switch stroke.tool {
             case .pen, .brush, .highlighter, .magicWriter:
@@ -1266,6 +1366,7 @@ class AnnotationCanvasWindow: NSWindow {
         self.isReleasedWhenClosed = false
 
         let canvasView = AnnotationCanvasView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        canvasView.wantsLayer = true
         self.contentView = canvasView
     }
 }
@@ -2093,7 +2194,13 @@ class AnnotationManager {
         if stroke.tool == .magicWriter {
             startMagicTimerIfNeeded()
         }
-        refreshAllCanvases()
+        for win in canvasWindows {
+            let origin = win.frame.origin
+            let r = stroke.boundingRect(screenOrigin: origin)
+            if r != .zero {
+                win.contentView?.setNeedsDisplay(r)
+            }
+        }
     }
 
     func eraseStrokes(near screenPoint: NSPoint, radius: CGFloat) {
@@ -2113,7 +2220,17 @@ class AnnotationManager {
         if hitAny {
             redoStack.append(erased)
             strokes = remaining
-            refreshAllCanvases()
+            for win in canvasWindows {
+                let origin = win.frame.origin
+                var dirty = NSRect.zero
+                for s in erased {
+                    let r = s.boundingRect(screenOrigin: origin)
+                    dirty = (dirty == .zero) ? r : dirty.union(r)
+                }
+                if dirty != .zero {
+                    win.contentView?.setNeedsDisplay(dirty)
+                }
+            }
         }
     }
 
@@ -2145,7 +2262,17 @@ class AnnotationManager {
         if hitAny {
             redoStack.append(erased)
             strokes = remaining
-            refreshAllCanvases()
+            for win in canvasWindows {
+                let origin = win.frame.origin
+                var dirty = NSRect.zero
+                for s in erased {
+                    let r = s.boundingRect(screenOrigin: origin)
+                    dirty = (dirty == .zero) ? r : dirty.union(r)
+                }
+                if dirty != .zero {
+                    win.contentView?.setNeedsDisplay(dirty)
+                }
+            }
         }
     }
 
@@ -2194,7 +2321,8 @@ class AnnotationManager {
 
     func startMagicTimerIfNeeded() {
         guard magicTimer == nil else { return }
-        magicTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+        // 30 FPS timer cuts CPU wakeups in half while maintaining silky-smooth fading trails
+        magicTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             self?.tickMagicWriter()
         }
     }
@@ -2202,18 +2330,18 @@ class AnnotationManager {
     private func tickMagicWriter() {
         let now = Date()
         var hasVanishing = false
-        var changed = false
+        var changedStrokes: [AnnotationStroke] = []
 
         strokes.removeAll { stroke in
             if stroke.tool == .magicWriter {
                 let age = now.timeIntervalSince(stroke.createdAt)
                 if age >= 2.2 {
-                    changed = true
+                    changedStrokes.append(stroke)
                     return true // Disappear completely
                 } else if age >= 1.2 {
                     stroke.opacity = max(0.0, 1.0 - CGFloat((age - 1.2) / 1.0))
                     hasVanishing = true
-                    changed = true
+                    changedStrokes.append(stroke)
                 } else {
                     hasVanishing = true
                 }
@@ -2221,8 +2349,18 @@ class AnnotationManager {
             return false
         }
 
-        if changed {
-            refreshAllCanvases()
+        if !changedStrokes.isEmpty {
+            for win in canvasWindows {
+                let origin = win.frame.origin
+                var dirty = NSRect.zero
+                for s in changedStrokes {
+                    let r = s.boundingRect(screenOrigin: origin)
+                    dirty = (dirty == .zero) ? r : dirty.union(r)
+                }
+                if dirty != .zero {
+                    win.contentView?.setNeedsDisplay(dirty)
+                }
+            }
         }
 
         if !hasVanishing {
@@ -5594,6 +5732,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.permissionsWindow = win
+
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: win, queue: .main) { [weak self] _ in
+            self?.permissionsTimer?.invalidate()
+            self?.permissionsTimer = nil
+            self?.permissionButtons = []
+            self?.permissionsWindow = nil
+        }
 
         // Initial check and auto-polling timer for live updates
         checkPermissionsStatus()

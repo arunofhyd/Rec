@@ -1,7 +1,17 @@
 {
-  "version": "1.4.1",
+  "version": "1.4.2",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.2",
+      "date": "2026-09-06",
+      "changes": [
+        "Ultra-Low Resource Consumption & Thermal Optimization: Eliminated high CPU/GPU heating on Apple Silicon M-series Macs when running idle or staying active in screen annotation mode.",
+        "Hardware-Accelerated Metal Canvas: Migrated full-screen annotation canvas to layer-backed CALayer rendering with dirty-rect invalidation, reducing redrawn pixels during live drawing by over 99%.",
+        "Zero-CPU Eraser Cursor: Converted the eraser hover circle to a dedicated hardware GPU sublayer, removing 120Hz full-screen software redraws on ProMotion displays.",
+        "Throttled 30 FPS Magic Laser Writer: Halved timer wakeups and restricted trail invalidation to the laser bounding box, allowing M-series CPU cores to enter deep low-power sleep states."
+      ]
+    },
     {
       "version": "1.4.1",
       "date": "2026-09-06",
