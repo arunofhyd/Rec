@@ -3438,7 +3438,7 @@ class VideoTrimmerWindow: NSWindow {
         self.isOpaque = false
         self.hasShadow = true
         self.center()
-        self.level = .floating
+        self.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
         self.minSize = NSSize(width: 580, height: 440)
 
         let visualEffectView = NSVisualEffectView(frame: rect)
@@ -3925,7 +3925,7 @@ class RecordingToastWindow: NSWindow {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = false
-        self.level = .floating
+        self.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let shadowContainer = NSView(frame: NSRect(origin: .zero, size: initialRect.size))
@@ -4309,7 +4309,7 @@ class RecordingFinishedWindow: NSWindow {
         self.isOpaque = false
         self.hasShadow = true
         self.center()
-        self.level = .floating
+        self.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
 
         let visualEffectView = NSVisualEffectView(frame: rect)
         visualEffectView.autoresizingMask = [.width, .height]
@@ -6584,7 +6584,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             self.toastWindow = toast
             toast.alphaValue = 0.0
-            toast.orderFront(nil)
+            toast.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.35
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
