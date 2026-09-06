@@ -1628,50 +1628,33 @@ class AnnotationDoneButton: NSButton {
     }
 }
 
-class AnnotationToolbarWindow: NSPanel {
+class AnnotationToolbarView: NSView {
     var toolbarEffectView: FloatingToolbarVisualEffectView?
     private var gripIcon: AnnotationGripView?
     private var toolButtons: [AnnotationTool: AnnotationToolbarButton] = [:]
     private var swatchViews: [AnnotationColorSwatchView] = []
     private var colorPickerBtn: AnnotationColorPickerButton!
     private var sizeButton: HoverIconButton!
+    private(set) var neededWidth: CGFloat = 820.0
+
+    override var mouseDownCanMoveWindow: Bool { return true }
 
     init() {
-        let initialWidth: CGFloat = 860
-        let initialHeight: CGFloat = 50
-        guard let screen = NSScreen.main else {
-            super.init(contentRect: NSRect(x: 200, y: 100, width: initialWidth, height: initialHeight),
-                       styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView],
-                       backing: .buffered, defer: false)
-            self.sharingType = .none
-            return
-        }
-
-        let x = (screen.frame.width - initialWidth) / 2.0 + screen.frame.minX
-        let y = screen.frame.minY + 70.0
-        let rect = NSRect(x: x, y: y, width: initialWidth, height: initialHeight)
-
-        super.init(contentRect: rect, styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-        self.isFloatingPanel = true
-        self.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
-        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        self.titlebarAppearsTransparent = true
-        self.titleVisibility = .hidden
-        self.backgroundColor = .clear
-        self.isOpaque = false
-        self.hasShadow = false
-        self.isMovableByWindowBackground = true
-        self.isReleasedWhenClosed = false
-        self.sharingType = .none
-        self.standardWindowButton(.closeButton)?.isHidden = true
-        self.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        self.standardWindowButton(.zoomButton)?.isHidden = true
-
-        setupUI(screen: screen)
+        super.init(frame: NSRect(x: 0, y: 0, width: 820, height: 48))
+        self.wantsLayer = true
+        setupUI()
     }
 
-    private func setupUI(screen: NSScreen) {
-        let height: CGFloat = 50.0
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.wantsLayer = true
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setupUI() {
+        let height: CGFloat = 48.0
 
         let makeDivider = { () -> NSBox in
             let div = NSBox()
@@ -1829,6 +1812,7 @@ class AnnotationToolbarWindow: NSPanel {
         // Compute needed width so nothing is ever squished
         masterStack.layoutSubtreeIfNeeded()
         let neededWidth = ceil(masterStack.fittingSize.width) + 36.0
+        self.neededWidth = neededWidth
 
         // Shadow container matching main FloatingPanel HUD
         let shadowContainer = NSView(frame: NSRect(x: 0, y: 0, width: neededWidth, height: height))
@@ -1860,10 +1844,13 @@ class AnnotationToolbarWindow: NSPanel {
             masterStack.centerYAnchor.constraint(equalTo: effectView.centerYAnchor)
         ])
 
-        self.contentView = shadowContainer
-        self.setContentSize(NSSize(width: neededWidth, height: height))
-        let originX = (screen.frame.width - neededWidth) / 2.0 + screen.frame.minX
-        self.setFrameOrigin(NSPoint(x: originX, y: screen.frame.minY + 70.0))
+        addSubview(shadowContainer)
+        NSLayoutConstraint.activate([
+            shadowContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            shadowContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            shadowContainer.topAnchor.constraint(equalTo: topAnchor),
+            shadowContainer.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
 
         updateSelection()
     }
@@ -1981,7 +1968,9 @@ class AnnotationManager {
     var redoStack: [[AnnotationStroke]] = []
 
     var canvasWindows: [AnnotationCanvasWindow] = []
-    var toolbarWindow: AnnotationToolbarWindow?
+    var toolbarView: AnnotationToolbarView? {
+        return (NSApp.delegate as? AppDelegate)?.annotationToolbarView
+    }
 
     private var magicTimer: Timer?
     private var localKeyMonitor: Any?
@@ -2000,20 +1989,16 @@ class AnnotationManager {
             canvasWindows.append(win)
         }
 
-        // 2. Create and display floating toolbar FIRST
-        NSApp.activate(ignoringOtherApps: true)
-        let toolbar = AnnotationToolbarWindow()
-        self.toolbarWindow = toolbar
-        toolbar.makeKeyAndOrderFront(nil)
-
-        // 3. Register window numbers in Recorder and update capture filter
+        // 2. Attach annotation HUD tier on top of FloatingPanel as one unified entity
         if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+            delegate.panel.orderFrontRegardless()
+            delegate.isAnnotationActive = true
+            delegate.updateHUDLayout()
+            delegate.updateAnnotationButtonState()
+
             delegate.recorder.annotationCanvasWindowIDs = canvasWindows.compactMap { $0.windowNumber }
             delegate.recorder.updateStreamFilter()
-            delegate.updateAnnotationButtonState()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                delegate.recorder.updateStreamFilter()
-            }
         }
 
         setupGlobalHotkeys()
@@ -2028,8 +2013,6 @@ class AnnotationManager {
         }
         canvasWindows.removeAll()
 
-        toolbarWindow?.close()
-        toolbarWindow = nil
         if NSColorPanel.sharedColorPanelExists {
             NSColorPanel.shared.close()
         }
@@ -2037,12 +2020,14 @@ class AnnotationManager {
         magicTimer?.invalidate()
         magicTimer = nil
 
-
-
         if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.panel.level = .floating
+            delegate.isAnnotationActive = false
+            delegate.updateHUDLayout()
+            delegate.updateAnnotationButtonState()
+
             delegate.recorder.annotationCanvasWindowIDs.removeAll()
             delegate.recorder.updateStreamFilter()
-            delegate.updateAnnotationButtonState()
         }
     }
 
@@ -2232,7 +2217,7 @@ class AnnotationManager {
                     if let chars = event.charactersIgnoringModifiers, let num = Int(chars), (1...8).contains(num) {
                         let tool = AnnotationTool(rawValue: num - 1) ?? .pen
                         self.currentTool = tool
-                        self.toolbarWindow?.updateSelection()
+                        self.toolbarView?.updateSelection()
                         self.refreshAllCanvases()
                         return nil
                     }
@@ -2990,7 +2975,28 @@ class FloatingToolbarVisualEffectView: NSVisualEffectView {
     }
 }
 
+class FloatingHUDContainerView: NSView {
+    weak var mainShadowContainer: NSView?
+    weak var annotationToolbarView: NSView?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        if hit === self {
+            return nil
+        }
+        if let main = mainShadowContainer, let hit = hit, hit.isDescendant(of: main) {
+            return hit
+        }
+        if let annot = annotationToolbarView, let hit = hit, hit.isDescendant(of: annot) {
+            return hit
+        }
+        return nil
+    }
+}
+
 class FloatingPanel: NSPanel {
+    var rootContainer: FloatingHUDContainerView!
+    var mainShadowContainer: NSView!
     var toolbarEffectView: FloatingToolbarVisualEffectView?
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
@@ -3004,18 +3010,23 @@ class FloatingPanel: NSPanel {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = false
+        self.sharingType = .none
         self.standardWindowButton(.closeButton)?.isHidden = true
         self.standardWindowButton(.miniaturizeButton)?.isHidden = true
         self.standardWindowButton(.zoomButton)?.isHidden = true
 
+        let root = FloatingHUDContainerView(frame: contentRect)
+        root.wantsLayer = true
+        self.rootContainer = root
+
         let shadowContainer = NSView()
-        shadowContainer.translatesAutoresizingMaskIntoConstraints = false
         shadowContainer.wantsLayer = true
         shadowContainer.layer?.masksToBounds = false
         shadowContainer.layer?.shadowColor = NSColor.black.cgColor
         shadowContainer.layer?.shadowOpacity = 0.10
         shadowContainer.layer?.shadowRadius = 6.0
         shadowContainer.layer?.shadowOffset = CGSize(width: 0, height: -2)
+        self.mainShadowContainer = shadowContainer
 
         let effectView = FloatingToolbarVisualEffectView()
         effectView.translatesAutoresizingMaskIntoConstraints = false
@@ -3029,7 +3040,10 @@ class FloatingPanel: NSPanel {
             effectView.bottomAnchor.constraint(equalTo: shadowContainer.bottomAnchor)
         ])
 
-        self.contentView = shadowContainer
+        root.addSubview(shadowContainer)
+        root.mainShadowContainer = shadowContainer
+
+        self.contentView = root
     }
 }
 
@@ -4863,6 +4877,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var recDivider1: NSBox!
     var recDivider2: NSBox!
     var settingsPopUp: HoverPopUpButton!
+    var annotationToolbarView: AnnotationToolbarView?
+    var isAnnotationActive: Bool = false
     let recorder = Recorder()
 
     var statusItem: NSStatusItem!
@@ -4928,7 +4944,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main) { [weak self] _ in
             self?.panel?.toolbarEffectView?.updateColors()
             self?.updateButtonImage()
-            AnnotationManager.shared.toolbarWindow?.updateColors()
+            AnnotationManager.shared.toolbarView?.updateColors()
         }
     }
 
@@ -6522,10 +6538,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ])
 
         stackView.layoutSubtreeIfNeeded()
+        let bottomWidth = ceil(contentView.fittingSize.width)
+        let initialRect = NSRect(x: (screen.frame.width - bottomWidth) / 2, y: 100, width: bottomWidth, height: 48.0)
+        panel.setFrame(initialRect, display: true)
+        panel.mainShadowContainer.frame = NSRect(x: 0, y: 0, width: bottomWidth, height: 48.0)
         updateButtonImage()
-        let fittingSize = NSSize(width: contentView.fittingSize.width, height: 48.0)
-        panel.setContentSize(fittingSize)
-        panel.setFrameOrigin(NSPoint(x: (screen.frame.width - fittingSize.width) / 2, y: 100))
         panel.makeKeyAndOrderFront(nil)
     }
 
@@ -6652,6 +6669,75 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggleAnnotationHotkey() {
         AnnotationManager.shared.toggleAnnotationMode()
+    }
+
+    func updateHUDLayout() {
+        guard let panel = panel, let root = panel.rootContainer, let mainShadow = panel.mainShadowContainer, let effectView = panel.toolbarEffectView else { return }
+        guard let screen = panel.screen ?? NSScreen.main else { return }
+
+        effectView.layoutSubtreeIfNeeded()
+        let bottomWidth = ceil(effectView.fittingSize.width)
+        let bottomHeight: CGFloat = 48.0
+        let annotWidth = annotationToolbarView?.neededWidth ?? 820.0
+        let annotHeight: CGFloat = 48.0
+        let gap: CGFloat = 8.0
+
+        if isAnnotationActive {
+            if annotationToolbarView == nil {
+                let toolbar = AnnotationToolbarView()
+                root.addSubview(toolbar)
+                root.annotationToolbarView = toolbar
+                self.annotationToolbarView = toolbar
+            }
+            annotationToolbarView?.isHidden = false
+
+            let totalWidth = max(bottomWidth, annotWidth)
+            let totalHeight = bottomHeight + gap + annotHeight
+
+            let mainX = (totalWidth - bottomWidth) / 2.0
+            let annotX = (totalWidth - annotWidth) / 2.0
+
+            let currentCenter = panel.frame.midX
+            let currentBottom = panel.frame.minY
+            var newOriginX = currentCenter - totalWidth / 2.0
+            var newOriginY = currentBottom
+
+            let screenBounds = screen.visibleFrame
+            if newOriginY + totalHeight > screenBounds.maxY {
+                newOriginY = screenBounds.maxY - totalHeight
+            }
+            if newOriginX < screenBounds.minX {
+                newOriginX = screenBounds.minX
+            } else if newOriginX + totalWidth > screenBounds.maxX {
+                newOriginX = screenBounds.maxX - totalWidth
+            }
+
+            mainShadow.frame = NSRect(x: mainX, y: 0, width: bottomWidth, height: bottomHeight)
+            annotationToolbarView?.frame = NSRect(x: annotX, y: bottomHeight + gap, width: annotWidth, height: annotHeight)
+            let newWindowFrame = NSRect(x: newOriginX, y: newOriginY, width: totalWidth, height: totalHeight)
+            panel.setFrame(newWindowFrame, display: true, animate: false)
+        } else {
+            annotationToolbarView?.isHidden = true
+
+            let totalWidth = bottomWidth
+            let totalHeight = bottomHeight
+
+            let currentCenter = panel.frame.midX
+            let currentBottom = panel.frame.minY
+            var newOriginX = currentCenter - totalWidth / 2.0
+            let newOriginY = currentBottom
+
+            let screenBounds = screen.visibleFrame
+            if newOriginX < screenBounds.minX {
+                newOriginX = screenBounds.minX
+            } else if newOriginX + totalWidth > screenBounds.maxX {
+                newOriginX = screenBounds.maxX - totalWidth
+            }
+
+            mainShadow.frame = NSRect(x: 0, y: 0, width: bottomWidth, height: bottomHeight)
+            let newWindowFrame = NSRect(x: newOriginX, y: newOriginY, width: totalWidth, height: totalHeight)
+            panel.setFrame(newWindowFrame, display: true, animate: false)
+        }
     }
 
     func updateAnnotationButtonState() {
@@ -6981,18 +7067,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pauseButton.toolTip = recorder.isPaused ? "Resume Recording" : "Pause Recording"
 
         // Re-layout panel to adapt size with smooth animation, preserving exact uniform 48pt height
-        if let contentView = panel.contentView {
-            contentView.layoutSubtreeIfNeeded()
-            let newWidth = contentView.fittingSize.width
-            let targetHeight: CGFloat = 48.0
-            if panel.frame.width != newWidth || panel.frame.height != targetHeight {
-                var newFrame = panel.frame
-                let diffX = newWidth - newFrame.width
-                newFrame.origin.x -= diffX / 2.0
-                newFrame.size = NSSize(width: newWidth, height: targetHeight)
-                panel.setFrame(newFrame, display: true, animate: true)
-            }
-        }
+        updateHUDLayout()
 
         // Handle Cursor Highlighter lifecycle
         if recorder.isRecording && currentSettings.highlightCursor {
