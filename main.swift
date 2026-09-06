@@ -404,11 +404,11 @@ class RegionSelectionWindow: NSWindow {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = false
-        self.level = .screenSaver
+        self.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 3)
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         self.isReleasedWhenClosed = false
 
-        let selectionView = RegionSelectionView(frame: self.contentView?.bounds ?? .zero)
+        let selectionView = RegionSelectionView(frame: NSRect(origin: .zero, size: screen.frame.size))
         selectionView.autoresizingMask = [.width, .height]
         self.contentView = selectionView
     }
@@ -423,6 +423,7 @@ class RegionSelectionView: NSView {
     var onCancel: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { return true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -3401,6 +3402,9 @@ class TrimRangeSliderView: NSView {
 // ============================================================
 
 class VideoTrimmerWindow: NSWindow {
+    override var canBecomeKey: Bool { return true }
+    override var canBecomeMain: Bool { return true }
+
     let fileURL: URL
     var player: AVPlayer?
     var playerView: AVPlayerView!
@@ -3883,6 +3887,15 @@ class VideoTrimmerWindow: NSWindow {
 // Post-Recording HUD Toast Window (Bottom-Right Floating Notification)
 // ============================================================
 
+extension NSAlert {
+    @discardableResult
+    func runModalOnTop() -> NSApplication.ModalResponse {
+        self.window.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 4)
+        self.window.orderFrontRegardless()
+        return self.runModal()
+    }
+}
+
 class RecordingToastWindow: NSWindow {
     var fileURL: URL
     var onDismiss: (() -> Void)?
@@ -4225,7 +4238,7 @@ class RecordingToastWindow: NSWindow {
         input.stringValue = fileURL.deletingPathExtension().lastPathComponent
         alert.accessoryView = input
 
-        if alert.runModal() == .alertFirstButtonReturn {
+        if alert.runModalOnTop() == .alertFirstButtonReturn {
             var rawName = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !rawName.isEmpty else { return }
             rawName = rawName.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
@@ -4263,7 +4276,7 @@ class RecordingToastWindow: NSWindow {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn {
+        if alert.runModalOnTop() == .alertFirstButtonReturn {
             try? FileManager.default.trashItem(at: fileURL, resultingItemURL: nil)
             dismissAnimated()
         }
@@ -4287,6 +4300,9 @@ class RecordingToastWindow: NSWindow {
 // ============================================================
 
 class RecordingFinishedWindow: NSWindow {
+    override var canBecomeKey: Bool { return true }
+    override var canBecomeMain: Bool { return true }
+
     var fileURL: URL
     var onDismiss: (() -> Void)?
     var trimmerWindow: VideoTrimmerWindow?
@@ -4547,7 +4563,7 @@ class RecordingFinishedWindow: NSWindow {
         input.stringValue = fileURL.deletingPathExtension().lastPathComponent
         alert.accessoryView = input
 
-        if alert.runModal() == .alertFirstButtonReturn {
+        if alert.runModalOnTop() == .alertFirstButtonReturn {
             var rawName = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !rawName.isEmpty else { return }
             rawName = rawName.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
@@ -4565,7 +4581,7 @@ class RecordingFinishedWindow: NSWindow {
                     errAlert.messageText = "Failed to Rename"
                     errAlert.informativeText = error.localizedDescription
                     errAlert.alertStyle = .warning
-                    errAlert.runModal()
+                    errAlert.runModalOnTop()
                 }
             }
         }
@@ -4649,7 +4665,7 @@ class RecordingFinishedWindow: NSWindow {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn {
+        if alert.runModalOnTop() == .alertFirstButtonReturn {
             try? FileManager.default.trashItem(at: fileURL, resultingItemURL: nil)
             self.orderOut(nil)
             self.close()
@@ -5726,7 +5742,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             alert.addButton(withTitle: "Update Now")
             alert.addButton(withTitle: "Later")
-            if alert.runModal() == .alertFirstButtonReturn {
+            if alert.runModalOnTop() == .alertFirstButtonReturn {
                 downloadAndInstallUpdate()
             }
         } else if remote != nil {
@@ -5736,12 +5752,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 alert.accessoryView = createChangelogView(changelog: changelog)
             }
             alert.addButton(withTitle: "OK")
-            alert.runModal()
+            alert.runModalOnTop()
         } else {
             alert.messageText = "Couldn't Check for Updates"
             alert.informativeText = "Please check your internet connection and try again."
             alert.addButton(withTitle: "OK")
-            alert.runModal()
+            alert.runModalOnTop()
         }
     }
 
@@ -5757,7 +5773,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     err.messageText = "Download Failed"
                     err.informativeText = "Could not download the update:\n\(error.localizedDescription)\n\nPlease check your internet connection and try again."
                     err.addButton(withTitle: "OK")
-                    err.runModal()
+                    err.runModalOnTop()
                     return
                 }
                 
@@ -5780,7 +5796,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     err.messageText = "Could Not Save Installer"
                     err.informativeText = "The installer was downloaded but couldn't be saved:\n\(error.localizedDescription)"
                     err.addButton(withTitle: "OK")
-                    err.runModal()
+                    err.runModalOnTop()
                 }
             }
         }
@@ -6605,7 +6621,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.messageText = "Recording Error"
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .critical
-            alert.runModal()
+            alert.runModalOnTop()
         }
         
         var isSysAudioActive = false
@@ -6829,6 +6845,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 regionSelectionWindows.append(window)
                 window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
                 if let view = window.contentView as? RegionSelectionView {
                     window.makeFirstResponder(view)
                 }
@@ -6866,6 +6883,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 regionSelectionWindows.append(window)
                 window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
                 if let view = window.contentView as? RegionSelectionView {
                     window.makeFirstResponder(view)
                 }
