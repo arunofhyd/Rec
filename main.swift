@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.4.3"
+    return "1.4.4"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -3189,7 +3189,7 @@ class FloatingPanel: NSPanel {
         super.init(contentRect: contentRect, styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView], backing: backingStoreType, defer: flag)
         self.isFloatingPanel = true
         self.level = .floating
-        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         self.titlebarAppearsTransparent = true
         self.titleVisibility = .hidden
         self.isMovableByWindowBackground = true
@@ -5158,10 +5158,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func activeScreen() -> NSScreen {
+        let mouseLoc = NSEvent.mouseLocation
+        return NSScreen.screens.first(where: { NSPointInRect(mouseLoc, $0.frame) }) ?? NSScreen.main ?? NSScreen.screens.first ?? NSScreen()
+    }
+
+    func centerPanel(on targetScreen: NSScreen) {
+        guard let panel = panel else { return }
+        let visibleFrame = targetScreen.visibleFrame
+        let width = panel.frame.width
+        let height = panel.frame.height
+        let newX = round(visibleFrame.minX + (visibleFrame.width - width) / 2.0)
+        let newY = max(round(visibleFrame.minY + 30.0), round(targetScreen.frame.minY + 80.0))
+        panel.setFrame(NSRect(x: newX, y: newY, width: width, height: height), display: true)
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag || !panel.isVisible {
-            showPanel()
+        let currentScreen = activeScreen()
+        if panel.screen != currentScreen || !panel.frame.intersects(currentScreen.visibleFrame) {
+            centerPanel(on: currentScreen)
         }
+        showPanel()
         return true
     }
 
@@ -5378,6 +5395,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showPanel() {
+        let currentScreen = activeScreen()
+        if panel.screen != currentScreen || !panel.frame.intersects(currentScreen.visibleFrame) {
+            centerPanel(on: currentScreen)
+        }
         statusItem.isVisible = false
         updateButtonImage()
         panel.makeKeyAndOrderFront(nil)
@@ -6243,8 +6264,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - UI Setup
     func setupUI() {
-        guard let screen = NSScreen.main else { return }
-        let rect = NSRect(x: screen.frame.width / 2, y: 100, width: 10, height: 10)
+        let screen = activeScreen()
+        let rect = NSRect(x: screen.visibleFrame.midX - 5, y: screen.visibleFrame.minY + 50, width: 10, height: 10)
         panel = FloatingPanel(contentRect: rect, styleMask: [], backing: .buffered, defer: false)
         guard let contentView = panel.toolbarEffectView ?? panel.contentView else { return }
 
@@ -6753,7 +6774,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         stackView.layoutSubtreeIfNeeded()
         let bottomWidth = ceil(contentView.fittingSize.width)
-        let initialRect = NSRect(x: (screen.frame.width - bottomWidth) / 2, y: 100, width: bottomWidth, height: 48.0)
+        let initialX = round(screen.visibleFrame.minX + (screen.visibleFrame.width - bottomWidth) / 2.0)
+        let initialY = max(round(screen.visibleFrame.minY + 30.0), round(screen.frame.minY + 80.0))
+        let initialRect = NSRect(x: initialX, y: initialY, width: bottomWidth, height: 48.0)
         panel.setFrame(initialRect, display: true)
         panel.mainShadowContainer.frame = NSRect(x: 0, y: 0, width: bottomWidth, height: 48.0)
         updateButtonImage()

@@ -1,7 +1,16 @@
 {
-  "version": "1.4.3",
+  "version": "1.4.4",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.4",
+      "date": "2026-09-09",
+      "changes": [
+        "Active Desktop & Screen Launch: Floating HUD automatically opens and re-centers on the user's active display and mouse location, preventing multi-monitor coordinate misalignment.",
+        "Persistent Fullscreen & Spaces Support: Added .fullScreenAuxiliary collection behavior so the HUD remains accessible across all Spaces, Mission Control desktops, and native macOS full-screen apps.",
+        "Instant Re-summoning: Re-opening Rec from Spotlight, Raycast, Alfred, or the Dock immediately summons the panel to the current workspace and brings it to front."
+      ]
+    },
     {
       "version": "1.4.3",
       "date": "2026-09-06",
