@@ -195,13 +195,23 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 if ! swiftc -O -o "$APP/Contents/MacOS/$APP_NAME" main.swift -framework Cocoa -framework ScreenCaptureKit -framework AVFoundation 2>build_errors.txt; then
-    fail "Compilation failed."
-    printf "${GREY}"; cat build_errors.txt; printf "${NC}\n"
-    exit 1
+    warn "Local compilation failed."
+    printf "  ${GREY}Falling back to downloading pre-built release...${NC}\n"
+    
+    ZIP_URL="https://github.com/arunofhyd/Rec/releases/download/v${APP_VERSION}/Rec.zip"
+    if ! curl -fsSL "$ZIP_URL" -o Rec.zip; then
+        ZIP_URL="https://github.com/arunofhyd/Rec/releases/latest/download/Rec.zip"
+        curl -fsSL "$ZIP_URL" -o Rec.zip || { fail "Download failed."; exit 1; }
+    fi
+    
+    rm -rf "$APP"
+    unzip -o -q Rec.zip
+    ok "Pre-built app downloaded successfully."
+else
+    chmod +x "$APP/Contents/MacOS/$APP_NAME"
+    codesign --force --deep --sign - --requirements '=designated => identifier "com.aoh.rec"' "$APP" >/dev/null 2>&1 || true
+    ok "App built."
 fi
-chmod +x "$APP/Contents/MacOS/$APP_NAME"
-codesign --force --deep --sign - --requirements '=designated => identifier "com.aoh.rec"' "$APP" >/dev/null 2>&1 || true
-ok "App built."
 printf "\n"
 
 if [ "$CI" = "true" ]; then
