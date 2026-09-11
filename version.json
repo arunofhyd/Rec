@@ -1,7 +1,16 @@
 {
-  "version": "1.4.4",
+  "version": "1.4.5",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.5",
+      "date": "2026-09-11",
+      "changes": [
+        "Trim Out (Cut Out Section) Mode: Added dual trim modes ('Trim In' and 'Trim Out') with interactive timeline controls. Trim Out removes an unwanted segment and seamlessly stitches retained ends together via AVMutableComposition.",
+        "Interactive Cutout Preview & Striped Visuals: Distinct coral/red diagonal cut styling with 'CUT OUT' badge; dedicated 'Preview Cut' playback action skips the cut section in real time to preview transitions before saving.",
+        "Direct Video File Opening & Editor: Registered CFBundleDocumentTypes for video files, enabling opening videos directly in Rec from Finder or CLI, plus an 'Open Video to Edit...' (Cmd+O) menu bar action."
+      ]
+    },
     {
       "version": "1.4.4",
       "date": "2026-09-09",

@@ -44,6 +44,25 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <string>This app requires screen capture access to record your screen.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>This app requires microphone access to record audio narration.</string>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Video</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.movie</string>
+        <string>public.video</string>
+        <string>com.apple.quicktime-movie</string>
+        <string>public.mpeg-4</string>
+        <string>public.avi</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST

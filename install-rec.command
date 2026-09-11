@@ -190,6 +190,25 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <string>This app needs access to the microphone and internal audio to record sound.</string>
   <key>NSCameraUsageDescription</key>
   <string>This app needs camera access to show a camera overlay during screen recording.</string>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Video</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.movie</string>
+        <string>public.video</string>
+        <string>com.apple.quicktime-movie</string>
+        <string>public.mpeg-4</string>
+        <string>public.avi</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST
