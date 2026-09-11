@@ -12,7 +12,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.4.4"
+    return "1.4.6"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -3672,7 +3672,7 @@ class TrimRangeSliderView: NSView {
 // Native In-App Video Trimmer Window
 // ============================================================
 
-class VideoTrimmerWindow: NSWindow {
+class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     override var canBecomeKey: Bool { return true }
     override var canBecomeMain: Bool { return true }
 
@@ -3698,17 +3698,37 @@ class VideoTrimmerWindow: NSWindow {
     var exportStatusLabel: NSTextField!
     var playSelectionBtn: NSButton!
     var muteButton: NSButton!
+    var fullscreenButton: NSButton!
     var trimButton: NSButton!
     var progressIndicator: NSProgressIndicator!
     var isPlayingSelection: Bool = false
     var hasSkippedCut: Bool = false
     var isAudioMuted: Bool = false
 
+    private var visualEffectView: NSVisualEffectView!
+    private var playerTopConstraint: NSLayoutConstraint!
+    private let fullscreenSymConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+
     init(fileURL: URL) {
         self.fileURL = fileURL
-        let rect = NSRect(x: 0, y: 0, width: 720, height: 565)
+
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+
+        let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let initialWidth = min(1180, max(880, screenFrame.width * 0.78))
+        let initialHeight = min(840, max(620, screenFrame.height * 0.80))
+        let rect = NSRect(
+            x: screenFrame.midX - initialWidth / 2,
+            y: screenFrame.midY - initialHeight / 2,
+            width: initialWidth,
+            height: initialHeight
+        )
+
         super.init(contentRect: rect, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
 
+        self.delegate = self
         self.isReleasedWhenClosed = false
         self.titlebarAppearsTransparent = true
         self.title = "Edit Video — \(fileURL.lastPathComponent)"
@@ -3718,10 +3738,11 @@ class VideoTrimmerWindow: NSWindow {
         self.isOpaque = false
         self.hasShadow = true
         self.center()
-        self.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
-        self.minSize = NSSize(width: 580, height: 460)
+        self.level = .normal
+        self.collectionBehavior = [.fullScreenPrimary, .fullScreenAllowsTiling]
+        self.minSize = NSSize(width: 640, height: 480)
 
-        let visualEffectView = NSVisualEffectView(frame: rect)
+        visualEffectView = NSVisualEffectView(frame: rect)
         visualEffectView.material = .popover
         visualEffectView.state = .active
         visualEffectView.blendingMode = .withinWindow
@@ -3891,7 +3912,19 @@ class VideoTrimmerWindow: NSWindow {
         trimButton.translatesAutoresizingMaskIntoConstraints = false
         trimButton.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
-        let bottomStack = NSStackView(views: [playSelectionBtn, resetBtn, muteButton, progressIndicator, exportStatusLabel, NSView(), trimButton])
+        fullscreenButton = NSButton()
+        fullscreenButton.bezelStyle = .rounded
+        fullscreenButton.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+        fullscreenButton.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Full Screen")?.withSymbolConfiguration(fullscreenSymConfig)
+        fullscreenButton.imagePosition = .imageOnly
+        fullscreenButton.toolTip = "Toggle Full Screen (Fn-F)"
+        fullscreenButton.target = self
+        fullscreenButton.action = #selector(toggleFullScreenAction)
+        fullscreenButton.translatesAutoresizingMaskIntoConstraints = false
+        fullscreenButton.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        fullscreenButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
+
+        let bottomStack = NSStackView(views: [playSelectionBtn, resetBtn, muteButton, fullscreenButton, progressIndicator, exportStatusLabel, NSView(), trimButton])
         bottomStack.orientation = .horizontal
         bottomStack.alignment = .centerY
         bottomStack.spacing = 10
@@ -3905,8 +3938,10 @@ class VideoTrimmerWindow: NSWindow {
         container.addSubview(rightStack)
         container.addSubview(bottomStack)
 
+        playerTopConstraint = playerView.topAnchor.constraint(equalTo: container.topAnchor, constant: 36)
+
         NSLayoutConstraint.activate([
-            playerView.topAnchor.constraint(equalTo: container.topAnchor, constant: 36),
+            playerTopConstraint,
             playerView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
             playerView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
 
@@ -4021,9 +4056,16 @@ class VideoTrimmerWindow: NSWindow {
         }
 
         Task {
-            if let duration = try? await asset.load(.duration) {
-                let seconds = CMTimeGetSeconds(duration)
-                await MainActor.run {
+            let duration = try? await asset.load(.duration)
+            let videoTracks = try? await asset.loadTracks(withMediaType: .video)
+            var naturalSize: CGSize? = nil
+            if let track = videoTracks?.first {
+                naturalSize = try? await track.load(.naturalSize)
+            }
+
+            await MainActor.run {
+                if let duration = duration {
+                    let seconds = CMTimeGetSeconds(duration)
                     self.totalDuration = seconds > 0 ? seconds : 1.0
                     self.trimStartSeconds = 0.0
                     self.trimEndSeconds = self.totalDuration
@@ -4033,8 +4075,46 @@ class VideoTrimmerWindow: NSWindow {
                     self.updateLabels()
                     self.updateTrimButtonTitle()
                 }
+
+                if let size = naturalSize, size.width > 0 && size.height > 0 {
+                    self.adjustWindowSizeToFitVideo(naturalSize: size)
+                }
             }
         }
+    }
+
+    private func adjustWindowSizeToFitVideo(naturalSize: CGSize) {
+        guard !self.styleMask.contains(.fullScreen) else { return }
+        let screenFrame = self.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+
+        let chromeHeight: CGFloat = 176.0
+        let chromeWidth: CGFloat = 32.0
+
+        let maxW = min(1380.0, screenFrame.width * 0.88)
+        let maxH = min(920.0, screenFrame.height * 0.88)
+        let availW = max(500.0, maxW - chromeWidth)
+        let availH = max(400.0, maxH - chromeHeight)
+
+        let aspect = naturalSize.width / naturalSize.height
+        var videoW: CGFloat
+        var videoH: CGFloat
+
+        if aspect >= (availW / availH) {
+            videoW = availW
+            videoH = round(videoW / aspect)
+        } else {
+            videoH = availH
+            videoW = round(videoH * aspect)
+        }
+
+        let targetW = max(860.0, min(maxW, videoW + chromeWidth))
+        let targetH = max(600.0, min(maxH, videoH + chromeHeight))
+
+        let newX = round(screenFrame.midX - targetW / 2.0)
+        let newY = round(screenFrame.midY - targetH / 2.0)
+        let newRect = NSRect(x: newX, y: newY, width: targetW, height: targetH)
+
+        self.setFrame(newRect, display: true, animate: true)
     }
 
     private func stopSelectionPlaybackIfNeeded() {
@@ -4367,6 +4447,36 @@ class VideoTrimmerWindow: NSWindow {
         }
     }
 
+    // ============================================================
+    // Full Screen & Window Delegate
+    // ============================================================
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        visualEffectView?.layer?.cornerRadius = 0
+        visualEffectView?.layer?.borderWidth = 0
+        playerTopConstraint?.constant = 14
+        fullscreenButton?.image = NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left", accessibilityDescription: "Exit Full Screen")?.withSymbolConfiguration(fullscreenSymConfig)
+        fullscreenButton?.toolTip = "Exit Full Screen (Fn-F or ⎋)"
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        visualEffectView?.layer?.cornerRadius = 18
+        visualEffectView?.layer?.borderWidth = 1.0
+        playerTopConstraint?.constant = 36
+        fullscreenButton?.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Enter Full Screen")?.withSymbolConfiguration(fullscreenSymConfig)
+        fullscreenButton?.toolTip = "Enter Full Screen (Fn-F)"
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if styleMask.contains(.fullScreen) {
+            toggleFullScreen(nil)
+        }
+    }
+
+    @objc private func toggleFullScreenAction() {
+        self.toggleFullScreen(nil)
+    }
+
     override func close() {
         if let token = timeObserverToken {
             player?.removeTimeObserver(token)
@@ -4375,11 +4485,23 @@ class VideoTrimmerWindow: NSWindow {
         player?.pause()
         onWindowWillClose?(self)
         super.close()
+
+        if (NSApp.delegate as? AppDelegate)?.openTrimmers.isEmpty ?? true {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 
     @objc private func closeWindow() {
-        self.orderOut(nil)
-        self.close()
+        if styleMask.contains(.fullScreen) {
+            toggleFullScreen(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                self?.orderOut(nil)
+                self?.close()
+            }
+        } else {
+            self.orderOut(nil)
+            self.close()
+        }
     }
 }
 
@@ -4704,15 +4826,23 @@ class RecordingToastWindow: NSWindow {
     }
 
     @objc private func menuTrim() {
-        let trimmer = VideoTrimmerWindow(fileURL: fileURL)
-        trimmer.onTrimCompleted = { [weak self] updatedURL in
-            guard let self = self else { return }
-            self.fileURL = updatedURL
-            self.refreshToast(with: updatedURL)
+        if let appDelegate = NSApp.delegate as? AppDelegate {
+            appDelegate.openVideoTrimmer(for: fileURL) { [weak self] updatedURL in
+                guard let self = self else { return }
+                self.fileURL = updatedURL
+                self.refreshToast(with: updatedURL)
+            }
+        } else {
+            let trimmer = VideoTrimmerWindow(fileURL: fileURL)
+            trimmer.onTrimCompleted = { [weak self] updatedURL in
+                guard let self = self else { return }
+                self.fileURL = updatedURL
+                self.refreshToast(with: updatedURL)
+            }
+            self.trimmerWindow = trimmer
+            trimmer.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
-        self.trimmerWindow = trimmer
-        trimmer.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func menuCopy() {
@@ -5148,14 +5278,21 @@ class RecordingFinishedWindow: NSWindow {
     }
 
     @objc private func trimClicked() {
-        let trimmer = VideoTrimmerWindow(fileURL: fileURL)
-        trimmer.onTrimCompleted = { [weak self] updatedURL in
-            guard let self = self else { return }
-            self.refreshPreviewCard(with: updatedURL)
+        if let appDelegate = NSApp.delegate as? AppDelegate {
+            appDelegate.openVideoTrimmer(for: fileURL) { [weak self] updatedURL in
+                guard let self = self else { return }
+                self.refreshPreviewCard(with: updatedURL)
+            }
+        } else {
+            let trimmer = VideoTrimmerWindow(fileURL: fileURL)
+            trimmer.onTrimCompleted = { [weak self] updatedURL in
+                guard let self = self else { return }
+                self.refreshPreviewCard(with: updatedURL)
+            }
+            self.trimmerWindow = trimmer
+            trimmer.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
-        self.trimmerWindow = trimmer
-        trimmer.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func shareClicked(_ sender: NSButton) {
@@ -5606,21 +5743,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.isVisible = false
     }
 
-    func openVideoTrimmer(for fileURL: URL) {
+    func openVideoTrimmer(for fileURL: URL, onTrimCompleted: ((URL) -> Void)? = nil) {
         if let existing = openTrimmers.first(where: { $0.fileURL == fileURL }) {
-            existing.center()
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
+        NSApp.setActivationPolicy(.regular)
+
         let trimmer = VideoTrimmerWindow(fileURL: fileURL)
+        if let onTrimCompleted = onTrimCompleted {
+            trimmer.onTrimCompleted = onTrimCompleted
+        }
         trimmer.onWindowWillClose = { [weak self, weak trimmer] win in
             guard let self = self, let win = trimmer else { return }
             self.openTrimmers.removeAll(where: { $0 === win })
+            if self.openTrimmers.isEmpty {
+                NSApp.setActivationPolicy(.accessory)
+            }
         }
         openTrimmers.append(trimmer)
-        trimmer.center()
         trimmer.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

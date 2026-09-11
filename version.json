@@ -1,7 +1,16 @@
 {
-  "version": "1.4.5",
+  "version": "1.4.6",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.6",
+      "date": "2026-09-11",
+      "changes": [
+        "Native macOS Full Screen Space: Video editor window supports true macOS Full Screen spaces (.fullScreenPrimary & .fullScreenAllowsTiling) via traffic light green button, dedicated toolbar action, Fn-F / Cmd+Ctrl+F, and Esc.",
+        "Aspect-Aware Expansive Auto-Sizing: Automatically proportions the window to fit the video's natural dimensions up to 88% of screen visible area, eliminating cramped editing.",
+        "Edge-to-Edge Theater Mode: Fullscreen mode smoothly eliminates borders and corner radiuses for an immersive theater editing canvas with full-width precision scrubbing."
+      ]
+    },
     {
       "version": "1.4.5",
       "date": "2026-09-11",
