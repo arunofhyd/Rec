@@ -1,7 +1,17 @@
 {
-  "version": "1.4.6",
+  "version": "1.4.7",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.7",
+      "date": "2026-09-16",
+      "changes": [
+        "Multi-Clip Video Stitching: Import and stitch multiple video clips together seamlessly in sequence with aspect-fit transforms to handle mixed orientations and resolutions.",
+        "Interactive Clip Sequence Strip: Visual clip cards with drag-to-reorder, total duration badges, and smooth horizontal scrolling.",
+        "Per-Clip Audio & Editing Controls: Right-click any clip to mute its audio track or open it in a dedicated editing window that updates the main sequence upon saving.",
+        "Trim Out Mode Compatibility: Full support for both Trim In and Trim Out cut-out modes during multi-clip stitched export."
+      ]
+    },
     {
       "version": "1.4.6",
       "date": "2026-09-11",
