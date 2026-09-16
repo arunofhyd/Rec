@@ -6,6 +6,7 @@ import VideoToolbox
 import os.log
 import SwiftUI
 import QuartzCore
+import UniformTypeIdentifiers
 
 // MARK: - Configuration
 let appVersion: String = {
@@ -3669,16 +3670,567 @@ class TrimRangeSliderView: NSView {
 }
 
 // ============================================================
-// Native In-App Video Trimmer Window
+// Multi-Clip Sequence Model & Views for Video Stitching
+// ============================================================
+
+class VideoClipItem: NSObject {
+    let id: UUID = UUID()
+    var url: URL
+    var title: String
+    var duration: Double = 0.0
+    var naturalSize: CGSize = .zero
+    var preferredTransform: CGAffineTransform = .identity
+    var thumbnail: NSImage?
+    var startTime: Double = 0.0
+    var endTime: Double = 0.0
+    var isMuted: Bool = false
+
+    var effectiveDuration: Double {
+        if endTime > startTime && endTime <= (duration + 0.05) {
+            return endTime - startTime
+        }
+        return max(0.01, duration)
+    }
+
+    init(url: URL) {
+        self.url = url
+        self.title = url.lastPathComponent
+        super.init()
+    }
+}
+
+class TrimmerContainerView: NSVisualEffectView {
+    var onFilesDropped: (([URL]) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([
+            .fileURL,
+            NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+            .URL
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        registerForDraggedTypes([
+            .fileURL,
+            NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+            .URL
+        ])
+    }
+
+    private func extractVideoURLs(from sender: NSDraggingInfo) -> [URL] {
+        let pboard = sender.draggingPasteboard
+        var urls: [URL] = []
+        let videoExts = Set(["mp4", "mov", "m4v", "mkv", "avi", "webm"])
+
+        if let items = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+            for u in items {
+                if videoExts.contains(u.pathExtension.lowercased()) {
+                    urls.append(u)
+                }
+            }
+        }
+
+        if urls.isEmpty, let paths = pboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String] {
+            for p in paths {
+                let u = URL(fileURLWithPath: p)
+                if videoExts.contains(u.pathExtension.lowercased()) {
+                    urls.append(u)
+                }
+            }
+        }
+        return urls
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let urls = extractVideoURLs(from: sender)
+        return urls.isEmpty ? [] : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let urls = extractVideoURLs(from: sender)
+        return urls.isEmpty ? [] : .copy
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        return !extractVideoURLs(from: sender).isEmpty
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = extractVideoURLs(from: sender)
+        guard !urls.isEmpty else { return false }
+        onFilesDropped?(urls)
+        return true
+    }
+}
+
+class ClipCardView: NSView, NSDraggingSource {
+    static let dragType = NSPasteboard.PasteboardType("com.rec.clipcard.index")
+
+    let clip: VideoClipItem
+    let clipIndex: Int
+    let totalClips: Int
+    var isActive: Bool = false {
+        didSet { updateAppearance() }
+    }
+
+    var onSelect: (() -> Void)?
+    var onMoveLeft: (() -> Void)?
+    var onMoveRight: (() -> Void)?
+    var onRemove: (() -> Void)?
+    var onDragDropReorder: ((Int, Int) -> Void)?
+    var onToggleMute: (() -> Void)?
+    var onEditInNewWindow: (() -> Void)?
+
+    private let thumbView = NSImageView()
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let durationLabel = NSTextField(labelWithString: "")
+    private let muteBadge = NSImageView()
+    private let moveLeftBtn = NSButton()
+    private let moveRightBtn = NSButton()
+    private let removeBtn = NSButton()
+    private var isHovered: Bool = false
+    private var dragStartLocation: NSPoint?
+
+    init(clip: VideoClipItem, index: Int, totalClips: Int, isActive: Bool) {
+        self.clip = clip
+        self.clipIndex = index
+        self.totalClips = totalClips
+        self.isActive = isActive
+        super.init(frame: .zero)
+        setupUI()
+        updateAppearance()
+        registerForDraggedTypes([ClipCardView.dragType])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupUI() {
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.masksToBounds = true
+
+        translatesAutoresizingMaskIntoConstraints = false
+        widthAnchor.constraint(equalToConstant: 180).isActive = true
+        heightAnchor.constraint(equalToConstant: 54).isActive = true
+
+        // Thumbnail
+        thumbView.translatesAutoresizingMaskIntoConstraints = false
+        thumbView.wantsLayer = true
+        thumbView.layer?.cornerRadius = 4
+        thumbView.layer?.masksToBounds = true
+        thumbView.imageScaling = .scaleProportionallyUpOrDown
+        if let thumb = clip.thumbnail {
+            thumbView.image = thumb
+        } else {
+            let symConfig = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+            thumbView.image = NSImage(systemSymbolName: "film", accessibilityDescription: nil)?.withSymbolConfiguration(symConfig)
+            thumbView.contentTintColor = .secondaryLabelColor
+        }
+        addSubview(thumbView)
+
+        // Title
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        titleLabel.textColor = .labelColor
+        titleLabel.lineBreakMode = .byTruncatingMiddle
+        titleLabel.stringValue = "#\(clipIndex + 1) \(clip.title)"
+        addSubview(titleLabel)
+
+        // Duration
+        let mins = Int(clip.duration) / 60
+        let secs = Int(clip.duration) % 60
+        let tenths = Int((clip.duration.truncatingRemainder(dividingBy: 1)) * 10)
+        durationLabel.stringValue = String(format: "%02d:%02d.%01d", mins, secs, tenths)
+        durationLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        durationLabel.textColor = clip.isMuted ? .systemOrange : .secondaryLabelColor
+        durationLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(durationLabel)
+
+        // Mute Badge
+        muteBadge.translatesAutoresizingMaskIntoConstraints = false
+        let muteSym = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
+        muteBadge.image = NSImage(systemSymbolName: "speaker.slash.fill", accessibilityDescription: "Muted")?.withSymbolConfiguration(muteSym)
+        muteBadge.contentTintColor = .systemOrange
+        muteBadge.toolTip = "Audio muted for this clip (Right-click to unmute)"
+        muteBadge.isHidden = !clip.isMuted
+        addSubview(muteBadge)
+
+        // Buttons
+        let btnConfig = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
+        moveLeftBtn.translatesAutoresizingMaskIntoConstraints = false
+        moveLeftBtn.bezelStyle = .inline
+        moveLeftBtn.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Move Before")?.withSymbolConfiguration(btnConfig)
+        moveLeftBtn.toolTip = "Move clip before"
+        moveLeftBtn.target = self
+        moveLeftBtn.action = #selector(leftClicked)
+        moveLeftBtn.isEnabled = clipIndex > 0
+        addSubview(moveLeftBtn)
+
+        moveRightBtn.translatesAutoresizingMaskIntoConstraints = false
+        moveRightBtn.bezelStyle = .inline
+        moveRightBtn.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Move After")?.withSymbolConfiguration(btnConfig)
+        moveRightBtn.toolTip = "Move clip after"
+        moveRightBtn.target = self
+        moveRightBtn.action = #selector(rightClicked)
+        moveRightBtn.isEnabled = clipIndex < (totalClips - 1)
+        addSubview(moveRightBtn)
+
+        removeBtn.translatesAutoresizingMaskIntoConstraints = false
+        removeBtn.bezelStyle = .inline
+        removeBtn.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Remove Clip")?.withSymbolConfiguration(btnConfig)
+        removeBtn.toolTip = "Remove from sequence"
+        removeBtn.target = self
+        removeBtn.action = #selector(removeClicked)
+        removeBtn.isHidden = (totalClips <= 1)
+        addSubview(removeBtn)
+
+        NSLayoutConstraint.activate([
+            thumbView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            thumbView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            thumbView.widthAnchor.constraint(equalToConstant: 44),
+            thumbView.heightAnchor.constraint(equalToConstant: 32),
+
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            titleLabel.leadingAnchor.constraint(equalTo: thumbView.trailingAnchor, constant: 8),
+            titleLabel.trailingAnchor.constraint(equalTo: removeBtn.leadingAnchor, constant: -4),
+
+            durationLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 3),
+            durationLabel.leadingAnchor.constraint(equalTo: thumbView.trailingAnchor, constant: 8),
+
+            muteBadge.leadingAnchor.constraint(equalTo: durationLabel.trailingAnchor, constant: 4),
+            muteBadge.centerYAnchor.constraint(equalTo: durationLabel.centerYAnchor),
+            muteBadge.widthAnchor.constraint(equalToConstant: 12),
+            muteBadge.heightAnchor.constraint(equalToConstant: 12),
+
+            removeBtn.topAnchor.constraint(equalTo: topAnchor, constant: 5),
+            removeBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            removeBtn.widthAnchor.constraint(equalToConstant: 16),
+            removeBtn.heightAnchor.constraint(equalToConstant: 16),
+
+            moveLeftBtn.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            moveLeftBtn.trailingAnchor.constraint(equalTo: moveRightBtn.leadingAnchor, constant: -4),
+            moveLeftBtn.widthAnchor.constraint(equalToConstant: 16),
+            moveLeftBtn.heightAnchor.constraint(equalToConstant: 16),
+
+            moveRightBtn.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            moveRightBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            moveRightBtn.widthAnchor.constraint(equalToConstant: 16),
+            moveRightBtn.heightAnchor.constraint(equalToConstant: 16),
+        ])
+
+        let tracking = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(tracking)
+    }
+
+    private func updateAppearance() {
+        if isActive {
+            layer?.borderWidth = 2.0
+            layer?.borderColor = NSColor.systemTeal.cgColor
+            layer?.backgroundColor = NSColor(name: nil, dynamicProvider: { app in
+                app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor(white: 0.22, alpha: 0.95)
+                    : NSColor(white: 0.96, alpha: 0.98)
+            }).cgColor
+        } else {
+            layer?.borderWidth = 1.0
+            layer?.borderColor = isHovered
+                ? NSColor.white.withAlphaComponent(0.28).cgColor
+                : NSColor.white.withAlphaComponent(0.12).cgColor
+            layer?.backgroundColor = NSColor(name: nil, dynamicProvider: { app in
+                app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor(white: 0.16, alpha: 0.85)
+                    : NSColor(white: 0.92, alpha: 0.90)
+            }).cgColor
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        updateAppearance()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        updateAppearance()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        dragStartLocation = event.locationInWindow
+        onSelect?()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = dragStartLocation else { return }
+        let current = event.locationInWindow
+        let dist = hypot(current.x - start.x, current.y - start.y)
+        if dist > 8 {
+            dragStartLocation = nil
+            let item = NSPasteboardItem()
+            item.setString(String(clipIndex), forType: ClipCardView.dragType)
+            let dragItem = NSDraggingItem(pasteboardWriter: item)
+            dragItem.setDraggingFrame(bounds, contents: self.bitmapImage())
+            beginDraggingSession(with: [dragItem], event: event, source: self)
+        }
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        return .move
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if sender.draggingPasteboard.types?.contains(ClipCardView.dragType) == true {
+            layer?.borderColor = NSColor.systemOrange.cgColor
+            layer?.borderWidth = 2.0
+            return .move
+        }
+        return []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        updateAppearance()
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        updateAppearance()
+        if let str = sender.draggingPasteboard.string(forType: ClipCardView.dragType),
+           let fromIdx = Int(str), fromIdx != clipIndex {
+            onDragDropReorder?(fromIdx, clipIndex)
+            return true
+        }
+        return false
+    }
+
+    private func bitmapImage() -> NSImage {
+        let pdf = dataWithPDF(inside: bounds)
+        return NSImage(data: pdf) ?? NSImage(size: bounds.size)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        onSelect?()
+        let menu = NSMenu(title: "Clip Options")
+
+        // Mute / Unmute
+        let muteTitle = clip.isMuted ? "Unmute Clip Audio" : "Mute Clip Audio"
+        let muteIcon = clip.isMuted ? "speaker.wave.2.fill" : "speaker.slash.fill"
+        let muteItem = NSMenuItem(title: muteTitle, action: #selector(toggleMuteClicked), keyEquivalent: "")
+        muteItem.image = NSImage(systemSymbolName: muteIcon, accessibilityDescription: nil)
+        muteItem.target = self
+        menu.addItem(muteItem)
+
+        // Edit in Separate Window
+        let editItem = NSMenuItem(title: "Edit in Separate Window…", action: #selector(editInNewWindowClicked), keyEquivalent: "")
+        editItem.image = NSImage(systemSymbolName: "scissors", accessibilityDescription: nil)
+        editItem.target = self
+        menu.addItem(editItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Move Left / Before
+        let moveLeft = NSMenuItem(title: "Move Earlier / Before", action: #selector(leftClicked), keyEquivalent: "")
+        moveLeft.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: nil)
+        moveLeft.target = self
+        moveLeft.isEnabled = clipIndex > 0
+        menu.addItem(moveLeft)
+
+        // Move Right / After
+        let moveRight = NSMenuItem(title: "Move Later / After", action: #selector(rightClicked), keyEquivalent: "")
+        moveRight.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
+        moveRight.target = self
+        moveRight.isEnabled = clipIndex < (totalClips - 1)
+        menu.addItem(moveRight)
+
+        if totalClips > 1 {
+            menu.addItem(NSMenuItem.separator())
+            let removeItem = NSMenuItem(title: "Remove from Sequence", action: #selector(removeClicked), keyEquivalent: "")
+            removeItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+            removeItem.target = self
+            menu.addItem(removeItem)
+        }
+
+        menu.addItem(NSMenuItem.separator())
+        let revealItem = NSMenuItem(title: "Reveal in Finder", action: #selector(revealInFinderClicked), keyEquivalent: "")
+        revealItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+        revealItem.target = self
+        menu.addItem(revealItem)
+
+        return menu
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if let m = menu(for: event) {
+            NSMenu.popUpContextMenu(m, with: event, for: self)
+        } else {
+            super.rightMouseDown(with: event)
+        }
+    }
+
+    @objc private func toggleMuteClicked() { onToggleMute?() }
+    @objc private func editInNewWindowClicked() { onEditInNewWindow?() }
+    @objc private func revealInFinderClicked() { NSWorkspace.shared.activateFileViewerSelecting([clip.url]) }
+    @objc private func leftClicked() { onMoveLeft?() }
+    @objc private func rightClicked() { onMoveRight?() }
+    @objc private func removeClicked() { onRemove?() }
+}
+
+class ClipsSequenceStripView: NSView {
+    var onImport: (() -> Void)?
+    var onSelectClip: ((Int) -> Void)?
+    var onMoveClipLeft: ((Int) -> Void)?
+    var onMoveClipRight: ((Int) -> Void)?
+    var onRemoveClip: ((Int) -> Void)?
+    var onDragDropReorder: ((Int, Int) -> Void)?
+    var onToggleClipMute: ((Int) -> Void)?
+    var onEditClipInNewWindow: ((Int) -> Void)?
+
+    private let titleLabel = NSTextField(labelWithString: "CLIPS (1)")
+    private let durationLabel = NSTextField(labelWithString: "Total: 00:00.0")
+    private let importBtn = NSButton()
+    private let scrollView = NSScrollView()
+    private let stackView = NSStackView()
+    private var cards: [ClipCardView] = []
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupUI()
+    }
+
+    private func setupUI() {
+        wantsLayer = true
+        translatesAutoresizingMaskIntoConstraints = false
+
+        // Top bar
+        titleLabel.font = NSFont.systemFont(ofSize: 11, weight: .bold)
+        titleLabel.textColor = .secondaryLabelColor
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        durationLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        durationLabel.textColor = .secondaryLabelColor
+        durationLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        importBtn.bezelStyle = .rounded
+        importBtn.title = "Import Video"
+        let symConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+        importBtn.image = NSImage(systemSymbolName: "plus.rectangle.on.rectangle", accessibilityDescription: "Import Video")?.withSymbolConfiguration(symConfig)
+        importBtn.imagePosition = .imageLeading
+        importBtn.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
+        importBtn.target = self
+        importBtn.action = #selector(importClicked)
+        importBtn.translatesAutoresizingMaskIntoConstraints = false
+        importBtn.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        let headerStack = NSStackView(views: [titleLabel, durationLabel, NSView(), importBtn])
+        headerStack.orientation = .horizontal
+        headerStack.alignment = .centerY
+        headerStack.spacing = 8
+        headerStack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(headerStack)
+
+        // Scroll View
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasHorizontalScroller = true
+        scrollView.hasVerticalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.backgroundColor = .clear
+        scrollView.drawsBackground = false
+
+        stackView.orientation = .horizontal
+        stackView.alignment = .centerY
+        stackView.spacing = 6
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+
+        scrollView.documentView = stackView
+        addSubview(scrollView)
+
+        NSLayoutConstraint.activate([
+            headerStack.topAnchor.constraint(equalTo: topAnchor),
+            headerStack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            headerStack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            headerStack.heightAnchor.constraint(equalToConstant: 24),
+
+            scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 4),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            stackView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor, constant: 2),
+            stackView.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor, constant: -16),
+            stackView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor, constant: 4),
+        ])
+    }
+
+    func reloadData(clips: [VideoClipItem], activeIndex: Int) {
+        cards.forEach { $0.removeFromSuperview() }
+        cards.removeAll()
+        stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        let totalDuration = clips.reduce(0.0) { $0 + $1.effectiveDuration }
+        let mins = Int(totalDuration) / 60
+        let secs = Int(totalDuration) % 60
+        let tenths = Int((totalDuration.truncatingRemainder(dividingBy: 1)) * 10)
+        let timeStr = String(format: "%02d:%02d.%01d", mins, secs, tenths)
+
+        titleLabel.stringValue = "CLIPS (\(clips.count))"
+        durationLabel.stringValue = "• Total: \(timeStr)"
+
+        for (idx, clip) in clips.enumerated() {
+            let card = ClipCardView(clip: clip, index: idx, totalClips: clips.count, isActive: idx == activeIndex)
+            card.onSelect = { [weak self] in self?.onSelectClip?(idx) }
+            card.onMoveLeft = { [weak self] in self?.onMoveClipLeft?(idx) }
+            card.onMoveRight = { [weak self] in self?.onMoveClipRight?(idx) }
+            card.onRemove = { [weak self] in self?.onRemoveClip?(idx) }
+            card.onDragDropReorder = { [weak self] fromIdx, toIdx in self?.onDragDropReorder?(fromIdx, toIdx) }
+            card.onToggleMute = { [weak self] in self?.onToggleClipMute?(idx) }
+            card.onEditInNewWindow = { [weak self] in self?.onEditClipInNewWindow?(idx) }
+            cards.append(card)
+            stackView.addArrangedSubview(card)
+
+            if idx < clips.count - 1 {
+                let arrowView = NSImageView()
+                arrowView.translatesAutoresizingMaskIntoConstraints = false
+                let symConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .bold)
+                arrowView.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)?.withSymbolConfiguration(symConfig)
+                arrowView.contentTintColor = .tertiaryLabelColor
+                stackView.addArrangedSubview(arrowView)
+            }
+        }
+    }
+
+    func setActiveClip(index: Int) {
+        for (idx, card) in cards.enumerated() {
+            card.isActive = (idx == index)
+        }
+    }
+
+    @objc private func importClicked() {
+        onImport?()
+    }
+}
+
+// ============================================================
+// Native In-App Video Trimmer & Multi-Clip Stitching Window
 // ============================================================
 
 class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     override var canBecomeKey: Bool { return true }
     override var canBecomeMain: Bool { return true }
 
-    let fileURL: URL
+    var fileURL: URL
+    var clips: [VideoClipItem] = []
+    var activeClipIndex: Int = 0
     var player: AVPlayer?
     var playerView: AVPlayerView!
+    var clipsStripView: ClipsSequenceStripView!
     var trimSlider: TrimRangeSliderView!
     var totalDuration: Double = 0
     var trimStartSeconds: Double = 0
@@ -3705,12 +4257,14 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     var hasSkippedCut: Bool = false
     var isAudioMuted: Bool = false
 
-    private var visualEffectView: NSVisualEffectView!
+    private var visualEffectView: TrimmerContainerView!
     private var playerTopConstraint: NSLayoutConstraint!
     private let fullscreenSymConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
 
     init(fileURL: URL) {
         self.fileURL = fileURL
+        self.clips = [VideoClipItem(url: fileURL)]
+        self.activeClipIndex = 0
 
         if NSApp.activationPolicy() != .regular {
             NSApp.setActivationPolicy(.regular)
@@ -3718,7 +4272,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
 
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let initialWidth = min(1180, max(880, screenFrame.width * 0.78))
-        let initialHeight = min(840, max(620, screenFrame.height * 0.80))
+        let initialHeight = min(880, max(660, screenFrame.height * 0.82))
         let rect = NSRect(
             x: screenFrame.midX - initialWidth / 2,
             y: screenFrame.midY - initialHeight / 2,
@@ -3740,9 +4294,9 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         self.center()
         self.level = .normal
         self.collectionBehavior = [.fullScreenPrimary, .fullScreenAllowsTiling]
-        self.minSize = NSSize(width: 640, height: 480)
+        self.minSize = NSSize(width: 700, height: 520)
 
-        visualEffectView = NSVisualEffectView(frame: rect)
+        visualEffectView = TrimmerContainerView(frame: rect)
         visualEffectView.material = .popover
         visualEffectView.state = .active
         visualEffectView.blendingMode = .withinWindow
@@ -3763,10 +4317,15 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                 ? NSColor.white.withAlphaComponent(0.18)
                 : NSColor.black.withAlphaComponent(0.10)
         }).cgColor
+
+        visualEffectView.onFilesDropped = { [weak self] urls in
+            self?.addVideos(urls: urls)
+        }
+
         self.contentView = visualEffectView
 
         setupUI(in: visualEffectView)
-        loadAsset()
+        loadInitialAsset()
     }
 
     private func setupUI(in container: NSView) {
@@ -3781,6 +4340,17 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         playerView.layer?.masksToBounds = true
         playerView.layer?.borderWidth = 1.0
         playerView.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+
+        // Clips Strip View
+        clipsStripView = ClipsSequenceStripView()
+        clipsStripView.onImport = { [weak self] in self?.importVideoFiles() }
+        clipsStripView.onSelectClip = { [weak self] idx in self?.selectClip(at: idx) }
+        clipsStripView.onMoveClipLeft = { [weak self] idx in self?.moveClipLeft(at: idx) }
+        clipsStripView.onMoveClipRight = { [weak self] idx in self?.moveClipRight(at: idx) }
+        clipsStripView.onRemoveClip = { [weak self] idx in self?.removeClip(at: idx) }
+        clipsStripView.onDragDropReorder = { [weak self] fromIdx, toIdx in self?.reorderClip(from: fromIdx, to: toIdx) }
+        clipsStripView.onToggleClipMute = { [weak self] idx in self?.toggleClipMute(at: idx) }
+        clipsStripView.onEditClipInNewWindow = { [weak self] idx in self?.editClipInSeparateWindow(at: idx) }
 
         // Mode Segmented Control (Trim In vs Trim Out)
         modeSegmentedControl = NSSegmentedControl(labels: ["Trim In (Keep)", "Trim Out (Cut)"], trackingMode: .selectOne, target: self, action: #selector(modeChanged(_:)))
@@ -3812,6 +4382,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
             self.trimEndSeconds = end
             self.stopSelectionPlaybackIfNeeded()
             self.updateLabels()
+            self.updateTrimButtonTitle()
         }
         trimSlider.onSeek = { [weak self] time, exact in
             guard let self = self else { return }
@@ -3931,6 +4502,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         bottomStack.translatesAutoresizingMaskIntoConstraints = false
 
         container.addSubview(playerView)
+        container.addSubview(clipsStripView)
         container.addSubview(modeBar)
         container.addSubview(trimSlider)
         container.addSubview(leftStack)
@@ -3945,90 +4517,205 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
             playerView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
             playerView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
 
-            modeBar.topAnchor.constraint(equalTo: playerView.bottomAnchor, constant: 10),
+            clipsStripView.topAnchor.constraint(equalTo: playerView.bottomAnchor, constant: 8),
+            clipsStripView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            clipsStripView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            clipsStripView.heightAnchor.constraint(equalToConstant: 104),
+
+            modeBar.topAnchor.constraint(equalTo: clipsStripView.bottomAnchor, constant: 8),
             modeBar.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
             modeBar.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
             modeBar.heightAnchor.constraint(equalToConstant: 26),
 
-            trimSlider.topAnchor.constraint(equalTo: modeBar.bottomAnchor, constant: 8),
+            trimSlider.topAnchor.constraint(equalTo: modeBar.bottomAnchor, constant: 6),
             trimSlider.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
             trimSlider.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
             trimSlider.heightAnchor.constraint(equalToConstant: 36),
 
-            leftStack.topAnchor.constraint(equalTo: trimSlider.bottomAnchor, constant: 10),
+            leftStack.topAnchor.constraint(equalTo: trimSlider.bottomAnchor, constant: 8),
             leftStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
 
-            rightStack.topAnchor.constraint(equalTo: trimSlider.bottomAnchor, constant: 10),
+            rightStack.topAnchor.constraint(equalTo: trimSlider.bottomAnchor, constant: 8),
             rightStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
 
             durationLabel.centerYAnchor.constraint(equalTo: leftStack.centerYAnchor),
             durationLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
 
-            bottomStack.topAnchor.constraint(equalTo: leftStack.bottomAnchor, constant: 12),
+            bottomStack.topAnchor.constraint(equalTo: leftStack.bottomAnchor, constant: 10),
             bottomStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
             bottomStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
-            bottomStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -14)
+            bottomStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
         ])
     }
 
-    @objc private func modeChanged(_ sender: NSSegmentedControl) {
-        stopSelectionPlaybackIfNeeded()
-        trimMode = sender.selectedSegment == 1 ? .trimOut : .trimIn
-        trimSlider.trimMode = trimMode
+    // MARK: - Asset & Composition Loading
 
-        if trimMode == .trimOut {
-            modeDescriptionLabel.stringValue = "Output cuts highlighted section & stitches ends"
-            // If the entire video is currently selected, set sensible 25%..75% cut range
-            if trimStartSeconds <= 0.05 && trimEndSeconds >= totalDuration - 0.05 {
-                trimStartSeconds = round(totalDuration * 0.25 * 10) / 10
-                trimEndSeconds = round(totalDuration * 0.75 * 10) / 10
-                trimSlider.startTime = trimStartSeconds
-                trimSlider.endTime = trimEndSeconds
-            }
-        } else {
-            modeDescriptionLabel.stringValue = "Output preserves the highlighted section"
-        }
-
-        updateLabels()
-        updatePlaySelectionButton()
-        updateTrimButtonTitle()
-    }
-
-    private func updateTrimButtonTitle() {
-        trimButton.title = trimMode == .trimIn ? "Save Trimmed Video" : "Cut Out & Save Video"
-    }
-
-    private func smoothSeek(to time: CMTime, exact: Bool) {
-        if isSeeking {
-            pendingSeek = (time, exact)
-            return
-        }
-        isSeeking = true
-        let tol = exact ? CMTime.zero : CMTime(seconds: 0.02, preferredTimescale: 600)
-        player?.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] _ in
-            guard let self = self else { return }
-            self.isSeeking = false
-            if let next = self.pendingSeek {
-                self.pendingSeek = nil
-                self.smoothSeek(to: next.time, exact: next.exact)
+    private func loadInitialAsset() {
+        guard let firstClip = clips.first else { return }
+        Task {
+            await self.loadMetadataAndThumbnail(for: firstClip)
+            await self.buildCompositionAndRefreshUI()
+            await MainActor.run {
+                if firstClip.naturalSize.width > 0 && firstClip.naturalSize.height > 0 {
+                    self.adjustWindowSizeToFitVideo(naturalSize: firstClip.naturalSize)
+                }
             }
         }
     }
 
-    private func loadAsset() {
-        let asset = AVURLAsset(url: fileURL)
-        let playerItem = AVPlayerItem(asset: asset)
-        let p = AVPlayer(playerItem: playerItem)
-        p.isMuted = self.isAudioMuted
-        self.player = p
-        self.playerView.player = p
+    private func loadMetadataAndThumbnail(for clip: VideoClipItem) async {
+        let asset = AVURLAsset(url: clip.url)
+        let dur = try? await asset.load(.duration)
+        let vTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+        var size = CGSize.zero
+        var transform = CGAffineTransform.identity
+        if let track = vTracks.first {
+            size = (try? await track.load(.naturalSize)) ?? .zero
+            transform = (try? await track.load(.preferredTransform)) ?? .identity
+        }
 
-        // Observe playback time at ultra-smooth 60 FPS (1/60s)
+        let seconds = dur != nil ? CMTimeGetSeconds(dur!) : 0
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 180, height: 120)
+        let snapTime = CMTime(seconds: min(1.0, max(0.1, seconds * 0.1)), preferredTimescale: 600)
+        var thumbImg: NSImage? = nil
+        if let cgImg = try? generator.copyCGImage(at: snapTime, actualTime: nil) {
+            thumbImg = NSImage(cgImage: cgImg, size: NSSize(width: cgImg.width, height: cgImg.height))
+        }
+
+        await MainActor.run {
+            clip.duration = seconds > 0 ? seconds : 1.0
+            clip.naturalSize = size
+            clip.preferredTransform = transform
+            clip.startTime = 0.0
+            clip.endTime = clip.duration
+            clip.thumbnail = thumbImg
+        }
+    }
+
+    private func buildCompositionAndRefreshUI(preserveTrimRange: Bool = false) async {
+        guard !clips.isEmpty else { return }
+
+        var maxW: CGFloat = 0
+        var maxH: CGFloat = 0
+        for c in clips {
+            let orientedRect = CGRect(origin: .zero, size: c.naturalSize).applying(c.preferredTransform)
+            let w = abs(orientedRect.width)
+            let h = abs(orientedRect.height)
+            if w > maxW { maxW = w }
+            if h > maxH { maxH = h }
+        }
+        if maxW <= 0 || maxH <= 0 {
+            maxW = 1920
+            maxH = 1080
+        }
+        let renderSize = CGSize(width: maxW, height: maxH)
+
+        let comp = AVMutableComposition()
+        let compVideoTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+        let compAudioTrack = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+
+        let videoComp = AVMutableVideoComposition()
+        videoComp.renderSize = renderSize
+        videoComp.frameDuration = CMTime(value: 1, timescale: 30)
+
+        var instructions: [AVMutableVideoCompositionInstruction] = []
+        var currentTrackTime: CMTime = .zero
+
+        for clip in clips {
+            let asset = AVURLAsset(url: clip.url)
+            let vTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+            let aTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+            guard let assetVideoTrack = vTracks.first else { continue }
+
+            let durSec = clip.effectiveDuration
+            let clipDur = CMTime(seconds: durSec, preferredTimescale: 600)
+            let clipStart = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+            let clipRange = CMTimeRange(start: clipStart, duration: clipDur)
+
+            try? compVideoTrack?.insertTimeRange(clipRange, of: assetVideoTrack, at: currentTrackTime)
+
+            if !self.isAudioMuted && !clip.isMuted, let assetAudioTrack = aTracks.first {
+                try? compAudioTrack?.insertTimeRange(clipRange, of: assetAudioTrack, at: currentTrackTime)
+            }
+
+            if let compVideoTrack = compVideoTrack {
+                let layerInst = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideoTrack)
+                let transform = VideoTrimmerWindow.calculateAspectFitTransform(
+                    naturalSize: clip.naturalSize,
+                    preferredTransform: clip.preferredTransform,
+                    renderSize: renderSize
+                )
+                layerInst.setTransform(transform, at: currentTrackTime)
+
+                let inst = AVMutableVideoCompositionInstruction()
+                inst.timeRange = CMTimeRange(start: currentTrackTime, duration: clipDur)
+                inst.layerInstructions = [layerInst]
+                instructions.append(inst)
+            }
+
+            currentTrackTime = CMTimeAdd(currentTrackTime, clipDur)
+        }
+
+        videoComp.instructions = instructions
+        let newTotalDuration = max(0.1, CMTimeGetSeconds(currentTrackTime))
+
+        await MainActor.run {
+            self.totalDuration = newTotalDuration
+            if !preserveTrimRange || self.trimEndSeconds > self.totalDuration {
+                self.trimStartSeconds = 0.0
+                self.trimEndSeconds = self.totalDuration
+            }
+            self.trimSlider.duration = self.totalDuration
+            self.trimSlider.startTime = self.trimStartSeconds
+            self.trimSlider.endTime = self.trimEndSeconds
+
+            let playerItem = AVPlayerItem(asset: comp)
+            playerItem.videoComposition = videoComp
+
+            if self.player == nil {
+                let p = AVPlayer(playerItem: playerItem)
+                p.isMuted = self.isAudioMuted
+                self.player = p
+                self.playerView.player = p
+                self.setupTimeObserver(for: p)
+            } else {
+                self.player?.replaceCurrentItem(with: playerItem)
+            }
+
+            self.clipsStripView.reloadData(clips: self.clips, activeIndex: self.activeClipIndex)
+            self.updateWindowTitle()
+            self.updateLabels()
+            self.updateTrimButtonTitle()
+        }
+    }
+
+    private func setupTimeObserver(for p: AVPlayer) {
+        if let token = timeObserverToken {
+            player?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+
         let interval = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
         timeObserverToken = p.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self = self else { return }
             let sec = CMTimeGetSeconds(time)
             self.trimSlider.currentTime = sec
+
+            // Sync active card in strip with playback playhead
+            var accum: Double = 0
+            for (idx, clip) in self.clips.enumerated() {
+                let dur = clip.effectiveDuration
+                if sec >= accum && sec < (accum + dur) {
+                    if self.activeClipIndex != idx {
+                        self.activeClipIndex = idx
+                        self.clipsStripView.setActiveClip(index: idx)
+                    }
+                    break
+                }
+                accum += dur
+            }
 
             if self.isPlayingSelection {
                 if self.trimMode == .trimIn {
@@ -4054,48 +4741,53 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                 }
             }
         }
+    }
 
-        Task {
-            let duration = try? await asset.load(.duration)
-            let videoTracks = try? await asset.loadTracks(withMediaType: .video)
-            var naturalSize: CGSize? = nil
-            if let track = videoTracks?.first {
-                naturalSize = try? await track.load(.naturalSize)
-            }
+    static func calculateAspectFitTransform(
+        naturalSize: CGSize,
+        preferredTransform: CGAffineTransform,
+        renderSize: CGSize
+    ) -> CGAffineTransform {
+        let orientedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        let orientedWidth = abs(orientedRect.width)
+        let orientedHeight = abs(orientedRect.height)
 
-            await MainActor.run {
-                if let duration = duration {
-                    let seconds = CMTimeGetSeconds(duration)
-                    self.totalDuration = seconds > 0 ? seconds : 1.0
-                    self.trimStartSeconds = 0.0
-                    self.trimEndSeconds = self.totalDuration
-                    self.trimSlider.duration = self.totalDuration
-                    self.trimSlider.startTime = 0.0
-                    self.trimSlider.endTime = self.totalDuration
-                    self.updateLabels()
-                    self.updateTrimButtonTitle()
-                }
-
-                if let size = naturalSize, size.width > 0 && size.height > 0 {
-                    self.adjustWindowSizeToFitVideo(naturalSize: size)
-                }
-            }
+        guard orientedWidth > 0 && orientedHeight > 0 else {
+            return preferredTransform
         }
+
+        let scaleX = renderSize.width / orientedWidth
+        let scaleY = renderSize.height / orientedHeight
+        let scale = min(scaleX, scaleY)
+
+        let scaledW = orientedWidth * scale
+        let scaledH = orientedHeight * scale
+        let tx = (renderSize.width - scaledW) / 2.0
+        let ty = (renderSize.height - scaledH) / 2.0
+
+        let minX = min(orientedRect.minX, orientedRect.maxX)
+        let minY = min(orientedRect.minY, orientedRect.maxY)
+
+        var t = preferredTransform
+        t = t.concatenating(CGAffineTransform(translationX: -minX, y: -minY))
+        t = t.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+        t = t.concatenating(CGAffineTransform(translationX: tx, y: ty))
+        return t
     }
 
     private func adjustWindowSizeToFitVideo(naturalSize: CGSize) {
         guard !self.styleMask.contains(.fullScreen) else { return }
         let screenFrame = self.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
-        let chromeHeight: CGFloat = 176.0
+        let chromeHeight: CGFloat = 280.0
         let chromeWidth: CGFloat = 32.0
 
         let maxW = min(1380.0, screenFrame.width * 0.88)
-        let maxH = min(920.0, screenFrame.height * 0.88)
+        let maxH = min(940.0, screenFrame.height * 0.88)
         let availW = max(500.0, maxW - chromeWidth)
         let availH = max(400.0, maxH - chromeHeight)
 
-        let aspect = naturalSize.width / naturalSize.height
+        let aspect = (naturalSize.width > 0 && naturalSize.height > 0) ? (naturalSize.width / naturalSize.height) : (16.0 / 9.0)
         var videoW: CGFloat
         var videoH: CGFloat
 
@@ -4107,14 +4799,281 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
             videoW = round(videoH * aspect)
         }
 
-        let targetW = max(860.0, min(maxW, videoW + chromeWidth))
-        let targetH = max(600.0, min(maxH, videoH + chromeHeight))
+        let targetW = max(880.0, min(maxW, videoW + chromeWidth))
+        let targetH = max(660.0, min(maxH, videoH + chromeHeight))
 
         let newX = round(screenFrame.midX - targetW / 2.0)
         let newY = round(screenFrame.midY - targetH / 2.0)
         let newRect = NSRect(x: newX, y: newY, width: targetW, height: targetH)
 
         self.setFrame(newRect, display: true, animate: true)
+    }
+
+    // MARK: - Multi-Clip Management & Reordering
+
+    func addVideos(urls: [URL]) {
+        let validExts = Set(["mp4", "mov", "m4v", "mkv", "avi", "webm"])
+        let filtered = urls.filter { validExts.contains($0.pathExtension.lowercased()) }
+        guard !filtered.isEmpty else { return }
+
+        stopSelectionPlaybackIfNeeded()
+        let newClips = filtered.map { VideoClipItem(url: $0) }
+        self.clips.append(contentsOf: newClips)
+
+        exportStatusLabel.stringValue = "Importing \(filtered.count) video(s)..."
+        progressIndicator.startAnimation(nil)
+
+        Task {
+            for clip in newClips {
+                await self.loadMetadataAndThumbnail(for: clip)
+            }
+            await self.buildCompositionAndRefreshUI()
+            await MainActor.run {
+                self.progressIndicator.stopAnimation(nil)
+                self.exportStatusLabel.stringValue = "Added \(filtered.count) clip(s)"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    if self.exportStatusLabel.stringValue.starts(with: "Added") {
+                        self.exportStatusLabel.stringValue = ""
+                    }
+                }
+            }
+        }
+    }
+
+    @objc func importVideoFiles() {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "Select Video Files to Stitch"
+        openPanel.prompt = "Add to Sequence"
+        openPanel.showsHiddenFiles = false
+        openPanel.canChooseDirectories = false
+        openPanel.canCreateDirectories = false
+        openPanel.allowsMultipleSelection = true
+        if #available(macOS 11.0, *) {
+            openPanel.allowedContentTypes = [.movie, .video, .quickTimeMovie, .mpeg4Movie]
+        } else {
+            openPanel.allowedFileTypes = ["mp4", "mov", "m4v", "mkv", "avi", "webm"]
+        }
+        openPanel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
+        NSApp.activate(ignoringOtherApps: true)
+        if openPanel.runModal() == .OK {
+            self.addVideos(urls: openPanel.urls)
+        }
+    }
+
+    func moveClipLeft(at index: Int) {
+        guard index > 0 && index < clips.count else { return }
+        stopSelectionPlaybackIfNeeded()
+        clips.swapAt(index, index - 1)
+        activeClipIndex = index - 1
+        Task {
+            await self.buildCompositionAndRefreshUI()
+        }
+    }
+
+    func moveClipRight(at index: Int) {
+        guard index >= 0 && index < clips.count - 1 else { return }
+        stopSelectionPlaybackIfNeeded()
+        clips.swapAt(index, index + 1)
+        activeClipIndex = index + 1
+        Task {
+            await self.buildCompositionAndRefreshUI()
+        }
+    }
+
+    func reorderClip(from: Int, to: Int) {
+        guard from >= 0 && from < clips.count && to >= 0 && to < clips.count && from != to else { return }
+        stopSelectionPlaybackIfNeeded()
+        let item = clips.remove(at: from)
+        clips.insert(item, at: to)
+        activeClipIndex = to
+        Task {
+            await self.buildCompositionAndRefreshUI()
+        }
+    }
+
+    func removeClip(at index: Int) {
+        guard clips.count > 1 && index >= 0 && index < clips.count else { return }
+        stopSelectionPlaybackIfNeeded()
+        clips.remove(at: index)
+        if activeClipIndex >= clips.count {
+            activeClipIndex = clips.count - 1
+        }
+        Task {
+            await self.buildCompositionAndRefreshUI()
+        }
+    }
+
+    func selectClip(at index: Int) {
+        guard index >= 0 && index < clips.count else { return }
+        stopSelectionPlaybackIfNeeded()
+        activeClipIndex = index
+        clipsStripView.setActiveClip(index: index)
+
+        let offset = clips.prefix(index).reduce(0.0) { $0 + $1.effectiveDuration }
+        let cm = CMTime(seconds: offset, preferredTimescale: 600)
+        smoothSeek(to: cm, exact: true)
+    }
+
+    func toggleClipMute(at index: Int) {
+        guard index >= 0 && index < clips.count else { return }
+        let clip = clips[index]
+        clip.isMuted.toggle()
+        let isMuted = clip.isMuted
+        let name = clip.title
+
+        Task {
+            await self.buildCompositionAndRefreshUI(preserveTrimRange: true)
+            await MainActor.run {
+                self.exportStatusLabel.stringValue = isMuted ? "Muted audio for \"\(name)\"" : "Unmuted audio for \"\(name)\""
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    if self.exportStatusLabel.stringValue.contains(name) {
+                        self.exportStatusLabel.stringValue = ""
+                    }
+                }
+            }
+        }
+    }
+
+    func editClipInSeparateWindow(at index: Int) {
+        guard index >= 0 && index < clips.count else { return }
+        let clip = clips[index]
+        let clipId = clip.id
+
+        // If there's already a separate trimmer open for this clip, bring it front
+        if let appDelegate = NSApp.delegate as? AppDelegate,
+           let existing = appDelegate.openTrimmers.first(where: { $0 !== self && $0.fileURL == clip.url }) {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        NSApp.setActivationPolicy(.regular)
+        let childTrimmer = VideoTrimmerWindow(fileURL: clip.url)
+
+        let currentOrigin = self.frame.origin
+        childTrimmer.setFrameOrigin(NSPoint(x: currentOrigin.x + 40, y: currentOrigin.y - 40))
+
+        childTrimmer.onTrimCompleted = { [weak self] updatedURL in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.handleEditedClipSaved(clipId: clipId, updatedURL: updatedURL)
+            }
+        }
+
+        if let appDelegate = NSApp.delegate as? AppDelegate {
+            appDelegate.openTrimmers.append(childTrimmer)
+            childTrimmer.onWindowWillClose = { [weak appDelegate, weak childTrimmer] win in
+                guard let appDelegate = appDelegate, let win = childTrimmer else { return }
+                appDelegate.openTrimmers.removeAll(where: { $0 === win })
+                if appDelegate.openTrimmers.isEmpty {
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+        }
+
+        childTrimmer.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        exportStatusLabel.stringValue = "Opened \"\(clip.title)\" in separate editor"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            if self.exportStatusLabel.stringValue.starts(with: "Opened") {
+                self.exportStatusLabel.stringValue = ""
+            }
+        }
+    }
+
+    func handleEditedClipSaved(clipId: UUID, updatedURL: URL) {
+        self.stopSelectionPlaybackIfNeeded()
+        self.player?.pause()
+
+        guard let idx = clips.firstIndex(where: { $0.id == clipId }) else { return }
+        let clip = clips[idx]
+        clip.url = updatedURL
+        clip.title = updatedURL.lastPathComponent
+        clip.startTime = 0.0
+        clip.endTime = 0.0
+
+        if idx == 0 {
+            self.fileURL = updatedURL
+        }
+
+        Task {
+            await self.loadMetadataAndThumbnail(for: clip)
+            await self.buildCompositionAndRefreshUI(preserveTrimRange: false)
+            await MainActor.run {
+                self.exportStatusLabel.stringValue = "Updated Clip #\(idx + 1) with edited video"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                    if self.exportStatusLabel.stringValue.starts(with: "Updated Clip") {
+                        self.exportStatusLabel.stringValue = ""
+                    }
+                }
+            }
+        }
+    }
+
+    private func updateWindowTitle() {
+        if clips.count <= 1 {
+            self.title = "Edit Video — \(clips.first?.title ?? fileURL.lastPathComponent)"
+        } else {
+            self.title = "Edit Video — \(clips.first?.title ?? fileURL.lastPathComponent) (\(clips.count) clips stitched)"
+        }
+    }
+
+    // MARK: - Playback Controls & Mode
+
+    @objc private func modeChanged(_ sender: NSSegmentedControl) {
+        stopSelectionPlaybackIfNeeded()
+        trimMode = sender.selectedSegment == 1 ? .trimOut : .trimIn
+        trimSlider.trimMode = trimMode
+
+        if trimMode == .trimOut {
+            modeDescriptionLabel.stringValue = "Output cuts highlighted section & stitches ends"
+            if trimStartSeconds <= 0.05 && trimEndSeconds >= totalDuration - 0.05 {
+                trimStartSeconds = round(totalDuration * 0.25 * 10) / 10
+                trimEndSeconds = round(totalDuration * 0.75 * 10) / 10
+                trimSlider.startTime = trimStartSeconds
+                trimSlider.endTime = trimEndSeconds
+            }
+        } else {
+            modeDescriptionLabel.stringValue = "Output preserves the highlighted section"
+        }
+
+        updateLabels()
+        updatePlaySelectionButton()
+        updateTrimButtonTitle()
+    }
+
+    private func updateTrimButtonTitle() {
+        if clips.count > 1 {
+            if trimMode == .trimIn {
+                if trimStartSeconds > 0.05 || (totalDuration - trimEndSeconds) > 0.05 {
+                    trimButton.title = "Save Trimmed Stitched Video"
+                } else {
+                    trimButton.title = "Save Stitched Video (\(clips.count) Clips)"
+                }
+            } else {
+                trimButton.title = "Cut Out & Save Stitched Video"
+            }
+        } else {
+            trimButton.title = trimMode == .trimIn ? "Save Trimmed Video" : "Cut Out & Save Video"
+        }
+    }
+
+    private func smoothSeek(to time: CMTime, exact: Bool) {
+        if isSeeking {
+            pendingSeek = (time, exact)
+            return
+        }
+        isSeeking = true
+        let tol = exact ? CMTime.zero : CMTime(seconds: 0.02, preferredTimescale: 600)
+        player?.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] _ in
+            guard let self = self else { return }
+            self.isSeeking = false
+            if let next = self.pendingSeek {
+                self.pendingSeek = nil
+                self.smoothSeek(to: next.time, exact: next.exact)
+            }
+        }
     }
 
     private func stopSelectionPlaybackIfNeeded() {
@@ -4143,7 +5102,6 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                     self.updatePlaySelectionButton()
                 }
             } else {
-                // Trim Out: start 1.5s before cut point so transition is previewed
                 self.hasSkippedCut = false
                 let previewStart: Double
                 if trimStartSeconds <= 0.05 {
@@ -4175,6 +5133,9 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         isAudioMuted = !isAudioMuted
         player?.isMuted = isAudioMuted
         updateMuteButton()
+        Task {
+            await self.buildCompositionAndRefreshUI(preserveTrimRange: true)
+        }
     }
 
     private func updateMuteButton() {
@@ -4225,6 +5186,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
             trimStartSeconds = max(0, current)
             trimSlider.startTime = trimStartSeconds
             updateLabels()
+            updateTrimButtonTitle()
         }
     }
 
@@ -4236,6 +5198,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
             trimEndSeconds = min(totalDuration, current)
             trimSlider.endTime = trimEndSeconds
             updateLabels()
+            updateTrimButtonTitle()
         }
     }
 
@@ -4251,10 +5214,21 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         trimSlider.startTime = trimStartSeconds
         trimSlider.endTime = trimEndSeconds
         updateLabels()
+        updateTrimButtonTitle()
         player?.seek(to: .zero)
     }
 
+    // MARK: - Export & Saving (Single vs Multi-Clip Stitched)
+
     @objc private func performTrim() {
+        if clips.count > 1 {
+            promptSaveStitchedVideo()
+        } else {
+            performSingleTrim()
+        }
+    }
+
+    private func performSingleTrim() {
         trimButton.isEnabled = false
         progressIndicator.startAnimation(nil)
         exportStatusLabel.stringValue = "Processing video..."
@@ -4265,6 +5239,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         try? FileManager.default.removeItem(at: tempURL)
 
         Task {
+            let isMutedSingle = self.isAudioMuted || (self.clips.first?.isMuted ?? false)
             let exportAsset: AVAsset
             let exportPreset: String
             var exportTimeRange: CMTimeRange? = nil
@@ -4274,7 +5249,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                 let endCM = CMTime(seconds: self.trimEndSeconds, preferredTimescale: 600)
                 let timeRange = CMTimeRange(start: startCM, duration: CMTimeSubtract(endCM, startCM))
 
-                if self.isAudioMuted {
+                if isMutedSingle {
                     let comp = AVMutableComposition()
                     let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
                     if let assetVideoTrack = tracks.first,
@@ -4306,12 +5281,11 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                 }
 
                 if !hasPart1 {
-                    // Intro cut: Keep Part 2 ([trimEndSeconds ... totalDuration])
                     let startCM = CMTime(seconds: self.trimEndSeconds, preferredTimescale: 600)
                     let endCM = CMTime(seconds: self.totalDuration, preferredTimescale: 600)
                     let timeRange = CMTimeRange(start: startCM, duration: CMTimeSubtract(endCM, startCM))
 
-                    if self.isAudioMuted {
+                    if isMutedSingle {
                         let comp = AVMutableComposition()
                         let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
                         if let assetVideoTrack = tracks.first,
@@ -4329,12 +5303,11 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                         exportTimeRange = timeRange
                     }
                 } else if !hasPart2 {
-                    // Outro cut: Keep Part 1 ([0 ... trimStartSeconds])
                     let startCM = CMTime.zero
                     let endCM = CMTime(seconds: self.trimStartSeconds, preferredTimescale: 600)
                     let timeRange = CMTimeRange(start: startCM, duration: endCM)
 
-                    if self.isAudioMuted {
+                    if isMutedSingle {
                         let comp = AVMutableComposition()
                         let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
                         if let assetVideoTrack = tracks.first,
@@ -4352,7 +5325,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                         exportTimeRange = timeRange
                     }
                 } else {
-                    // Middle cut: Stitch Part 1 and Part 2 together into a unified composition
+                    // Middle cut: Stitch Part 1 and Part 2 together
                     let comp = AVMutableComposition()
                     let videoTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
                     guard let assetVideoTrack = videoTracks.first,
@@ -4385,7 +5358,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                         return
                     }
 
-                    if !self.isAudioMuted {
+                    if !isMutedSingle {
                         let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
                         if let assetAudioTrack = audioTracks.first,
                            let compAudioTrack = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
@@ -4414,13 +5387,13 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                 exportSession.timeRange = tr
             }
 
-            exportSession.exportAsynchronously { [weak self] in
+            exportSession.exportAsynchronously { [weak self, weak exportSession] in
                 DispatchQueue.main.async {
-                    guard let self = self else { return }
+                    guard let self = self, let session = exportSession else { return }
                     self.progressIndicator.stopAnimation(nil)
                     self.trimButton.isEnabled = true
 
-                    if exportSession.status == .completed {
+                    if session.status == .completed {
                         self.player?.pause()
                         self.player?.replaceCurrentItem(with: nil)
                         self.player = nil
@@ -4440,16 +5413,248 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                         }
                     } else {
                         try? FileManager.default.removeItem(at: tempURL)
-                        self.exportStatusLabel.stringValue = "Export error: \(exportSession.error?.localizedDescription ?? "Unknown")"
+                        self.exportStatusLabel.stringValue = "Export error: \(session.error?.localizedDescription ?? "Unknown")"
                     }
                 }
             }
         }
     }
 
-    // ============================================================
-    // Full Screen & Window Delegate
-    // ============================================================
+    private func promptSaveStitchedVideo() {
+        let savePanel = NSSavePanel()
+        savePanel.title = "Save Stitched Video"
+        savePanel.prompt = "Export Stitched"
+        savePanel.canCreateDirectories = true
+        let firstURL = clips.first?.url ?? fileURL
+        savePanel.directoryURL = firstURL.deletingLastPathComponent()
+        let baseName = firstURL.deletingPathExtension().lastPathComponent
+        savePanel.nameFieldStringValue = "\(baseName)_stitched.mp4"
+        if #available(macOS 11.0, *) {
+            savePanel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie]
+        } else {
+            savePanel.allowedFileTypes = ["mp4", "mov"]
+        }
+        savePanel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
+        NSApp.activate(ignoringOtherApps: true)
+        if savePanel.runModal() == .OK, let destURL = savePanel.url {
+            self.exportStitchedVideo(to: destURL)
+        }
+    }
+
+    private func exportStitchedVideo(to destURL: URL) {
+        trimButton.isEnabled = false
+        progressIndicator.startAnimation(nil)
+        exportStatusLabel.stringValue = "Stitching \(clips.count) videos..."
+
+        try? FileManager.default.removeItem(at: destURL)
+
+        Task {
+            var maxW: CGFloat = 0
+            var maxH: CGFloat = 0
+            for c in self.clips {
+                let orientedRect = CGRect(origin: .zero, size: c.naturalSize).applying(c.preferredTransform)
+                let w = abs(orientedRect.width)
+                let h = abs(orientedRect.height)
+                if w > maxW { maxW = w }
+                if h > maxH { maxH = h }
+            }
+            if maxW <= 0 || maxH <= 0 {
+                maxW = 1920
+                maxH = 1080
+            }
+            let renderSize = CGSize(width: maxW, height: maxH)
+
+            let comp = AVMutableComposition()
+            let compVideoTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+            let compAudioTrack = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+
+            let videoComp = AVMutableVideoComposition()
+            videoComp.renderSize = renderSize
+            videoComp.frameDuration = CMTime(value: 1, timescale: 30)
+
+            var instructions: [AVMutableVideoCompositionInstruction] = []
+            var currentTrackTime: CMTime = .zero
+
+            for clip in self.clips {
+                let asset = AVURLAsset(url: clip.url)
+                let vTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+                let aTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+                guard let assetVideoTrack = vTracks.first else { continue }
+
+                let durSec = clip.effectiveDuration
+                let clipDur = CMTime(seconds: durSec, preferredTimescale: 600)
+                let clipStart = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+                let clipRange = CMTimeRange(start: clipStart, duration: clipDur)
+
+                try? compVideoTrack?.insertTimeRange(clipRange, of: assetVideoTrack, at: currentTrackTime)
+
+                if !self.isAudioMuted && !clip.isMuted, let assetAudioTrack = aTracks.first {
+                    try? compAudioTrack?.insertTimeRange(clipRange, of: assetAudioTrack, at: currentTrackTime)
+                }
+
+                if let compVideoTrack = compVideoTrack {
+                    let layerInst = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideoTrack)
+                    let transform = VideoTrimmerWindow.calculateAspectFitTransform(
+                        naturalSize: clip.naturalSize,
+                        preferredTransform: clip.preferredTransform,
+                        renderSize: renderSize
+                    )
+                    layerInst.setTransform(transform, at: currentTrackTime)
+
+                    let inst = AVMutableVideoCompositionInstruction()
+                    inst.timeRange = CMTimeRange(start: currentTrackTime, duration: clipDur)
+                    inst.layerInstructions = [layerInst]
+                    instructions.append(inst)
+                }
+
+                currentTrackTime = CMTimeAdd(currentTrackTime, clipDur)
+            }
+
+            videoComp.instructions = instructions
+
+            // Determine the export asset and video composition based on trim mode
+            var exportAsset: AVAsset = comp
+            var exportVideoComp: AVVideoComposition = videoComp
+            var exportTimeRange: CMTimeRange? = nil
+
+            if self.trimMode == .trimOut {
+                let cutStartSec = self.trimStartSeconds
+                let cutEndSec = self.trimEndSeconds
+                let totalDur = CMTimeGetSeconds(currentTrackTime)
+                let hasPart1 = cutStartSec > 0.05
+                let hasPart2 = (totalDur - cutEndSec) > 0.05
+
+                guard hasPart1 || hasPart2 else {
+                    await MainActor.run {
+                        self.exportStatusLabel.stringValue = "Cannot cut entire video."
+                        self.progressIndicator.stopAnimation(nil)
+                        self.trimButton.isEnabled = true
+                    }
+                    return
+                }
+
+                // Build a new composition excluding the cut range [cutStart, cutEnd]
+                let cutComp = AVMutableComposition()
+                let cutVideoTrack = cutComp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+                let cutAudioTrack = cutComp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+
+                let cutVideoComp = AVMutableVideoComposition()
+                cutVideoComp.renderSize = renderSize
+                cutVideoComp.frameDuration = CMTime(value: 1, timescale: 30)
+
+                var cutInstructions: [AVMutableVideoCompositionInstruction] = []
+                var cutTrackTime: CMTime = .zero
+                var timelinePos: Double = 0
+
+                for clip in self.clips {
+                    let clipAsset = AVURLAsset(url: clip.url)
+                    let vTr = (try? await clipAsset.loadTracks(withMediaType: .video)) ?? []
+                    let aTr = (try? await clipAsset.loadTracks(withMediaType: .audio)) ?? []
+                    guard let assetVTrack = vTr.first else { continue }
+
+                    let clipDur = clip.effectiveDuration
+                    let clipStart = timelinePos
+                    let clipEnd = timelinePos + clipDur
+                    timelinePos += clipDur
+
+                    // Compute segments of this clip to keep (outside the cut range)
+                    var segments: [(sourceStart: Double, duration: Double)] = []
+
+                    if clipEnd <= cutStartSec || clipStart >= cutEndSec {
+                        // Entirely outside cut — keep all
+                        segments.append((clip.startTime, clipDur))
+                    } else {
+                        // Part before cut
+                        if clipStart < cutStartSec {
+                            segments.append((clip.startTime, cutStartSec - clipStart))
+                        }
+                        // Part after cut
+                        if clipEnd > cutEndSec {
+                            let skipInClip = max(0, cutEndSec - clipStart)
+                            segments.append((clip.startTime + skipInClip, clipEnd - cutEndSec))
+                        }
+                    }
+
+                    for seg in segments {
+                        let segStartCM = CMTime(seconds: seg.sourceStart, preferredTimescale: 600)
+                        let segDurCM = CMTime(seconds: seg.duration, preferredTimescale: 600)
+                        let segRange = CMTimeRange(start: segStartCM, duration: segDurCM)
+
+                        try? cutVideoTrack?.insertTimeRange(segRange, of: assetVTrack, at: cutTrackTime)
+                        if !self.isAudioMuted && !clip.isMuted, let assetATrack = aTr.first {
+                            try? cutAudioTrack?.insertTimeRange(segRange, of: assetATrack, at: cutTrackTime)
+                        }
+
+                        if let cutVideoTrack = cutVideoTrack {
+                            let layerInst = AVMutableVideoCompositionLayerInstruction(assetTrack: cutVideoTrack)
+                            let transform = VideoTrimmerWindow.calculateAspectFitTransform(
+                                naturalSize: clip.naturalSize,
+                                preferredTransform: clip.preferredTransform,
+                                renderSize: renderSize
+                            )
+                            layerInst.setTransform(transform, at: cutTrackTime)
+
+                            let inst = AVMutableVideoCompositionInstruction()
+                            inst.timeRange = CMTimeRange(start: cutTrackTime, duration: segDurCM)
+                            inst.layerInstructions = [layerInst]
+                            cutInstructions.append(inst)
+                        }
+
+                        cutTrackTime = CMTimeAdd(cutTrackTime, segDurCM)
+                    }
+                }
+
+                cutVideoComp.instructions = cutInstructions
+                exportAsset = cutComp
+                exportVideoComp = cutVideoComp
+            } else if self.trimMode == .trimIn {
+                if self.trimStartSeconds > 0.05 || (self.totalDuration - self.trimEndSeconds) > 0.05 {
+                    let startCM = CMTime(seconds: self.trimStartSeconds, preferredTimescale: 600)
+                    let endCM = CMTime(seconds: self.trimEndSeconds, preferredTimescale: 600)
+                    exportTimeRange = CMTimeRange(start: startCM, duration: CMTimeSubtract(endCM, startCM))
+                }
+            }
+
+            guard let exportSession = AVAssetExportSession(asset: exportAsset, presetName: AVAssetExportPresetHighestQuality) else {
+                await MainActor.run {
+                    self.exportStatusLabel.stringValue = "Export session failed."
+                    self.progressIndicator.stopAnimation(nil)
+                    self.trimButton.isEnabled = true
+                }
+                return
+            }
+
+            exportSession.videoComposition = exportVideoComp
+            exportSession.outputURL = destURL
+            exportSession.outputFileType = destURL.pathExtension.lowercased() == "mov" ? .mov : .mp4
+            if let tr = exportTimeRange {
+                exportSession.timeRange = tr
+            }
+
+            exportSession.exportAsynchronously { [weak self, weak exportSession] in
+                DispatchQueue.main.async {
+                    guard let self = self, let session = exportSession else { return }
+                    self.progressIndicator.stopAnimation(nil)
+                    self.trimButton.isEnabled = true
+
+                    if session.status == .completed {
+                        self.exportStatusLabel.stringValue = "Stitched video saved!"
+                        NSWorkspace.shared.activateFileViewerSelecting([destURL])
+                        self.onTrimCompleted?(destURL)
+
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            self.closeWindow()
+                        }
+                    } else {
+                        try? FileManager.default.removeItem(at: destURL)
+                        self.exportStatusLabel.stringValue = "Export failed: \(session.error?.localizedDescription ?? "Unknown error")"
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Full Screen & Window Delegate
 
     func windowDidEnterFullScreen(_ notification: Notification) {
         visualEffectView?.layer?.cornerRadius = 0
@@ -5588,10 +6793,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Check if launched with video file arguments via CLI or Finder cold start
         let videoExts = ["mp4", "mov", "m4v", "mkv", "avi", "webm"]
+        var cliURLs: [URL] = []
         for arg in CommandLine.arguments.dropFirst() {
             let url = URL(fileURLWithPath: arg)
             if videoExts.contains(url.pathExtension.lowercased()) && FileManager.default.fileExists(atPath: url.path) {
-                openVideoTrimmer(for: url)
+                cliURLs.append(url)
+            }
+        }
+        if let first = cliURLs.first {
+            openVideoTrimmer(for: first)
+            if cliURLs.count > 1, let trimmer = openTrimmers.last {
+                trimmer.addVideos(urls: Array(cliURLs.dropFirst()))
             }
         }
         
@@ -5770,35 +6982,59 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         let url = URL(fileURLWithPath: filename)
-        openVideoTrimmer(for: url)
+        if let existing = openTrimmers.first {
+            existing.addVideos(urls: [url])
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            openVideoTrimmer(for: url)
+        }
         return true
     }
 
     func application(_ application: NSApplication, openFiles filenames: [String]) {
-        for filename in filenames {
-            let url = URL(fileURLWithPath: filename)
-            openVideoTrimmer(for: url)
+        let videoExts = Set(["mp4", "mov", "m4v", "mkv", "avi", "webm"])
+        let urls = filenames.map { URL(fileURLWithPath: $0) }.filter { videoExts.contains($0.pathExtension.lowercased()) }
+        guard let first = urls.first else { return }
+
+        if let existing = openTrimmers.first {
+            existing.addVideos(urls: urls)
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            openVideoTrimmer(for: first)
+            if urls.count > 1, let trimmer = openTrimmers.last {
+                trimmer.addVideos(urls: Array(urls.dropFirst()))
+            }
         }
     }
 
     @objc func openVideoFileDialog() {
         let openPanel = NSOpenPanel()
-        openPanel.title = "Select Video to Edit"
+        openPanel.title = "Select Video(s) to Edit or Stitch"
         openPanel.prompt = "Edit Video"
-        openPanel.showsResizeIndicator = true
         openPanel.showsHiddenFiles = false
         openPanel.canChooseDirectories = false
         openPanel.canCreateDirectories = false
-        openPanel.allowsMultipleSelection = false
+        openPanel.allowsMultipleSelection = true
         if #available(macOS 11.0, *) {
             openPanel.allowedContentTypes = [.movie, .video, .quickTimeMovie, .mpeg4Movie]
         } else {
-            openPanel.allowedFileTypes = ["mp4", "mov", "m4v"]
+            openPanel.allowedFileTypes = ["mp4", "mov", "m4v", "mkv", "avi", "webm"]
         }
         openPanel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
         NSApp.activate(ignoringOtherApps: true)
-        if openPanel.runModal() == .OK, let url = openPanel.url {
-            openVideoTrimmer(for: url)
+        if openPanel.runModal() == .OK, let first = openPanel.urls.first {
+            if let existing = openTrimmers.first {
+                existing.addVideos(urls: openPanel.urls)
+                existing.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            } else {
+                openVideoTrimmer(for: first)
+                if openPanel.urls.count > 1, let trimmer = openTrimmers.last {
+                    trimmer.addVideos(urls: Array(openPanel.urls.dropFirst()))
+                }
+            }
         }
     }
 
