@@ -4256,6 +4256,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     var isPlayingSelection: Bool = false
     var hasSkippedCut: Bool = false
     var isAudioMuted: Bool = false
+    private var activeExportSession: AVAssetExportSession?
 
     private var visualEffectView: TrimmerContainerView!
     private var playerTopConstraint: NSLayoutConstraint!
@@ -5387,34 +5388,43 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                 exportSession.timeRange = tr
             }
 
-            exportSession.exportAsynchronously { [weak self, weak exportSession] in
-                DispatchQueue.main.async {
-                    guard let self = self, let session = exportSession else { return }
-                    self.progressIndicator.stopAnimation(nil)
-                    self.trimButton.isEnabled = true
+            self.activeExportSession = exportSession
 
-                    if session.status == .completed {
-                        self.player?.pause()
-                        self.player?.replaceCurrentItem(with: nil)
-                        self.player = nil
+            await withCheckedContinuation { continuation in
+                exportSession.exportAsynchronously {
+                    continuation.resume()
+                }
+            }
 
-                        do {
-                            _ = try FileManager.default.replaceItemAt(self.fileURL, withItemAt: tempURL)
-                        } catch {
-                            try? FileManager.default.removeItem(at: self.fileURL)
-                            try? FileManager.default.moveItem(at: tempURL, to: self.fileURL)
-                        }
+            let status = exportSession.status
+            let exportError = exportSession.error
 
-                        self.exportStatusLabel.stringValue = "Edit saved!"
-                        self.onTrimCompleted?(self.fileURL)
+            await MainActor.run {
+                self.activeExportSession = nil
+                self.progressIndicator.stopAnimation(nil)
+                self.trimButton.isEnabled = true
 
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                            self.closeWindow()
-                        }
-                    } else {
-                        try? FileManager.default.removeItem(at: tempURL)
-                        self.exportStatusLabel.stringValue = "Export error: \(session.error?.localizedDescription ?? "Unknown")"
+                if status == .completed {
+                    self.player?.pause()
+                    self.player?.replaceCurrentItem(with: nil)
+                    self.player = nil
+
+                    do {
+                        _ = try FileManager.default.replaceItemAt(self.fileURL, withItemAt: tempURL)
+                    } catch {
+                        try? FileManager.default.removeItem(at: self.fileURL)
+                        try? FileManager.default.moveItem(at: tempURL, to: self.fileURL)
                     }
+
+                    self.exportStatusLabel.stringValue = "Edit saved!"
+                    self.onTrimCompleted?(self.fileURL)
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        self.closeWindow()
+                    }
+                } else {
+                    try? FileManager.default.removeItem(at: tempURL)
+                    self.exportStatusLabel.stringValue = "Export error: \(exportError?.localizedDescription ?? "Unknown")"
                 }
             }
         }
@@ -5631,24 +5641,33 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                 exportSession.timeRange = tr
             }
 
-            exportSession.exportAsynchronously { [weak self, weak exportSession] in
-                DispatchQueue.main.async {
-                    guard let self = self, let session = exportSession else { return }
-                    self.progressIndicator.stopAnimation(nil)
-                    self.trimButton.isEnabled = true
+            self.activeExportSession = exportSession
 
-                    if session.status == .completed {
-                        self.exportStatusLabel.stringValue = "Stitched video saved!"
-                        NSWorkspace.shared.activateFileViewerSelecting([destURL])
-                        self.onTrimCompleted?(destURL)
+            await withCheckedContinuation { continuation in
+                exportSession.exportAsynchronously {
+                    continuation.resume()
+                }
+            }
 
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                            self.closeWindow()
-                        }
-                    } else {
-                        try? FileManager.default.removeItem(at: destURL)
-                        self.exportStatusLabel.stringValue = "Export failed: \(session.error?.localizedDescription ?? "Unknown error")"
+            let status = exportSession.status
+            let exportError = exportSession.error
+
+            await MainActor.run {
+                self.activeExportSession = nil
+                self.progressIndicator.stopAnimation(nil)
+                self.trimButton.isEnabled = true
+
+                if status == .completed {
+                    self.exportStatusLabel.stringValue = "Stitched video saved!"
+                    NSWorkspace.shared.activateFileViewerSelecting([destURL])
+                    self.onTrimCompleted?(destURL)
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        self.closeWindow()
                     }
+                } else {
+                    try? FileManager.default.removeItem(at: destURL)
+                    self.exportStatusLabel.stringValue = "Export failed: \(exportError?.localizedDescription ?? "Unknown error")"
                 }
             }
         }
@@ -5688,6 +5707,8 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
             timeObserverToken = nil
         }
         player?.pause()
+        activeExportSession?.cancelExport()
+        activeExportSession = nil
         onWindowWillClose?(self)
         super.close()
 
@@ -5697,6 +5718,8 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc private func closeWindow() {
+        activeExportSession?.cancelExport()
+        activeExportSession = nil
         if styleMask.contains(.fullScreen) {
             toggleFullScreen(nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
