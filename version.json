@@ -1,7 +1,15 @@
 {
-  "version": "1.4.7",
+  "version": "1.4.8",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.8",
+      "date": "2026-09-18",
+      "changes": [
+        "Export UI Hang Resolved: Fixed an issue where stitched export stayed stuck displaying 'Stitching X videos...' after successfully saving. Export sessions are now retained across the asynchronous lifecycle.",
+        "Trim In & Trim Out Export Hardening: Guaranteed clean completion handling, status updates, and auto-dismissal for both Trim In and Trim Out modes across both single-clip and multi-clip stitching."
+      ]
+    },
     {
       "version": "1.4.7",
       "date": "2026-09-16",
