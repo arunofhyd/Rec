@@ -37,7 +37,7 @@ Built with Apple's modern ScreenCaptureKit framework, Rec seamlessly records you
 
 *   **Live Screen Annotations**: ✏️ Apple Markup-style floating HUD with Pen, Brush, Highlighter, Magic Laser Writer (auto-fading glowing trails), Shapes (Arrow, Rectangle, Oval), Color Swatches + Picker, and Eraser. Palette is automatically excluded from recordings while drawings are captured cleanly.
 *   **Internal Audio**: 🔊 Seamlessly captures your Mac's internal audio right alongside your video feed using ScreenCaptureKit. No 3rd-party audio loopback drivers needed.
-*   **In-App Video Editor**: ✂️ Trim recordings with smooth timeline scrubbing, audio muting, and 1-click in-place overwrite saving directly to the original file without duplicate clutter.
+*   **In-App Multi-Segment Video Editor**: ✂️ Multi-block trimming with both Keep (Trim In) and Cut Out (Trim Out) modes. Add multiple cut segments across your video, preview smooth transition jumps in real time, mute audio, and save in-place or stitch clips without extra software.
 *   **Floating HUD Toast**: 🔔 Non-intrusive bottom-right notification toast with 7-second auto-dismiss, hover-to-pause, 1-click clipboard copy, and full right-click shortcuts.
 *   **Multiple Modes**: 🎯 Record your entire screen, click-and-drag to select a specific region, or record a specific application window.
 *   **Dynamic Controls & Pro FPS**: ⚡️ Live duration timer during recording, Clickity-style tap feedback ripples, and custom framerates from 15 FPS up to 120 FPS ProMotion.

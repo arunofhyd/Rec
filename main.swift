@@ -13,7 +13,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.4.8"
+    return "1.4.9"
 }()
 let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
@@ -3422,27 +3422,96 @@ enum TrimMode: Int {
     case trimOut = 1  // Cut Out Section (new)
 }
 
+struct TrimBlock: Identifiable, Equatable {
+    let id: UUID
+    var start: Double
+    var end: Double
+
+    init(id: UUID = UUID(), start: Double, end: Double) {
+        self.id = id
+        self.start = max(0, start)
+        self.end = max(start, end)
+    }
+
+    static func == (lhs: TrimBlock, rhs: TrimBlock) -> Bool {
+        return lhs.id == rhs.id
+    }
+}
+
 class TrimRangeSliderView: NSView {
     var trimMode: TrimMode = .trimIn {
         didSet { needsDisplay = true }
     }
     var duration: Double = 1.0 {
+        didSet {
+            normalizeBlocks()
+            needsDisplay = true
+        }
+    }
+    var blocks: [TrimBlock] = [TrimBlock(start: 0.0, end: 1.0)] {
+        didSet {
+            if activeBlockIndex >= blocks.count {
+                activeBlockIndex = max(0, blocks.count - 1)
+            }
+            needsDisplay = true
+        }
+    }
+    var activeBlockIndex: Int = 0 {
         didSet { needsDisplay = true }
     }
-    var startTime: Double = 0.0 {
-        didSet { needsDisplay = true }
+
+    var startTime: Double {
+        get {
+            guard activeBlockIndex < blocks.count else { return 0 }
+            return blocks[activeBlockIndex].start
+        }
+        set {
+            if blocks.isEmpty {
+                blocks = [TrimBlock(start: newValue, end: duration)]
+                activeBlockIndex = 0
+            } else {
+                let idx = min(activeBlockIndex, blocks.count - 1)
+                blocks[idx].start = max(0, min(blocks[idx].end - 0.2, newValue))
+            }
+            needsDisplay = true
+        }
     }
-    var endTime: Double = 1.0 {
-        didSet { needsDisplay = true }
+
+    var endTime: Double {
+        get {
+            guard activeBlockIndex < blocks.count else { return duration }
+            return blocks[activeBlockIndex].end
+        }
+        set {
+            if blocks.isEmpty {
+                blocks = [TrimBlock(start: 0, end: newValue)]
+                activeBlockIndex = 0
+            } else {
+                let idx = min(activeBlockIndex, blocks.count - 1)
+                blocks[idx].end = min(duration, max(blocks[idx].start + 0.2, newValue))
+            }
+            needsDisplay = true
+        }
     }
+
     var currentTime: Double = 0.0 {
         didSet { needsDisplay = true }
     }
 
     var onTrimChanged: ((Double, Double) -> Void)?
+    var onTrimBlocksChanged: (([TrimBlock], Int) -> Void)?
     var onSeek: ((Double, Bool) -> Void)?
+    var onBlockSelected: ((Int) -> Void)?
+    var onBlockDeleted: ((Int) -> Void)?
+    var onAddBlockRequested: ((Double) -> Void)?
 
-    private enum DragTarget { case none, startHandle, endHandle, playhead }
+    private enum DragTarget: Equatable {
+        case none
+        case startHandle(Int)
+        case endHandle(Int)
+        case blockBody(Int, Double)
+        case playhead
+    }
     private var currentDrag: DragTarget = .none
     private let handleWidth: CGFloat = 16.0
 
@@ -3458,6 +3527,19 @@ class TrimRangeSliderView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 8
         layer?.masksToBounds = true
+    }
+
+    private func normalizeBlocks() {
+        guard duration > 0 else { return }
+        if blocks.isEmpty {
+            blocks = [TrimBlock(start: 0, end: duration)]
+            activeBlockIndex = 0
+            return
+        }
+        for i in 0..<blocks.count {
+            blocks[i].start = max(0, min(duration - 0.2, blocks[i].start))
+            blocks[i].end = min(duration, max(blocks[i].start + 0.2, blocks[i].end))
+        }
     }
 
     private func xForTime(_ t: Double) -> CGFloat {
@@ -3480,122 +3562,156 @@ class TrimRangeSliderView: NSView {
 
         let b = bounds
         // Background track
-        ctx.setFillColor(NSColor.black.withAlphaComponent(0.45).cgColor)
+        ctx.setFillColor(NSColor.black.withAlphaComponent(0.48).cgColor)
         ctx.fill(b)
 
-        let startX = xForTime(startTime) - handleWidth
-        let endX = xForTime(endTime) + handleWidth
-        let selWidth = max(handleWidth * 2, endX - startX)
-        let selRect = NSRect(x: startX, y: 0, width: selWidth, height: b.height)
         let notchH: CGFloat = 12
 
         if trimMode == .trimIn {
-            // Trim In: Yellow selection highlight (QuickTime style)
-            let yellowColor = NSColor(srgbRed: 1.0, green: 0.82, blue: 0.0, alpha: 1.0)
-            ctx.setFillColor(yellowColor.withAlphaComponent(0.22).cgColor)
-            ctx.fill(selRect)
+            // Trim In: Non-kept area is shaded dark
+            ctx.setFillColor(NSColor.black.withAlphaComponent(0.30).cgColor)
+            ctx.fill(b)
 
-            // Top & bottom border lines for trim box
-            ctx.setStrokeColor(yellowColor.cgColor)
-            ctx.setLineWidth(2.5)
-            ctx.stroke(NSRect(x: startX, y: 1, width: selWidth, height: b.height - 2))
+            // Draw each keep block
+            for (idx, block) in blocks.enumerated() {
+                let startX = xForTime(block.start) - handleWidth
+                let endX = xForTime(block.end) + handleWidth
+                let selWidth = max(handleWidth * 2, endX - startX)
+                let selRect = NSRect(x: startX, y: 0, width: selWidth, height: b.height)
+                let isActive = (idx == activeBlockIndex)
 
-            // Left Handle (Start)
-            let leftHandleRect = NSRect(x: startX, y: 0, width: handleWidth, height: b.height)
-            ctx.setFillColor(yellowColor.cgColor)
-            let leftPath = CGPath(roundedRect: leftHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
-            ctx.addPath(leftPath)
-            ctx.fillPath()
+                let yellowColor = NSColor(srgbRed: 1.0, green: 0.82, blue: 0.0, alpha: 1.0)
+                let bgAlpha: CGFloat = isActive ? 0.26 : 0.13
+                let borderAlpha: CGFloat = isActive ? 1.0 : 0.55
+                let lineWidth: CGFloat = isActive ? 2.5 : 1.5
 
-            // Left handle grip notch
-            ctx.setFillColor(NSColor.black.withAlphaComponent(0.5).cgColor)
-            ctx.fill(NSRect(x: leftHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
+                ctx.setFillColor(yellowColor.withAlphaComponent(bgAlpha).cgColor)
+                ctx.fill(selRect)
 
-            // Right Handle (End)
-            let rightHandleRect = NSRect(x: endX - handleWidth, y: 0, width: handleWidth, height: b.height)
-            ctx.setFillColor(yellowColor.cgColor)
-            let rightPath = CGPath(roundedRect: rightHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
-            ctx.addPath(rightPath)
-            ctx.fillPath()
+                ctx.setStrokeColor(yellowColor.withAlphaComponent(borderAlpha).cgColor)
+                ctx.setLineWidth(lineWidth)
+                ctx.stroke(NSRect(x: startX, y: 1, width: selWidth, height: b.height - 2))
 
-            // Right handle grip notch
-            ctx.fill(NSRect(x: rightHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
+                // Left Handle
+                let leftHandleRect = NSRect(x: startX, y: 0, width: handleWidth, height: b.height)
+                ctx.setFillColor(yellowColor.withAlphaComponent(isActive ? 1.0 : 0.70).cgColor)
+                let leftPath = CGPath(roundedRect: leftHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+                ctx.addPath(leftPath)
+                ctx.fillPath()
+
+                ctx.setFillColor(NSColor.black.withAlphaComponent(0.55).cgColor)
+                ctx.fill(NSRect(x: leftHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
+
+                // Right Handle
+                let rightHandleRect = NSRect(x: endX - handleWidth, y: 0, width: handleWidth, height: b.height)
+                ctx.setFillColor(yellowColor.withAlphaComponent(isActive ? 1.0 : 0.70).cgColor)
+                let rightPath = CGPath(roundedRect: rightHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+                ctx.addPath(rightPath)
+                ctx.fillPath()
+
+                ctx.fill(NSRect(x: rightHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
+
+                if selWidth >= 52 {
+                    let labelText = (blocks.count > 1 ? "KEEP #\(idx + 1)" : "KEEP") as NSString
+                    let attrs: [NSAttributedString.Key: Any] = [
+                        .font: NSFont.systemFont(ofSize: 9.5, weight: .bold),
+                        .foregroundColor: yellowColor.withAlphaComponent(isActive ? 1.0 : 0.75)
+                    ]
+                    let txtSize = labelText.size(withAttributes: attrs)
+                    let txtRect = NSRect(x: selRect.midX - txtSize.width / 2, y: (b.height - txtSize.height) / 2, width: txtSize.width, height: txtSize.height)
+                    labelText.draw(in: txtRect, withAttributes: attrs)
+                }
+            }
         } else {
-            // Trim Out: Highlight kept retained ends in subtle emerald green
-            if startX > 0 {
-                let leftKeptRect = NSRect(x: 0, y: 0, width: startX, height: b.height)
-                ctx.setFillColor(NSColor.systemGreen.withAlphaComponent(0.12).cgColor)
-                ctx.fill(leftKeptRect)
-                ctx.setStrokeColor(NSColor.systemGreen.withAlphaComponent(0.50).cgColor)
-                ctx.setLineWidth(1.5)
-                ctx.stroke(NSRect(x: 0, y: b.height - 2, width: startX, height: 1))
+            // Trim Out Mode (Cut Out): Retained slices in subtle green
+            let sortedCuts = blocks.sorted(by: { $0.start < $1.start })
+            var currentPos: Double = 0.0
+            var keptSlices: [(Double, Double)] = []
+            for c in sortedCuts {
+                if c.start > currentPos {
+                    keptSlices.append((currentPos, c.start))
+                }
+                currentPos = max(currentPos, c.end)
             }
-            if endX < b.width {
-                let rightKeptRect = NSRect(x: endX, y: 0, width: b.width - endX, height: b.height)
-                ctx.setFillColor(NSColor.systemGreen.withAlphaComponent(0.12).cgColor)
-                ctx.fill(rightKeptRect)
-                ctx.setStrokeColor(NSColor.systemGreen.withAlphaComponent(0.50).cgColor)
-                ctx.setLineWidth(1.5)
-                ctx.stroke(NSRect(x: endX, y: b.height - 2, width: b.width - endX, height: 1))
+            if duration > currentPos {
+                keptSlices.append((currentPos, duration))
             }
 
-            // Cut Out Section: Coral / Red with diagonal hash pattern
-            let redColor = NSColor(srgbRed: 0.96, green: 0.26, blue: 0.26, alpha: 1.0)
-            ctx.setFillColor(redColor.withAlphaComponent(0.24).cgColor)
-            ctx.fill(selRect)
-
-            // Draw diagonal cut stripes across selRect
-            ctx.saveGState()
-            ctx.clip(to: selRect)
-            ctx.setStrokeColor(redColor.withAlphaComponent(0.22).cgColor)
-            ctx.setLineWidth(2.0)
-            let stripeSpacing: CGFloat = 11.0
-            var curX = selRect.minX - selRect.height
-            while curX < selRect.maxX + selRect.height {
-                ctx.move(to: CGPoint(x: curX, y: 0))
-                ctx.addLine(to: CGPoint(x: curX + selRect.height, y: selRect.height))
-                curX += stripeSpacing
+            for slice in keptSlices {
+                let kStartX = xForTime(slice.0)
+                let kEndX = xForTime(slice.1)
+                let kW = max(0, kEndX - kStartX)
+                if kW > 0 {
+                    let keptRect = NSRect(x: kStartX, y: 0, width: kW, height: b.height)
+                    ctx.setFillColor(NSColor.systemGreen.withAlphaComponent(0.12).cgColor)
+                    ctx.fill(keptRect)
+                    ctx.setStrokeColor(NSColor.systemGreen.withAlphaComponent(0.50).cgColor)
+                    ctx.setLineWidth(1.5)
+                    ctx.stroke(NSRect(x: kStartX, y: b.height - 2, width: kW, height: 1))
+                }
             }
-            ctx.strokePath()
 
-            // Centered "CUT OUT" indicator label if space permits
-            if selWidth >= 62 {
-                let cutText = "CUT OUT" as NSString
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 10, weight: .bold),
-                    .foregroundColor: NSColor(srgbRed: 1.0, green: 0.40, blue: 0.40, alpha: 0.90)
-                ]
-                let textSize = cutText.size(withAttributes: attrs)
-                let textRect = NSRect(x: selRect.midX - textSize.width / 2, y: (b.height - textSize.height) / 2, width: textSize.width, height: textSize.height)
-                cutText.draw(in: textRect, withAttributes: attrs)
+            for (idx, block) in blocks.enumerated() {
+                let startX = xForTime(block.start) - handleWidth
+                let endX = xForTime(block.end) + handleWidth
+                let selWidth = max(handleWidth * 2, endX - startX)
+                let selRect = NSRect(x: startX, y: 0, width: selWidth, height: b.height)
+                let isActive = (idx == activeBlockIndex)
+
+                let redColor = NSColor(srgbRed: 0.96, green: 0.26, blue: 0.26, alpha: 1.0)
+                let bgAlpha: CGFloat = isActive ? 0.26 : 0.14
+                let borderAlpha: CGFloat = isActive ? 1.0 : 0.60
+                let lineWidth: CGFloat = isActive ? 2.5 : 1.5
+
+                ctx.setFillColor(redColor.withAlphaComponent(bgAlpha).cgColor)
+                ctx.fill(selRect)
+
+                ctx.saveGState()
+                ctx.clip(to: selRect)
+                ctx.setStrokeColor(redColor.withAlphaComponent(isActive ? 0.24 : 0.14).cgColor)
+                ctx.setLineWidth(2.0)
+                let stripeSpacing: CGFloat = 11.0
+                var curX = selRect.minX - selRect.height
+                while curX < selRect.maxX + selRect.height {
+                    ctx.move(to: CGPoint(x: curX, y: 0))
+                    ctx.addLine(to: CGPoint(x: curX + selRect.height, y: selRect.height))
+                    curX += stripeSpacing
+                }
+                ctx.strokePath()
+
+                if selWidth >= 52 {
+                    let labelText = (blocks.count > 1 ? "CUT #\(idx + 1)" : "CUT OUT") as NSString
+                    let attrs: [NSAttributedString.Key: Any] = [
+                        .font: NSFont.systemFont(ofSize: 9.5, weight: .bold),
+                        .foregroundColor: NSColor(srgbRed: 1.0, green: 0.40, blue: 0.40, alpha: isActive ? 1.0 : 0.75)
+                    ]
+                    let txtSize = labelText.size(withAttributes: attrs)
+                    let txtRect = NSRect(x: selRect.midX - txtSize.width / 2, y: (b.height - txtSize.height) / 2, width: txtSize.width, height: txtSize.height)
+                    labelText.draw(in: txtRect, withAttributes: attrs)
+                }
+                ctx.restoreGState()
+
+                ctx.setStrokeColor(redColor.withAlphaComponent(borderAlpha).cgColor)
+                ctx.setLineWidth(lineWidth)
+                ctx.stroke(NSRect(x: startX, y: 1, width: selWidth, height: b.height - 2))
+
+                let leftHandleRect = NSRect(x: startX, y: 0, width: handleWidth, height: b.height)
+                ctx.setFillColor(redColor.withAlphaComponent(isActive ? 1.0 : 0.70).cgColor)
+                let leftPath = CGPath(roundedRect: leftHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+                ctx.addPath(leftPath)
+                ctx.fillPath()
+
+                ctx.setFillColor(NSColor.black.withAlphaComponent(0.55).cgColor)
+                ctx.fill(NSRect(x: leftHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
+
+                let rightHandleRect = NSRect(x: endX - handleWidth, y: 0, width: handleWidth, height: b.height)
+                ctx.setFillColor(redColor.withAlphaComponent(isActive ? 1.0 : 0.70).cgColor)
+                let rightPath = CGPath(roundedRect: rightHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+                ctx.addPath(rightPath)
+                ctx.fillPath()
+
+                ctx.fill(NSRect(x: rightHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
             }
-            ctx.restoreGState()
-
-            // Top & bottom border lines for cut box
-            ctx.setStrokeColor(redColor.cgColor)
-            ctx.setLineWidth(2.5)
-            ctx.stroke(NSRect(x: startX, y: 1, width: selWidth, height: b.height - 2))
-
-            // Left Handle (Start Cut)
-            let leftHandleRect = NSRect(x: startX, y: 0, width: handleWidth, height: b.height)
-            ctx.setFillColor(redColor.cgColor)
-            let leftPath = CGPath(roundedRect: leftHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
-            ctx.addPath(leftPath)
-            ctx.fillPath()
-
-            // Left handle grip notch
-            ctx.setFillColor(NSColor.black.withAlphaComponent(0.55).cgColor)
-            ctx.fill(NSRect(x: leftHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
-
-            // Right Handle (End Cut)
-            let rightHandleRect = NSRect(x: endX - handleWidth, y: 0, width: handleWidth, height: b.height)
-            ctx.setFillColor(redColor.cgColor)
-            let rightPath = CGPath(roundedRect: rightHandleRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
-            ctx.addPath(rightPath)
-            ctx.fillPath()
-
-            // Right handle grip notch
-            ctx.fill(NSRect(x: rightHandleRect.midX - 1, y: (b.height - notchH) / 2, width: 2, height: notchH))
         }
 
         // Current Playhead Needle (always visible anywhere along timeline)
@@ -3609,23 +3725,81 @@ class TrimRangeSliderView: NSView {
 
     override var mouseDownCanMoveWindow: Bool { return false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
+    override var acceptsFirstResponder: Bool { return true }
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         let loc = convert(event.locationInWindow, from: nil)
-        let startX = xForTime(startTime)
-        let endX = xForTime(endTime)
 
-        if abs(loc.x - (startX - handleWidth / 2)) <= handleWidth + 10 {
-            currentDrag = .startHandle
-        } else if abs(loc.x - (endX + handleWidth / 2)) <= handleWidth + 10 {
-            currentDrag = .endHandle
-        } else {
-            currentDrag = .playhead
-            let t = timeForX(loc.x)
-            currentTime = t
-            needsDisplay = true
-            onSeek?(t, true)
+        // Check if double click on empty area -> request add block
+        if event.clickCount == 2 {
+            let clickTime = timeForX(loc.x)
+            let insideExisting = blocks.contains(where: { clickTime >= $0.start && clickTime <= $0.end })
+            if !insideExisting {
+                onAddBlockRequested?(clickTime)
+                return
+            }
         }
+
+        // 1. Check handles of active block first
+        if activeBlockIndex < blocks.count {
+            let b = blocks[activeBlockIndex]
+            let startX = xForTime(b.start)
+            let endX = xForTime(b.end)
+            if abs(loc.x - (startX - handleWidth / 2)) <= handleWidth + 8 {
+                currentDrag = .startHandle(activeBlockIndex)
+                return
+            } else if abs(loc.x - (endX + handleWidth / 2)) <= handleWidth + 8 {
+                currentDrag = .endHandle(activeBlockIndex)
+                return
+            }
+        }
+
+        // 2. Check handles of other blocks
+        for (i, b) in blocks.enumerated() {
+            if i == activeBlockIndex { continue }
+            let startX = xForTime(b.start)
+            let endX = xForTime(b.end)
+            if abs(loc.x - (startX - handleWidth / 2)) <= handleWidth + 8 {
+                activeBlockIndex = i
+                currentDrag = .startHandle(i)
+                onBlockSelected?(i)
+                notifyTrimChanged()
+                needsDisplay = true
+                return
+            } else if abs(loc.x - (endX + handleWidth / 2)) <= handleWidth + 8 {
+                activeBlockIndex = i
+                currentDrag = .endHandle(i)
+                onBlockSelected?(i)
+                notifyTrimChanged()
+                needsDisplay = true
+                return
+            }
+        }
+
+        // 3. Check inside any block body (for sliding or selecting)
+        for (i, b) in blocks.enumerated() {
+            let startX = xForTime(b.start) - handleWidth
+            let endX = xForTime(b.end) + handleWidth
+            if loc.x >= startX && loc.x <= endX {
+                activeBlockIndex = i
+                onBlockSelected?(i)
+                let clickTime = timeForX(loc.x)
+                currentDrag = .blockBody(i, clickTime - b.start)
+                currentTime = clickTime
+                notifyTrimChanged()
+                needsDisplay = true
+                onSeek?(clickTime, true)
+                return
+            }
+        }
+
+        // 4. Click outside blocks -> scrub playhead
+        currentDrag = .playhead
+        let t = timeForX(loc.x)
+        currentTime = t
+        needsDisplay = true
+        onSeek?(t, true)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -3633,19 +3807,46 @@ class TrimRangeSliderView: NSView {
         let t = timeForX(loc.x)
 
         switch currentDrag {
-        case .startHandle:
-            startTime = max(0, min(endTime - 0.2, t))
-            currentTime = startTime
-            onTrimChanged?(startTime, endTime)
-            onSeek?(startTime, false)
-        case .endHandle:
-            endTime = min(duration, max(startTime + 0.2, t))
-            currentTime = endTime
-            onTrimChanged?(startTime, endTime)
-            onSeek?(endTime, false)
+        case .startHandle(let idx):
+            guard idx < blocks.count else { break }
+            let minStart: Double = idx > 0 ? (blocks[idx - 1].end + 0.1) : 0.0
+            let maxStart: Double = blocks[idx].end - 0.2
+            let clampedStart = max(minStart, min(maxStart, t))
+            blocks[idx].start = clampedStart
+            currentTime = clampedStart
+            notifyTrimChanged()
+            onSeek?(clampedStart, false)
+
+        case .endHandle(let idx):
+            guard idx < blocks.count else { break }
+            let minEnd: Double = blocks[idx].start + 0.2
+            let maxEnd: Double = idx < (blocks.count - 1) ? (blocks[idx + 1].start - 0.1) : duration
+            let clampedEnd = min(maxEnd, max(minEnd, t))
+            blocks[idx].end = clampedEnd
+            currentTime = clampedEnd
+            notifyTrimChanged()
+            onSeek?(clampedEnd, false)
+
+        case .blockBody(let idx, let offset):
+            guard idx < blocks.count else { break }
+            let dur = blocks[idx].end - blocks[idx].start
+            let desiredStart = t - offset
+            let minStart: Double = idx > 0 ? (blocks[idx - 1].end + 0.1) : 0.0
+            let maxEnd: Double = idx < (blocks.count - 1) ? (blocks[idx + 1].start - 0.1) : duration
+            let maxStart: Double = maxEnd - dur
+            if maxStart >= minStart {
+                let clampedStart = max(minStart, min(maxStart, desiredStart))
+                blocks[idx].start = clampedStart
+                blocks[idx].end = clampedStart + dur
+                currentTime = clampedStart
+                notifyTrimChanged()
+                onSeek?(currentTime, false)
+            }
+
         case .playhead:
             currentTime = max(0, min(duration, t))
             onSeek?(currentTime, false)
+
         case .none:
             break
         }
@@ -3660,12 +3861,46 @@ class TrimRangeSliderView: NSView {
         }
     }
 
+    override func keyDown(with event: NSEvent) {
+        // Delete or Backspace key
+        if event.keyCode == 51 || event.keyCode == 117 {
+            if blocks.count > 1 {
+                onBlockDeleted?(activeBlockIndex)
+                return
+            }
+        }
+        // Tab key -> cycle to next block
+        if event.keyCode == 48 {
+            if !blocks.isEmpty {
+                activeBlockIndex = (activeBlockIndex + 1) % blocks.count
+                onBlockSelected?(activeBlockIndex)
+                notifyTrimChanged()
+                needsDisplay = true
+                return
+            }
+        }
+        super.keyDown(with: event)
+    }
+
+    private func notifyTrimChanged() {
+        guard activeBlockIndex < blocks.count else { return }
+        let b = blocks[activeBlockIndex]
+        onTrimChanged?(b.start, b.end)
+        onTrimBlocksChanged?(blocks, activeBlockIndex)
+    }
+
     override func resetCursorRects() {
         super.resetCursorRects()
-        let startX = xForTime(startTime) - handleWidth
-        let endX = xForTime(endTime) + handleWidth
-        addCursorRect(NSRect(x: startX - 6, y: 0, width: handleWidth + 12, height: bounds.height), cursor: .resizeLeftRight)
-        addCursorRect(NSRect(x: endX - handleWidth - 6, y: 0, width: handleWidth + 12, height: bounds.height), cursor: .resizeLeftRight)
+        for b in blocks {
+            let startX = xForTime(b.start) - handleWidth
+            let endX = xForTime(b.end) + handleWidth
+            addCursorRect(NSRect(x: startX - 4, y: 0, width: handleWidth + 8, height: bounds.height), cursor: .resizeLeftRight)
+            addCursorRect(NSRect(x: endX - handleWidth - 4, y: 0, width: handleWidth + 8, height: bounds.height), cursor: .resizeLeftRight)
+            let bodyW = (endX - handleWidth) - (startX + handleWidth)
+            if bodyW > 0 {
+                addCursorRect(NSRect(x: startX + handleWidth, y: 0, width: bodyW, height: bounds.height), cursor: .openHand)
+            }
+        }
     }
 }
 
@@ -4242,7 +4477,12 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     var onWindowWillClose: ((VideoTrimmerWindow) -> Void)?
 
     var trimMode: TrimMode = .trimIn
+    var trimBlocks: [TrimBlock] = []
+    var activeBlockIndex: Int = 0
     var modeSegmentedControl: NSSegmentedControl!
+    var addBlockButton: NSButton!
+    var removeBlockButton: NSButton!
+    var blockPillControl: NSSegmentedControl!
     var modeDescriptionLabel: NSTextField!
     var startTimeLabel: NSTextField!
     var endTimeLabel: NSTextField!
@@ -4363,27 +4603,83 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         modeSegmentedControl.setImage(NSImage(systemSymbolName: "arrow.left.and.right.to.inner", accessibilityDescription: "Trim In")?.withSymbolConfiguration(symConfig), forSegment: 0)
         modeSegmentedControl.setImage(NSImage(systemSymbolName: "scissors", accessibilityDescription: "Trim Out")?.withSymbolConfiguration(symConfig), forSegment: 1)
 
+        // Add Block Button
+        addBlockButton = NSButton(title: " + Add Keep", target: self, action: #selector(addNewTrimBlock))
+        addBlockButton.bezelStyle = .texturedRounded
+        addBlockButton.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
+        let plusConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+        addBlockButton.image = NSImage(systemSymbolName: "plus.circle.fill", accessibilityDescription: "Add Block")?.withSymbolConfiguration(plusConfig)
+        addBlockButton.imagePosition = .imageLeading
+        addBlockButton.translatesAutoresizingMaskIntoConstraints = false
+        addBlockButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        // Remove Block Button
+        removeBlockButton = NSButton(title: " Remove", target: self, action: #selector(removeCurrentTrimBlock))
+        removeBlockButton.bezelStyle = .texturedRounded
+        removeBlockButton.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
+        let trashConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+        removeBlockButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove Block")?.withSymbolConfiguration(trashConfig)
+        removeBlockButton.imagePosition = .imageLeading
+        removeBlockButton.isEnabled = false
+        removeBlockButton.translatesAutoresizingMaskIntoConstraints = false
+        removeBlockButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        // Block Pill Control
+        blockPillControl = NSSegmentedControl(labels: ["#1"], trackingMode: .selectOne, target: self, action: #selector(blockPillChanged(_:)))
+        blockPillControl.segmentStyle = .texturedRounded
+        blockPillControl.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        blockPillControl.selectedSegment = 0
+        blockPillControl.translatesAutoresizingMaskIntoConstraints = false
+        blockPillControl.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        let blockControlsStack = NSStackView(views: [addBlockButton, removeBlockButton, blockPillControl])
+        blockControlsStack.orientation = .horizontal
+        blockControlsStack.spacing = 6
+        blockControlsStack.alignment = .centerY
+        blockControlsStack.translatesAutoresizingMaskIntoConstraints = false
+
         modeDescriptionLabel = NSTextField(labelWithString: "Output preserves the highlighted section")
         modeDescriptionLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .regular)
         modeDescriptionLabel.textColor = .secondaryLabelColor
         modeDescriptionLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let modeBar = NSStackView(views: [modeSegmentedControl, NSView(), modeDescriptionLabel])
+        let modeBar = NSStackView(views: [modeSegmentedControl, blockControlsStack, NSView(), modeDescriptionLabel])
         modeBar.orientation = .horizontal
         modeBar.alignment = .centerY
+        modeBar.spacing = 10
         modeBar.translatesAutoresizingMaskIntoConstraints = false
 
         // Interactive Visual Trim Slider
         trimSlider = TrimRangeSliderView()
         trimSlider.translatesAutoresizingMaskIntoConstraints = false
         trimSlider.trimMode = self.trimMode
-        trimSlider.onTrimChanged = { [weak self] start, end in
+        trimSlider.onTrimBlocksChanged = { [weak self] blocks, activeIdx in
             guard let self = self else { return }
-            self.trimStartSeconds = start
-            self.trimEndSeconds = end
+            self.trimBlocks = blocks
+            self.activeBlockIndex = activeIdx
+            if activeIdx < blocks.count {
+                self.trimStartSeconds = blocks[activeIdx].start
+                self.trimEndSeconds = blocks[activeIdx].end
+            }
             self.stopSelectionPlaybackIfNeeded()
+            self.updateBlockControls()
             self.updateLabels()
             self.updateTrimButtonTitle()
+        }
+        trimSlider.onBlockSelected = { [weak self] idx in
+            guard let self = self else { return }
+            self.activeBlockIndex = idx
+            self.updateBlockControls()
+            self.updateLabels()
+            self.updateTrimButtonTitle()
+        }
+        trimSlider.onBlockDeleted = { [weak self] _ in
+            guard let self = self else { return }
+            self.removeCurrentTrimBlock()
+        }
+        trimSlider.onAddBlockRequested = { [weak self] clickTime in
+            guard let self = self else { return }
+            self.addNewBlockAround(clickTime)
         }
         trimSlider.onSeek = { [weak self] time, exact in
             guard let self = self else { return }
@@ -4664,13 +4960,19 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
 
         await MainActor.run {
             self.totalDuration = newTotalDuration
-            if !preserveTrimRange || self.trimEndSeconds > self.totalDuration {
-                self.trimStartSeconds = 0.0
-                self.trimEndSeconds = self.totalDuration
+            if !preserveTrimRange || self.trimBlocks.isEmpty || (self.trimBlocks.last?.end ?? 0) > self.totalDuration {
+                if self.trimMode == .trimIn {
+                    self.trimBlocks = [TrimBlock(start: 0.0, end: self.totalDuration)]
+                } else {
+                    let cutStart = round(self.totalDuration * 0.25 * 10) / 10
+                    let cutEnd = round(self.totalDuration * 0.75 * 10) / 10
+                    self.trimBlocks = [TrimBlock(start: cutStart, end: cutEnd)]
+                }
+                self.activeBlockIndex = 0
             }
             self.trimSlider.duration = self.totalDuration
-            self.trimSlider.startTime = self.trimStartSeconds
-            self.trimSlider.endTime = self.trimEndSeconds
+            self.syncBlocksToSlider()
+            self.updateBlockControls()
 
             let playerItem = AVPlayerItem(asset: comp)
             playerItem.videoComposition = videoComp
@@ -4719,25 +5021,55 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
             }
 
             if self.isPlayingSelection {
-                if self.trimMode == .trimIn {
-                    if sec >= self.trimEndSeconds {
-                        self.player?.pause()
-                        self.isPlayingSelection = false
-                        self.updatePlaySelectionButton()
-                        let startCM = CMTime(seconds: self.trimStartSeconds, preferredTimescale: 600)
-                        self.player?.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero)
+                let keptRanges = self.computeKeptRanges()
+                guard !keptRanges.isEmpty else {
+                    self.player?.pause()
+                    self.isPlayingSelection = false
+                    self.updatePlaySelectionButton()
+                    return
+                }
+
+                var inRangeIndex: Int? = nil
+                for (idx, r) in keptRanges.enumerated() {
+                    let startS = CMTimeGetSeconds(r.start)
+                    let endS = CMTimeGetSeconds(CMTimeRangeGetEnd(r))
+                    if sec >= (startS - 0.05) && sec < endS {
+                        inRangeIndex = idx
+                        break
+                    }
+                }
+
+                if let idx = inRangeIndex {
+                    let currentRange = keptRanges[idx]
+                    let endS = CMTimeGetSeconds(CMTimeRangeGetEnd(currentRange))
+                    if sec >= (endS - 0.06) {
+                        if idx + 1 < keptRanges.count {
+                            let nextStart = keptRanges[idx + 1].start
+                            self.player?.seek(to: nextStart, toleranceBefore: .zero, toleranceAfter: .zero)
+                        } else {
+                            self.player?.pause()
+                            self.isPlayingSelection = false
+                            self.updatePlaySelectionButton()
+                            let firstStart = keptRanges[0].start
+                            self.player?.seek(to: firstStart, toleranceBefore: .zero, toleranceAfter: .zero)
+                        }
                     }
                 } else {
-                    // Trim Out mode preview: skip cut region
-                    if !self.hasSkippedCut && sec >= self.trimStartSeconds && sec < self.trimEndSeconds {
-                        self.hasSkippedCut = true
-                        let endCM = CMTime(seconds: self.trimEndSeconds, preferredTimescale: 600)
-                        self.player?.seek(to: endCM, toleranceBefore: .zero, toleranceAfter: .zero)
-                    } else if sec >= self.totalDuration || (self.hasSkippedCut && sec >= min(self.totalDuration, self.trimEndSeconds + 3.0)) {
+                    var foundNext = false
+                    for r in keptRanges {
+                        let startS = CMTimeGetSeconds(r.start)
+                        if startS > sec {
+                            self.player?.seek(to: r.start, toleranceBefore: .zero, toleranceAfter: .zero)
+                            foundNext = true
+                            break
+                        }
+                    }
+                    if !foundNext {
                         self.player?.pause()
                         self.isPlayingSelection = false
-                        self.hasSkippedCut = false
                         self.updatePlaySelectionButton()
+                        let firstStart = keptRanges[0].start
+                        self.player?.seek(to: firstStart, toleranceBefore: .zero, toleranceAfter: .zero)
                     }
                 }
             }
@@ -5024,39 +5356,45 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
 
     @objc private func modeChanged(_ sender: NSSegmentedControl) {
         stopSelectionPlaybackIfNeeded()
+        let oldMode = trimMode
         trimMode = sender.selectedSegment == 1 ? .trimOut : .trimIn
         trimSlider.trimMode = trimMode
 
-        if trimMode == .trimOut {
-            modeDescriptionLabel.stringValue = "Output cuts highlighted section & stitches ends"
-            if trimStartSeconds <= 0.05 && trimEndSeconds >= totalDuration - 0.05 {
-                trimStartSeconds = round(totalDuration * 0.25 * 10) / 10
-                trimEndSeconds = round(totalDuration * 0.75 * 10) / 10
-                trimSlider.startTime = trimStartSeconds
-                trimSlider.endTime = trimEndSeconds
+        if trimMode == .trimOut && oldMode == .trimIn {
+            if trimBlocks.count == 1 && trimBlocks[0].start <= 0.05 && trimBlocks[0].end >= totalDuration - 0.05 {
+                let cutStart = round(totalDuration * 0.25 * 10) / 10
+                let cutEnd = round(totalDuration * 0.75 * 10) / 10
+                trimBlocks = [TrimBlock(start: cutStart, end: cutEnd)]
+                activeBlockIndex = 0
             }
-        } else {
-            modeDescriptionLabel.stringValue = "Output preserves the highlighted section"
+        } else if trimMode == .trimIn && oldMode == .trimOut {
+            if trimBlocks.count == 1 {
+                trimBlocks = [TrimBlock(start: 0.0, end: totalDuration)]
+                activeBlockIndex = 0
+            }
         }
 
+        syncBlocksToSlider()
+        updateBlockControls()
         updateLabels()
         updatePlaySelectionButton()
         updateTrimButtonTitle()
     }
 
     private func updateTrimButtonTitle() {
+        let blockCount = trimBlocks.count
         if clips.count > 1 {
             if trimMode == .trimIn {
-                if trimStartSeconds > 0.05 || (totalDuration - trimEndSeconds) > 0.05 {
-                    trimButton.title = "Save Trimmed Stitched Video"
-                } else {
-                    trimButton.title = "Save Stitched Video (\(clips.count) Clips)"
-                }
+                trimButton.title = "Save Trimmed Stitched Video (\(clips.count) Clips)"
             } else {
-                trimButton.title = "Cut Out & Save Stitched Video"
+                trimButton.title = blockCount > 1 ? "Cut Out (\(blockCount) Cuts) & Save Stitched Video" : "Cut Out & Save Stitched Video"
             }
         } else {
-            trimButton.title = trimMode == .trimIn ? "Save Trimmed Video" : "Cut Out & Save Video"
+            if trimMode == .trimIn {
+                trimButton.title = blockCount > 1 ? "Save Trimmed Video (\(blockCount) Segments)" : "Save Trimmed Video"
+            } else {
+                trimButton.title = blockCount > 1 ? "Cut Out (\(blockCount) Cuts) & Save Video" : "Cut Out & Save Video"
+            }
         }
     }
 
@@ -5094,30 +5432,29 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
             hasSkippedCut = false
             updatePlaySelectionButton()
         } else {
-            if trimMode == .trimIn {
-                let startCM = CMTime(seconds: trimStartSeconds, preferredTimescale: 600)
-                p.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                    guard let self = self else { return }
-                    self.player?.play()
-                    self.isPlayingSelection = true
-                    self.updatePlaySelectionButton()
+            let keptRanges = computeKeptRanges()
+            guard !keptRanges.isEmpty else { return }
+
+            let curSec = CMTimeGetSeconds(p.currentTime())
+            var startSeek = keptRanges[0].start
+
+            for r in keptRanges {
+                let startS = CMTimeGetSeconds(r.start)
+                let endS = CMTimeGetSeconds(CMTimeRangeGetEnd(r))
+                if curSec >= (startS - 0.05) && curSec < (endS - 0.1) {
+                    startSeek = p.currentTime()
+                    break
+                } else if startS > curSec {
+                    startSeek = r.start
+                    break
                 }
-            } else {
-                self.hasSkippedCut = false
-                let previewStart: Double
-                if trimStartSeconds <= 0.05 {
-                    previewStart = trimEndSeconds
-                    self.hasSkippedCut = true
-                } else {
-                    previewStart = max(0.0, trimStartSeconds - 1.5)
-                }
-                let startCM = CMTime(seconds: previewStart, preferredTimescale: 600)
-                p.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                    guard let self = self else { return }
-                    self.player?.play()
-                    self.isPlayingSelection = true
-                    self.updatePlaySelectionButton()
-                }
+            }
+
+            p.seek(to: startSeek, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                guard let self = self else { return }
+                self.player?.play()
+                self.isPlayingSelection = true
+                self.updatePlaySelectionButton()
             }
         }
     }
@@ -5156,21 +5493,36 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     }
 
     private func updateLabels() {
-        startTimeLabel.stringValue = "Start: \(formatTime(trimStartSeconds))"
-        endTimeLabel.stringValue = "End: \(formatTime(trimEndSeconds))"
+        if activeBlockIndex < trimBlocks.count {
+            let b = trimBlocks[activeBlockIndex]
+            trimStartSeconds = b.start
+            trimEndSeconds = b.end
+            let blockNum = activeBlockIndex + 1
+            startTimeLabel.stringValue = "Block #\(blockNum) Start: \(formatTime(b.start))"
+            endTimeLabel.stringValue = "End: \(formatTime(b.end))"
+        } else {
+            startTimeLabel.stringValue = "Start: \(formatTime(trimStartSeconds))"
+            endTimeLabel.stringValue = "End: \(formatTime(trimEndSeconds))"
+        }
+
+        let keptRanges = computeKeptRanges()
+        let finalKeptSec = keptRanges.reduce(0.0) { $0 + CMTimeGetSeconds($1.duration) }
 
         if trimMode == .trimIn {
-            let dur = max(0, trimEndSeconds - trimStartSeconds)
-            durationLabel.stringValue = "Keep: \(formatTime(dur))"
+            let countStr = trimBlocks.count == 1 ? "1 keep segment" : "\(trimBlocks.count) keep segments"
+            durationLabel.stringValue = "Kept Total: \(formatTime(finalKeptSec)) (\(countStr))"
+            modeDescriptionLabel.stringValue = "Output preserves \(countStr)"
             durationLabel.textColor = NSColor(name: nil, dynamicProvider: { appearance in
                 appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                     ? NSColor(red: 0.22, green: 0.90, blue: 0.44, alpha: 1.0)
                     : NSColor(red: 0.08, green: 0.56, blue: 0.20, alpha: 1.0)
             })
         } else {
-            let cutDur = max(0, trimEndSeconds - trimStartSeconds)
-            let finalDur = max(0, totalDuration - cutDur)
-            durationLabel.stringValue = "Cut: \(formatTime(cutDur))  ➔  Final: \(formatTime(finalDur))"
+            let totalCutSec = max(0, totalDuration - finalKeptSec)
+            let cutsCount = trimBlocks.count
+            let cutsStr = cutsCount == 1 ? "1 cut" : "\(cutsCount) cuts"
+            durationLabel.stringValue = "Cut: \(formatTime(totalCutSec)) (\(cutsStr))  ➔  Final: \(formatTime(finalKeptSec))"
+            modeDescriptionLabel.stringValue = "Output cuts \(cutsStr) & stitches remaining segments"
             durationLabel.textColor = NSColor(name: nil, dynamicProvider: { appearance in
                 appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                     ? NSColor(red: 1.0, green: 0.45, blue: 0.40, alpha: 1.0)
@@ -5180,24 +5532,30 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc private func setStartToCurrent() {
-        guard let p = player else { return }
+        guard let p = player, activeBlockIndex < trimBlocks.count else { return }
         stopSelectionPlaybackIfNeeded()
         let current = CMTimeGetSeconds(p.currentTime())
-        if current < trimEndSeconds {
-            trimStartSeconds = max(0, current)
-            trimSlider.startTime = trimStartSeconds
+        let b = trimBlocks[activeBlockIndex]
+        let minStart = activeBlockIndex > 0 ? (trimBlocks[activeBlockIndex - 1].end + 0.1) : 0.0
+        let maxStart = b.end - 0.2
+        if current < b.end && current >= minStart {
+            trimBlocks[activeBlockIndex].start = max(minStart, min(maxStart, current))
+            syncBlocksToSlider()
             updateLabels()
             updateTrimButtonTitle()
         }
     }
 
     @objc private func setEndToCurrent() {
-        guard let p = player else { return }
+        guard let p = player, activeBlockIndex < trimBlocks.count else { return }
         stopSelectionPlaybackIfNeeded()
         let current = CMTimeGetSeconds(p.currentTime())
-        if current > trimStartSeconds {
-            trimEndSeconds = min(totalDuration, current)
-            trimSlider.endTime = trimEndSeconds
+        let b = trimBlocks[activeBlockIndex]
+        let minEnd = b.start + 0.2
+        let maxEnd = activeBlockIndex < (trimBlocks.count - 1) ? (trimBlocks[activeBlockIndex + 1].start - 0.1) : totalDuration
+        if current > b.start && current <= maxEnd {
+            trimBlocks[activeBlockIndex].end = min(maxEnd, max(minEnd, current))
+            syncBlocksToSlider()
             updateLabels()
             updateTrimButtonTitle()
         }
@@ -5206,17 +5564,223 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     @objc private func resetTrim() {
         stopSelectionPlaybackIfNeeded()
         if trimMode == .trimIn {
-            trimStartSeconds = 0.0
-            trimEndSeconds = totalDuration
+            trimBlocks = [TrimBlock(start: 0.0, end: totalDuration)]
         } else {
-            trimStartSeconds = round(totalDuration * 0.25 * 10) / 10
-            trimEndSeconds = round(totalDuration * 0.75 * 10) / 10
+            let cutStart = round(totalDuration * 0.25 * 10) / 10
+            let cutEnd = round(totalDuration * 0.75 * 10) / 10
+            trimBlocks = [TrimBlock(start: cutStart, end: cutEnd)]
         }
-        trimSlider.startTime = trimStartSeconds
-        trimSlider.endTime = trimEndSeconds
+        activeBlockIndex = 0
+        syncBlocksToSlider()
+        updateBlockControls()
         updateLabels()
         updateTrimButtonTitle()
         player?.seek(to: .zero)
+    }
+
+    // MARK: - Multi-Block Management
+
+    func computeKeptRanges() -> [CMTimeRange] {
+        guard totalDuration > 0 else { return [] }
+        let sortedBlocks = trimBlocks
+            .map { TrimBlock(start: max(0, min(totalDuration, $0.start)), end: max(0, min(totalDuration, $0.end))) }
+            .sorted(by: { $0.start < $1.start })
+
+        if trimMode == .trimIn {
+            var merged: [(start: Double, end: Double)] = []
+            for b in sortedBlocks {
+                guard b.end > b.start + 0.05 else { continue }
+                if let last = merged.last, b.start <= last.end + 0.05 {
+                    merged[merged.count - 1].end = max(last.end, b.end)
+                } else {
+                    merged.append((b.start, b.end))
+                }
+            }
+            return merged.compactMap {
+                let startCM = CMTime(seconds: $0.start, preferredTimescale: 600)
+                let durCM = CMTime(seconds: max(0.01, $0.end - $0.start), preferredTimescale: 600)
+                return CMTimeRange(start: startCM, duration: durCM)
+            }
+        } else {
+            var cuts: [(start: Double, end: Double)] = []
+            for b in sortedBlocks {
+                guard b.end > b.start + 0.05 else { continue }
+                if let last = cuts.last, b.start <= last.end + 0.05 {
+                    cuts[cuts.count - 1].end = max(last.end, b.end)
+                } else {
+                    cuts.append((b.start, b.end))
+                }
+            }
+
+            guard !cuts.isEmpty else {
+                return [CMTimeRange(start: .zero, duration: CMTime(seconds: totalDuration, preferredTimescale: 600))]
+            }
+
+            var kept: [(start: Double, end: Double)] = []
+            var currentPos: Double = 0.0
+
+            for cut in cuts {
+                if cut.start > currentPos + 0.05 {
+                    kept.append((currentPos, cut.start))
+                }
+                currentPos = max(currentPos, cut.end)
+            }
+            if totalDuration > currentPos + 0.05 {
+                kept.append((currentPos, totalDuration))
+            }
+
+            return kept.compactMap {
+                let startCM = CMTime(seconds: $0.start, preferredTimescale: 600)
+                let durCM = CMTime(seconds: max(0.01, $0.end - $0.start), preferredTimescale: 600)
+                return CMTimeRange(start: startCM, duration: durCM)
+            }
+        }
+    }
+
+    func syncBlocksToSlider() {
+        trimSlider.blocks = trimBlocks
+        trimSlider.activeBlockIndex = activeBlockIndex
+        if activeBlockIndex < trimBlocks.count {
+            trimStartSeconds = trimBlocks[activeBlockIndex].start
+            trimEndSeconds = trimBlocks[activeBlockIndex].end
+        }
+    }
+
+    func updateBlockControls() {
+        removeBlockButton.isEnabled = trimBlocks.count > 1
+        let actionWord = trimMode == .trimOut ? "Cut" : "Keep"
+        addBlockButton.title = " + Add \(actionWord)"
+
+        blockPillControl.segmentCount = trimBlocks.count
+        for i in 0..<trimBlocks.count {
+            blockPillControl.setLabel("#\(i + 1)", forSegment: i)
+            blockPillControl.setWidth(34, forSegment: i)
+        }
+        if activeBlockIndex < trimBlocks.count {
+            blockPillControl.selectedSegment = activeBlockIndex
+        }
+    }
+
+    @objc func blockPillChanged(_ sender: NSSegmentedControl) {
+        let sel = sender.selectedSegment
+        guard sel >= 0 && sel < trimBlocks.count else { return }
+        selectBlock(at: sel)
+    }
+
+    func selectBlock(at index: Int) {
+        guard index >= 0 && index < trimBlocks.count else { return }
+        stopSelectionPlaybackIfNeeded()
+        activeBlockIndex = index
+        syncBlocksToSlider()
+        updateBlockControls()
+        updateLabels()
+        updateTrimButtonTitle()
+
+        let startSec = trimBlocks[index].start
+        let cm = CMTime(seconds: startSec, preferredTimescale: 600)
+        smoothSeek(to: cm, exact: true)
+    }
+
+    @objc func addNewTrimBlock() {
+        guard totalDuration > 0 else { return }
+        stopSelectionPlaybackIfNeeded()
+        let curTime = player != nil ? CMTimeGetSeconds(player!.currentTime()) : 0.0
+        addNewBlockAround(curTime)
+    }
+
+    func addNewBlockAround(_ targetTime: Double) {
+        let sorted = trimBlocks.sorted(by: { $0.start < $1.start })
+        let defaultDur = min(4.0, max(0.5, totalDuration * 0.15))
+
+        var placed = false
+        var newStart = 0.0
+        var newEnd = 0.0
+
+        var gaps: [(start: Double, end: Double)] = []
+        var pos = 0.0
+        for b in sorted {
+            if b.start > pos + 0.2 {
+                gaps.append((pos, b.start))
+            }
+            pos = max(pos, b.end)
+        }
+        if totalDuration > pos + 0.2 {
+            gaps.append((pos, totalDuration))
+        }
+
+        for gap in gaps {
+            if targetTime >= gap.start && targetTime <= gap.end {
+                let avail = gap.end - gap.start
+                let dur = min(defaultDur, max(0.3, avail * 0.8))
+                newStart = max(gap.start + 0.05, min(targetTime, gap.end - dur - 0.05))
+                newEnd = min(gap.end - 0.05, newStart + dur)
+                placed = true
+                break
+            }
+        }
+
+        if !placed {
+            if let largestGap = gaps.max(by: { ($0.end - $0.start) < ($1.end - $1.start) }), (largestGap.end - largestGap.start) >= 0.4 {
+                let avail = largestGap.end - largestGap.start
+                let dur = min(defaultDur, avail * 0.7)
+                newStart = largestGap.start + (avail - dur) / 2.0
+                newEnd = newStart + dur
+                placed = true
+            }
+        }
+
+        guard placed else {
+            exportStatusLabel.stringValue = "No space left on timeline for another block."
+            return
+        }
+
+        let newBlock = TrimBlock(start: round(newStart * 10) / 10, end: round(newEnd * 10) / 10)
+        trimBlocks.append(newBlock)
+        trimBlocks.sort(by: { $0.start < $1.start })
+        if let newIdx = trimBlocks.firstIndex(of: newBlock) {
+            activeBlockIndex = newIdx
+        }
+
+        syncBlocksToSlider()
+        updateBlockControls()
+        updateLabels()
+        updateTrimButtonTitle()
+
+        let cm = CMTime(seconds: newBlock.start, preferredTimescale: 600)
+        smoothSeek(to: cm, exact: true)
+
+        let actionWord = trimMode == .trimOut ? "Cut" : "Keep"
+        exportStatusLabel.stringValue = "Added \(actionWord) Block #\(activeBlockIndex + 1)"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            if self?.exportStatusLabel.stringValue.starts(with: "Added") ?? false {
+                self?.exportStatusLabel.stringValue = ""
+            }
+        }
+    }
+
+    @objc func removeCurrentTrimBlock() {
+        guard trimBlocks.count > 1 else {
+            exportStatusLabel.stringValue = "At least one trim block is required."
+            return
+        }
+        stopSelectionPlaybackIfNeeded()
+        let removedIdx = activeBlockIndex
+        trimBlocks.remove(at: removedIdx)
+        if activeBlockIndex >= trimBlocks.count {
+            activeBlockIndex = trimBlocks.count - 1
+        }
+        syncBlocksToSlider()
+        updateBlockControls()
+        updateLabels()
+        updateTrimButtonTitle()
+
+        let actionWord = trimMode == .trimOut ? "Cut" : "Keep"
+        exportStatusLabel.stringValue = "Removed \(actionWord) Block #\(removedIdx + 1)"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            if self?.exportStatusLabel.stringValue.starts(with: "Removed") ?? false {
+                self?.exportStatusLabel.stringValue = ""
+            }
+        }
     }
 
     // MARK: - Export & Saving (Single vs Multi-Clip Stitched)
@@ -5241,115 +5805,54 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
 
         Task {
             let isMutedSingle = self.isAudioMuted || (self.clips.first?.isMuted ?? false)
+            let keptRanges = self.computeKeptRanges()
+
+            guard !keptRanges.isEmpty else {
+                await MainActor.run {
+                    self.exportStatusLabel.stringValue = "Cannot cut entire video."
+                    self.progressIndicator.stopAnimation(nil)
+                    self.trimButton.isEnabled = true
+                }
+                return
+            }
+
             let exportAsset: AVAsset
             let exportPreset: String
             var exportTimeRange: CMTimeRange? = nil
 
-            if self.trimMode == .trimIn {
-                let startCM = CMTime(seconds: self.trimStartSeconds, preferredTimescale: 600)
-                let endCM = CMTime(seconds: self.trimEndSeconds, preferredTimescale: 600)
-                let timeRange = CMTimeRange(start: startCM, duration: CMTimeSubtract(endCM, startCM))
-
-                if isMutedSingle {
-                    let comp = AVMutableComposition()
-                    let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
-                    if let assetVideoTrack = tracks.first,
-                       let compVideoTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
-                        try? compVideoTrack.insertTimeRange(timeRange, of: assetVideoTrack, at: .zero)
-                        if let transform = try? await assetVideoTrack.load(.preferredTransform) {
-                            compVideoTrack.preferredTransform = transform
-                        }
-                    }
-                    exportAsset = comp
-                    exportPreset = AVAssetExportPresetHighestQuality
-                } else {
-                    exportAsset = asset
-                    exportPreset = AVAssetExportPresetPassthrough
-                    exportTimeRange = timeRange
-                }
+            if keptRanges.count == 1 && !isMutedSingle {
+                let singleRange = keptRanges[0]
+                exportAsset = asset
+                exportPreset = AVAssetExportPresetPassthrough
+                exportTimeRange = singleRange
             } else {
-                // Trim Out Mode (Cut Out Section)
-                let hasPart1 = self.trimStartSeconds > 0.05
-                let hasPart2 = (self.totalDuration - self.trimEndSeconds) > 0.05
-
-                guard hasPart1 || hasPart2 else {
+                let comp = AVMutableComposition()
+                let videoTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+                guard let assetVideoTrack = videoTracks.first,
+                      let compVideoTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
                     await MainActor.run {
-                        self.exportStatusLabel.stringValue = "Cannot cut entire video."
+                        self.exportStatusLabel.stringValue = "Failed to access video track."
                         self.progressIndicator.stopAnimation(nil)
                         self.trimButton.isEnabled = true
                     }
                     return
                 }
 
-                if !hasPart1 {
-                    let startCM = CMTime(seconds: self.trimEndSeconds, preferredTimescale: 600)
-                    let endCM = CMTime(seconds: self.totalDuration, preferredTimescale: 600)
-                    let timeRange = CMTimeRange(start: startCM, duration: CMTimeSubtract(endCM, startCM))
+                if let transform = try? await assetVideoTrack.load(.preferredTransform) {
+                    compVideoTrack.preferredTransform = transform
+                }
 
-                    if isMutedSingle {
-                        let comp = AVMutableComposition()
-                        let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
-                        if let assetVideoTrack = tracks.first,
-                           let compVideoTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
-                            try? compVideoTrack.insertTimeRange(timeRange, of: assetVideoTrack, at: .zero)
-                            if let transform = try? await assetVideoTrack.load(.preferredTransform) {
-                                compVideoTrack.preferredTransform = transform
-                            }
-                        }
-                        exportAsset = comp
-                        exportPreset = AVAssetExportPresetHighestQuality
-                    } else {
-                        exportAsset = asset
-                        exportPreset = AVAssetExportPresetPassthrough
-                        exportTimeRange = timeRange
-                    }
-                } else if !hasPart2 {
-                    let startCM = CMTime.zero
-                    let endCM = CMTime(seconds: self.trimStartSeconds, preferredTimescale: 600)
-                    let timeRange = CMTimeRange(start: startCM, duration: endCM)
+                let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+                let assetAudioTrack = audioTracks.first
+                let compAudioTrack = (!isMutedSingle && assetAudioTrack != nil) ? comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) : nil
 
-                    if isMutedSingle {
-                        let comp = AVMutableComposition()
-                        let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
-                        if let assetVideoTrack = tracks.first,
-                           let compVideoTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
-                            try? compVideoTrack.insertTimeRange(timeRange, of: assetVideoTrack, at: .zero)
-                            if let transform = try? await assetVideoTrack.load(.preferredTransform) {
-                                compVideoTrack.preferredTransform = transform
-                            }
-                        }
-                        exportAsset = comp
-                        exportPreset = AVAssetExportPresetHighestQuality
-                    } else {
-                        exportAsset = asset
-                        exportPreset = AVAssetExportPresetPassthrough
-                        exportTimeRange = timeRange
-                    }
-                } else {
-                    // Middle cut: Stitch Part 1 and Part 2 together
-                    let comp = AVMutableComposition()
-                    let videoTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
-                    guard let assetVideoTrack = videoTracks.first,
-                          let compVideoTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
-                        await MainActor.run {
-                            self.exportStatusLabel.stringValue = "Failed to access video track."
-                            self.progressIndicator.stopAnimation(nil)
-                            self.trimButton.isEnabled = true
-                        }
-                        return
-                    }
-
-                    if let transform = try? await assetVideoTrack.load(.preferredTransform) {
-                        compVideoTrack.preferredTransform = transform
-                    }
-
-                    let range1 = CMTimeRange(start: .zero, duration: CMTime(seconds: self.trimStartSeconds, preferredTimescale: 600))
-                    let range2 = CMTimeRange(start: CMTime(seconds: self.trimEndSeconds, preferredTimescale: 600),
-                                             duration: CMTime(seconds: max(0.01, self.totalDuration - self.trimEndSeconds), preferredTimescale: 600))
-
+                var trackTime: CMTime = .zero
+                for r in keptRanges {
                     do {
-                        try compVideoTrack.insertTimeRange(range1, of: assetVideoTrack, at: .zero)
-                        try compVideoTrack.insertTimeRange(range2, of: assetVideoTrack, at: range1.duration)
+                        try compVideoTrack.insertTimeRange(r, of: assetVideoTrack, at: trackTime)
+                        if let compAudioTrack = compAudioTrack, let assetAudioTrack = assetAudioTrack {
+                            try compAudioTrack.insertTimeRange(r, of: assetAudioTrack, at: trackTime)
+                        }
                     } catch {
                         await MainActor.run {
                             self.exportStatusLabel.stringValue = "Composition error: \(error.localizedDescription)"
@@ -5358,19 +5861,11 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                         }
                         return
                     }
-
-                    if !isMutedSingle {
-                        let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
-                        if let assetAudioTrack = audioTracks.first,
-                           let compAudioTrack = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
-                            try? compAudioTrack.insertTimeRange(range1, of: assetAudioTrack, at: .zero)
-                            try? compAudioTrack.insertTimeRange(range2, of: assetAudioTrack, at: range1.duration)
-                        }
-                    }
-
-                    exportAsset = comp
-                    exportPreset = AVAssetExportPresetHighestQuality
+                    trackTime = CMTimeAdd(trackTime, r.duration)
                 }
+
+                exportAsset = comp
+                exportPreset = AVAssetExportPresetHighestQuality
             }
 
             guard let exportSession = AVAssetExportSession(asset: exportAsset, presetName: exportPreset) else {
@@ -5459,6 +5954,16 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         try? FileManager.default.removeItem(at: destURL)
 
         Task {
+            let keptRanges = self.computeKeptRanges()
+            guard !keptRanges.isEmpty else {
+                await MainActor.run {
+                    self.exportStatusLabel.stringValue = "Cannot cut entire sequence."
+                    self.progressIndicator.stopAnimation(nil)
+                    self.trimButton.isEnabled = true
+                }
+                return
+            }
+
             var maxW: CGFloat = 0
             var maxH: CGFloat = 0
             for c in self.clips {
@@ -5484,6 +5989,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
 
             var instructions: [AVMutableVideoCompositionInstruction] = []
             var currentTrackTime: CMTime = .zero
+            var timelinePos: Double = 0.0
 
             for clip in self.clips {
                 let asset = AVURLAsset(url: clip.url)
@@ -5491,141 +5997,54 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                 let aTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
                 guard let assetVideoTrack = vTracks.first else { continue }
 
-                let durSec = clip.effectiveDuration
-                let clipDur = CMTime(seconds: durSec, preferredTimescale: 600)
-                let clipStart = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                let clipRange = CMTimeRange(start: clipStart, duration: clipDur)
+                let clipDur = clip.effectiveDuration
+                let clipStart = timelinePos
+                let clipEnd = timelinePos + clipDur
+                timelinePos += clipDur
 
-                try? compVideoTrack?.insertTimeRange(clipRange, of: assetVideoTrack, at: currentTrackTime)
+                for r in keptRanges {
+                    let kStart = CMTimeGetSeconds(r.start)
+                    let kEnd = CMTimeGetSeconds(CMTimeRangeGetEnd(r))
 
-                if !self.isAudioMuted && !clip.isMuted, let assetAudioTrack = aTracks.first {
-                    try? compAudioTrack?.insertTimeRange(clipRange, of: assetAudioTrack, at: currentTrackTime)
+                    let overlapStart = max(clipStart, kStart)
+                    let overlapEnd = min(clipEnd, kEnd)
+
+                    guard overlapEnd > overlapStart + 0.01 else { continue }
+
+                    let segDur = overlapEnd - overlapStart
+                    let segStartInClip = clip.startTime + (overlapStart - clipStart)
+
+                    let segStartCM = CMTime(seconds: segStartInClip, preferredTimescale: 600)
+                    let segDurCM = CMTime(seconds: segDur, preferredTimescale: 600)
+                    let segRange = CMTimeRange(start: segStartCM, duration: segDurCM)
+
+                    try? compVideoTrack?.insertTimeRange(segRange, of: assetVideoTrack, at: currentTrackTime)
+                    if !self.isAudioMuted && !clip.isMuted, let assetAudioTrack = aTracks.first {
+                        try? compAudioTrack?.insertTimeRange(segRange, of: assetAudioTrack, at: currentTrackTime)
+                    }
+
+                    if let compVideoTrack = compVideoTrack {
+                        let layerInst = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideoTrack)
+                        let transform = VideoTrimmerWindow.calculateAspectFitTransform(
+                            naturalSize: clip.naturalSize,
+                            preferredTransform: clip.preferredTransform,
+                            renderSize: renderSize
+                        )
+                        layerInst.setTransform(transform, at: currentTrackTime)
+
+                        let inst = AVMutableVideoCompositionInstruction()
+                        inst.timeRange = CMTimeRange(start: currentTrackTime, duration: segDurCM)
+                        inst.layerInstructions = [layerInst]
+                        instructions.append(inst)
+                    }
+
+                    currentTrackTime = CMTimeAdd(currentTrackTime, segDurCM)
                 }
-
-                if let compVideoTrack = compVideoTrack {
-                    let layerInst = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideoTrack)
-                    let transform = VideoTrimmerWindow.calculateAspectFitTransform(
-                        naturalSize: clip.naturalSize,
-                        preferredTransform: clip.preferredTransform,
-                        renderSize: renderSize
-                    )
-                    layerInst.setTransform(transform, at: currentTrackTime)
-
-                    let inst = AVMutableVideoCompositionInstruction()
-                    inst.timeRange = CMTimeRange(start: currentTrackTime, duration: clipDur)
-                    inst.layerInstructions = [layerInst]
-                    instructions.append(inst)
-                }
-
-                currentTrackTime = CMTimeAdd(currentTrackTime, clipDur)
             }
 
             videoComp.instructions = instructions
 
-            // Determine the export asset and video composition based on trim mode
-            var exportAsset: AVAsset = comp
-            var exportVideoComp: AVVideoComposition = videoComp
-            var exportTimeRange: CMTimeRange? = nil
-
-            if self.trimMode == .trimOut {
-                let cutStartSec = self.trimStartSeconds
-                let cutEndSec = self.trimEndSeconds
-                let totalDur = CMTimeGetSeconds(currentTrackTime)
-                let hasPart1 = cutStartSec > 0.05
-                let hasPart2 = (totalDur - cutEndSec) > 0.05
-
-                guard hasPart1 || hasPart2 else {
-                    await MainActor.run {
-                        self.exportStatusLabel.stringValue = "Cannot cut entire video."
-                        self.progressIndicator.stopAnimation(nil)
-                        self.trimButton.isEnabled = true
-                    }
-                    return
-                }
-
-                // Build a new composition excluding the cut range [cutStart, cutEnd]
-                let cutComp = AVMutableComposition()
-                let cutVideoTrack = cutComp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
-                let cutAudioTrack = cutComp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
-
-                let cutVideoComp = AVMutableVideoComposition()
-                cutVideoComp.renderSize = renderSize
-                cutVideoComp.frameDuration = CMTime(value: 1, timescale: 30)
-
-                var cutInstructions: [AVMutableVideoCompositionInstruction] = []
-                var cutTrackTime: CMTime = .zero
-                var timelinePos: Double = 0
-
-                for clip in self.clips {
-                    let clipAsset = AVURLAsset(url: clip.url)
-                    let vTr = (try? await clipAsset.loadTracks(withMediaType: .video)) ?? []
-                    let aTr = (try? await clipAsset.loadTracks(withMediaType: .audio)) ?? []
-                    guard let assetVTrack = vTr.first else { continue }
-
-                    let clipDur = clip.effectiveDuration
-                    let clipStart = timelinePos
-                    let clipEnd = timelinePos + clipDur
-                    timelinePos += clipDur
-
-                    // Compute segments of this clip to keep (outside the cut range)
-                    var segments: [(sourceStart: Double, duration: Double)] = []
-
-                    if clipEnd <= cutStartSec || clipStart >= cutEndSec {
-                        // Entirely outside cut — keep all
-                        segments.append((clip.startTime, clipDur))
-                    } else {
-                        // Part before cut
-                        if clipStart < cutStartSec {
-                            segments.append((clip.startTime, cutStartSec - clipStart))
-                        }
-                        // Part after cut
-                        if clipEnd > cutEndSec {
-                            let skipInClip = max(0, cutEndSec - clipStart)
-                            segments.append((clip.startTime + skipInClip, clipEnd - cutEndSec))
-                        }
-                    }
-
-                    for seg in segments {
-                        let segStartCM = CMTime(seconds: seg.sourceStart, preferredTimescale: 600)
-                        let segDurCM = CMTime(seconds: seg.duration, preferredTimescale: 600)
-                        let segRange = CMTimeRange(start: segStartCM, duration: segDurCM)
-
-                        try? cutVideoTrack?.insertTimeRange(segRange, of: assetVTrack, at: cutTrackTime)
-                        if !self.isAudioMuted && !clip.isMuted, let assetATrack = aTr.first {
-                            try? cutAudioTrack?.insertTimeRange(segRange, of: assetATrack, at: cutTrackTime)
-                        }
-
-                        if let cutVideoTrack = cutVideoTrack {
-                            let layerInst = AVMutableVideoCompositionLayerInstruction(assetTrack: cutVideoTrack)
-                            let transform = VideoTrimmerWindow.calculateAspectFitTransform(
-                                naturalSize: clip.naturalSize,
-                                preferredTransform: clip.preferredTransform,
-                                renderSize: renderSize
-                            )
-                            layerInst.setTransform(transform, at: cutTrackTime)
-
-                            let inst = AVMutableVideoCompositionInstruction()
-                            inst.timeRange = CMTimeRange(start: cutTrackTime, duration: segDurCM)
-                            inst.layerInstructions = [layerInst]
-                            cutInstructions.append(inst)
-                        }
-
-                        cutTrackTime = CMTimeAdd(cutTrackTime, segDurCM)
-                    }
-                }
-
-                cutVideoComp.instructions = cutInstructions
-                exportAsset = cutComp
-                exportVideoComp = cutVideoComp
-            } else if self.trimMode == .trimIn {
-                if self.trimStartSeconds > 0.05 || (self.totalDuration - self.trimEndSeconds) > 0.05 {
-                    let startCM = CMTime(seconds: self.trimStartSeconds, preferredTimescale: 600)
-                    let endCM = CMTime(seconds: self.trimEndSeconds, preferredTimescale: 600)
-                    exportTimeRange = CMTimeRange(start: startCM, duration: CMTimeSubtract(endCM, startCM))
-                }
-            }
-
-            guard let exportSession = AVAssetExportSession(asset: exportAsset, presetName: AVAssetExportPresetHighestQuality) else {
+            guard let exportSession = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetHighestQuality) else {
                 await MainActor.run {
                     self.exportStatusLabel.stringValue = "Export session failed."
                     self.progressIndicator.stopAnimation(nil)
@@ -5634,12 +6053,9 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
                 return
             }
 
-            exportSession.videoComposition = exportVideoComp
+            exportSession.videoComposition = videoComp
             exportSession.outputURL = destURL
             exportSession.outputFileType = destURL.pathExtension.lowercased() == "mov" ? .mov : .mp4
-            if let tr = exportTimeRange {
-                exportSession.timeRange = tr
-            }
 
             self.activeExportSession = exportSession
 

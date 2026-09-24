@@ -1,7 +1,17 @@
 {
-  "version": "1.4.8",
+  "version": "1.4.9",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.4.9",
+      "date": "2026-09-24",
+      "changes": [
+        "Multi-Segment Trim Support: Add, manage, and preview multiple Trim Out (Cut) and Trim In (Keep) blocks on the same video.",
+        "Interactive Multi-Block Timeline: Drag handles to resize individual blocks, slide block bodies along the timeline, and switch between segments using dedicated pills or keyboard navigation.",
+        "Seamless Cut-Jumping Live Preview: Video player seamlessly skips over all cut blocks in real time during preview playback.",
+        "Multi-Block Composition Export: Export pipeline compiles all retained segments cleanly into a continuous high-quality video for both single clips and stitched sequences."
+      ]
+    },
     {
       "version": "1.4.8",
       "date": "2026-09-18",
