@@ -7,6 +7,12 @@
 
 APP_NAME="Rec"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+# =============================================================================
+#  Repository Configuration (Update these for your internal GitHub instance)
+# =============================================================================
+REPO_BASE_URL="https://github.com/arunofhyd/Rec"
+REPO_RAW_URL="https://raw.githubusercontent.com/arunofhyd/Rec/main"
+
 APP_VERSION=""
 # Try local version.json first, then fetch from GitHub
 if [ -f version.json ]; then
@@ -16,13 +22,12 @@ elif [ -f "$SCRIPT_DIR/version.json" ]; then
 fi
 # If no local version.json, fetch it from the repo
 if [ -z "$APP_VERSION" ]; then
-    APP_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" 2>/dev/null || true)
+    APP_VERSION=$(curl -fsSL "${REPO_RAW_URL}/version.json" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" 2>/dev/null || true)
 fi
 if [ -z "$APP_VERSION" ]; then
     APP_VERSION=$(grep -m1 'appVersion' main.swift 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
 fi
-if [ -z "$APP_VERSION" ]; then APP_VERSION="1.3.10"; fi
-REPO_RAW="." # Use current directory for now, but usually from github
+if [ -z "$APP_VERSION" ]; then APP_VERSION="1.5.0"; fi
 
 # ---- Terminal styling ------------------------------------
 BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
@@ -69,7 +74,7 @@ printf "
 
 # ---- Step 3: Download the source -----------------------------------------
 step "Downloading Rec source…"
-if ! curl -fsSL "https://raw.githubusercontent.com/arunofhyd/Rec/main/main.swift" -o main.swift 2>/dev/null; then
+if ! curl -fsSL "${REPO_RAW_URL}/main.swift" -o main.swift 2>/dev/null; then
     if [ -f "$OLDPWD/main.swift" ]; then
         cp "$OLDPWD/main.swift" .
     else
@@ -217,9 +222,9 @@ if ! swiftc -O -o "$APP/Contents/MacOS/$APP_NAME" main.swift -framework Cocoa -f
     warn "Local compilation failed."
     printf "  ${GREY}Falling back to downloading pre-built release...${NC}\n"
     
-    ZIP_URL="https://github.com/arunofhyd/Rec/releases/download/v${APP_VERSION}/Rec.zip"
+    ZIP_URL="${REPO_BASE_URL}/releases/download/v${APP_VERSION}/Rec.zip"
     if ! curl -fsSL "$ZIP_URL" -o Rec.zip; then
-        ZIP_URL="https://github.com/arunofhyd/Rec/releases/latest/download/Rec.zip"
+        ZIP_URL="${REPO_BASE_URL}/releases/latest/download/Rec.zip"
         curl -fsSL "$ZIP_URL" -o Rec.zip || { fail "Download failed."; exit 1; }
     fi
     

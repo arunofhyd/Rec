@@ -13,9 +13,15 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.4.9"
+    return "1.5.0"
 }()
-let updateCheckURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main/version.json"
+// =============================================================================
+//  Repository & Update Configuration (Update for internal GitHub)
+// =============================================================================
+let repoBaseURL = "https://github.com/arunofhyd/Rec"
+let repoRawURL = "https://raw.githubusercontent.com/arunofhyd/Rec/main"
+let updateCheckURL = "\(repoRawURL)/version.json"
+let updateInstallerURL = "\(repoRawURL)/install-rec.command"
 private let log = OSLog(subsystem: "com.aoh.rec", category: "recorder")
 
 struct AppSettings: Codable {
@@ -8060,7 +8066,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openGitHub() {
-        if let url = URL(string: "https://github.com/arunofhyd/Rec") {
+        if let url = URL(string: repoBaseURL) {
             NSWorkspace.shared.open(url)
         }
     }
@@ -8182,7 +8188,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func downloadAndInstallUpdate() {
-        let commandURL = "https://raw.githubusercontent.com/arunofhyd/Rec/refs/heads/main/install-rec.command"
+        let commandURL = updateInstallerURL
         guard let url = URL(string: commandURL) else { return }
         
         let task = URLSession.shared.downloadTask(with: url) { tempURL, _, error in
