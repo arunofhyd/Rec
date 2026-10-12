@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rec — Launch Brag Video (Hyperframes Composition)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0d10;
+            --panel-bg: rgba(21, 24, 29, 0.85);
+            --brand-red: #FF3B30;
+            --brand-red-glow: rgba(255, 59, 48, 0.5);
+            --brand-green: #34C759;
+            --brand-green-glow: rgba(52, 199, 89, 0.4);
+            --text-main: #ffffff;
+            --text-sub: #9ca3af;
+            --border-glass: rgba(255, 255, 255, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: #050608;
+            color: var(--text-main);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        /* 16:9 Cinema Container */
+        .stage-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 1280px;
+            aspect-ratio: 16 / 9;
+            background: var(--bg-color);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
+        }
+
+        /* Stage Canvas (1920x1080 scaled) */
+        #stage {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 20%, rgba(255, 59, 48, 0.08) 0%, transparent 60%),
+                        radial-gradient(circle at 80% 80%, rgba(52, 199, 89, 0.04) 0%, transparent 50%),
+                        var(--bg-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        /* Atmospheric Background Elements */
+        .ambient-glow {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.18;
+            pointer-events: none;
+            transition: all 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .glow-red { background: var(--brand-red); top: -100px; left: 50%; transform: translateX(-50%); }
+        .glow-green { background: var(--brand-green); bottom: -150px; right: 10%; }
+
+        /* macOS Window Frame Overlay */
+        .macos-menubar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 38px;
+            background: rgba(18, 20, 24, 0.65);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #d1d5db;
+            z-index: 50;
+        }
+        .menubar-left { display: flex; align-items: center; gap: 16px; }
+        .apple-logo { font-size: 15px; color: #fff; }
+        .menubar-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: #9ca3af; }
+        
+        .rec-menu-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 3px 10px;
+            background: rgba(255, 59, 48, 0.15);
+            border: 1px solid rgba(255, 59, 48, 0.4);
+            border-radius: 20px;
+            color: #ff6b60;
+            font-size: 11px;
+            font-family: 'Fira Code', monospace;
+            font-weight: 600;
+        }
+        .rec-pill-dot {
+            width: 7px;
+            height: 7px;
+            background: var(--brand-red);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--brand-red);
+            animation: pulse-dot 1.5s infinite;
+        }
+
+        /* Scenes Layers */
+        .scene {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 40px;
+            text-align: center;
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.96) translateY(12px);
+            transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 10;
+        }
+        .scene.active {
+            opacity: 1;
+            pointer-events: auto;
+            transform: scale(1) translateY(0);
+        }
+
+        /* Scene 1: The Problem */
+        .problem-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 999px;
+            background: rgba(255, 59, 48, 0.12);
+            border: 1px solid rgba(255, 59, 48, 0.35);
+            color: #ff6b60;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 24px;
+        }
+        .problem-title {
+            font-size: clamp(32px, 4.5vw, 56px);
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -1.5px;
+            max-width: 900px;
+            margin-bottom: 20px;
+        }
+        .problem-subtitle {
+            font-size: clamp(16px, 2vw, 22px);
+            color: var(--text-sub);
+            max-width: 720px;
+            line-height: 1.5;
+        }
+        .strike-pill-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 32px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .strike-pill {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ef4444;
+            text-decoration: line-through;
+            padding: 8px 18px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: 'Fira Code', monospace;
+            font-weight: 600;
+        }
+
+        /* Scene 2: Meet Rec (Product Reveal) */
+        .hero-logo-box {
+            width: 96px;
+            height: 96px;
+            margin-bottom: 20px;
+            filter: drop-shadow(0 15px 30px rgba(255, 59, 48, 0.35));
+            animation: float-logo 4s ease-in-out infinite;
+        }
+        .product-title {
+            font-size: clamp(40px, 5.5vw, 68px);
+            font-weight: 900;
+            letter-spacing: -2px;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #ffffff 40%, #9ca3af 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .product-tagline {
+            font-size: clamp(18px, 2.2vw, 24px);
+            color: #d1d5db;
+            margin-bottom: 34px;
+            font-weight: 500;
+        }
+
+        /* The Rec Floating HUD Panel Mockup */
+        .rec-floating-hud {
+            background: rgba(21, 24, 29, 0.88);
+            backdrop-filter: blur(28px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.4);
+            border-radius: 20px;
+            padding: 12px 24px;
+            display: inline-flex;
+            align-items: center;
+            gap: 20px;
+            transform: translateY(0);
+            transition: all 0.4s ease;
+        }
+        .hud-modes {
+            display: flex;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 4px;
+            border-radius: 12px;
+            gap: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .hud-mode-btn {
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #9ca3af;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .hud-mode-btn.active {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+        .hud-divider {
+            width: 1px;
+            height: 28px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .hud-audio-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #34C759;
+        }
+        .vu-meter {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 16px;
+        }
+        .vu-bar {
+            width: 3px;
+            background: #34C759;
+            border-radius: 2px;
+            animation: bounce-vu 0.8s ease-in-out infinite alternate;
+        }
+        .vu-bar:nth-child(1) { height: 40%; animation-delay: 0.1s; }
+        .vu-bar:nth-child(2) { height: 90%; animation-delay: 0.3s; }
+        .vu-bar:nth-child(3) { height: 65%; animation-delay: 0.2s; }
+        .vu-bar:nth-child(4) { height: 100%; animation-delay: 0.4s; }
+
+        .hud-record-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--brand-red);
+            color: #fff;
+            padding: 8px 18px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 700;
+            box-shadow: 0 0 20px rgba(255, 59, 48, 0.4);
+            cursor: pointer;
+        }
+        .hud-record-dot {
+            width: 10px;
+            height: 10px;
+            background: #fff;
+            border-radius: 50%;
+        }
+
+        /* Scene 3: Three Superpowers Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            max-width: 1040px;
+            width: 100%;
+            margin-top: 24px;
+        }
+        .feat-card {
+            background: rgba(21, 24, 29, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 18px;
+            padding: 26px 22px;
+            text-align: left;
+            transition: all 0.3s;
+        }
+        .feat-card:hover {
+            border-color: rgba(255, 59, 48, 0.4);
+            transform: translateY(-4px);
+        }
+        .feat-icon-badge {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: rgba(255, 59, 48, 0.12);
+            color: #ff6b60;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-bottom: 16px;
+        }
+        .feat-card:nth-child(2) .feat-icon-badge {
+            background: rgba(52, 199, 89, 0.12);
+            color: #34C759;
+        }
+        .feat-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+        .feat-desc {
+            font-size: 13.5px;
+            color: var(--text-sub);
+            line-height: 1.5;
+        }
+
+        /* Scene 4: Zero Friction Workflow */
+        .workflow-box {
+            position: relative;
+            width: 100%;
+            max-width: 820px;
+            background: rgba(14, 16, 20, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 20px;
+            padding: 36px;
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.8);
+        }
+        .countdown-overlay {
+            display: inline-flex;
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background: rgba(255, 59, 48, 0.15);
+            border: 3px solid var(--brand-red);
+            align-items: center;
+            justify-content: center;
+            font-size: 42px;
+            font-weight: 900;
+            color: #fff;
+            box-shadow: 0 0 30px var(--brand-red-glow);
+            margin-bottom: 24px;
+            animation: pulse-ring 1s infinite alternate;
+        }
+        .toast-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(30, 34, 42, 0.95);
+            border: 1px solid rgba(52, 199, 89, 0.4);
+            border-radius: 14px;
+            padding: 12px 24px;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+            margin-top: 20px;
+        }
+
+        /* Scene 5: Outro & Terminal Install */
+        .outro-logo {
+            width: 88px;
+            height: 88px;
+            margin-bottom: 16px;
+            filter: drop-shadow(0 15px 30px rgba(255, 59, 48, 0.4));
+        }
+        .terminal-block {
+            background: #000;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 14px;
+            padding: 18px 24px;
+            max-width: 880px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-family: 'Fira Code', monospace;
+            font-size: 13.5px;
+            color: #ff6b60;
+            margin-top: 24px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+            word-break: break-all;
+            text-align: left;
+            gap: 16px;
+        }
+        .copy-chip {
+            background: rgba(255, 59, 48, 0.15);
+            border: 1px solid rgba(255, 59, 48, 0.4);
+            color: #ff6b60;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            flex-shrink: 0;
+        }
+
+        /* Player Controls Dock */
+        .controls-dock {
+            margin-top: 18px;
+            width: 100%;
+            max-width: 1280px;
+            background: rgba(18, 20, 25, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+        .dock-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .play-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: var(--brand-red);
+            border: none;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 59, 48, 0.4);
+            transition: all 0.2s;
+        }
+        .play-btn:hover {
+            transform: scale(1.05);
+            background: #ff5247;
+        }
+        .timecode {
+            font-family: 'Fira Code', monospace;
+            font-size: 13px;
+            color: #d1d5db;
+            font-weight: 600;
+        }
+        .timeline-bar-wrapper {
+            flex: 1;
+            position: relative;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .timeline-bar-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 0%;
+            background: linear-gradient(90deg, #ff3b30, #ff6b60);
+            border-radius: 4px;
+        }
+        .dock-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .scene-chip {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #9ca3af;
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .scene-chip.active {
+            background: rgba(255, 59, 48, 0.15);
+            border-color: rgba(255, 59, 48, 0.4);
+            color: #ff6b60;
+        }
+
+        /* Animations */
+        @keyframes pulse-dot { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+        @keyframes pulse-ring { 0%{transform:scale(0.96);} 100%{transform:scale(1.04);} }
+        @keyframes bounce-vu { 0%{height:20%;} 100%{height:100%;} }
+        @keyframes float-logo { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);} }
+    </style>
+</head>
+<body>
+
+    <!-- 16:9 Stage -->
+    <div class="stage-wrapper">
+        <div id="stage">
+            <!-- macOS Window Menu Bar -->
+            <div class="macos-menubar">
+                <div class="menubar-left">
+                    <span class="apple-logo"></span>
+                    <span style="font-weight: 700; color: #fff;">Rec</span>
+                    <span>File</span>
+                    <span>Capture</span>
+                    <span>Window</span>
+                    <span>Help</span>
+                </div>
+                <div class="menubar-right">
+                    <div class="rec-menu-pill">
+                        <span class="rec-pill-dot"></span>
+                        <span id="menubar-timer">00:00</span>
+                    </div>
+                    <span>ScreenCaptureKit 100% Native</span>
+                    <span>macOS Tahoe / Sequoia</span>
+                </div>
+            </div>
+
+            <!-- Ambient Glow Orbs -->
+            <div class="ambient-glow glow-red"></div>
+            <div class="ambient-glow glow-green"></div>
+
+            <!-- SCENE 1: The Problem (0.0s – 3.5s) -->
+            <div id="scene-1" class="scene active">
+                <div class="problem-pill">
+                    <span>⚠️ The macOS Screen Recording Problem</span>
+                </div>
+                <h1 class="problem-title">
+                    Recording system audio shouldn't feel like hacking your kernel.
+                </h1>
+                <p class="problem-subtitle">
+                    Competitors force you to install messy third-party loopback drivers or pay $29/year for cloud telemetry.
+                </p>
+                <div class="strike-pill-group">
+                    <div class="strike-pill">✕ Soundflower kexts</div>
+                    <div class="strike-pill">✕ BlackHole audio aggregates</div>
+                    <div class="strike-pill">✕ Cloud subscriptions</div>
+                    <div class="strike-pill">✕ Damaged app warnings</div>
+                </div>
+            </div>
+
+            <!-- SCENE 2: Meet Rec (3.5s – 7.5s) -->
+            <div id="scene-2" class="scene">
+                <img src="assets/logo.svg" alt="Rec Logo" class="hero-logo-box">
+                <h2 class="product-title">Meet Rec.</h2>
+                <p class="product-tagline">Native Screen & Internal Audio Recorder for macOS</p>
+
+                <!-- Floating HUD Mockup -->
+                <div class="rec-floating-hud">
+                    <div class="hud-modes">
+                        <div class="hud-mode-btn active">Full Screen</div>
+                        <div class="hud-mode-btn">Window</div>
+                        <div class="hud-mode-btn">Region</div>
+                    </div>
+                    <div class="hud-divider"></div>
+                    <div class="hud-audio-toggle">
+                        <span>🔊 System Audio</span>
+                        <div class="vu-meter">
+                            <div class="vu-bar"></div>
+                            <div class="vu-bar"></div>
+                            <div class="vu-bar"></div>
+                            <div class="vu-bar"></div>
+                        </div>
+                    </div>
+                    <div class="hud-divider"></div>
+                    <div class="hud-record-btn">
+                        <span class="hud-record-dot"></span>
+                        <span>Record</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 3: Three Superpowers (7.5s – 12.5s) -->
+            <div id="scene-3" class="scene">
+                <div class="problem-pill" style="border-color: rgba(52, 199, 89, 0.4); color: #34C759; background: rgba(52, 199, 89, 0.1);">
+                    <span>⚡ Engineered for Apple Silicon</span>
+                </div>
+                <h2 class="problem-title" style="font-size: clamp(28px, 3.8vw, 46px); margin-bottom: 8px;">
+                    Zero Drivers. Pure ScreenCaptureKit.
+                </h2>
+                <div class="features-grid">
+                    <div class="feat-card">
+                        <div class="feat-icon-badge">🔊</div>
+                        <h3 class="feat-title">Native Loopback Audio</h3>
+                        <p class="feat-desc">Direct system audio capture via Apple's ScreenCaptureKit. Zero drivers, zero latency, pristine quality.</p>
+                    </div>
+                    <div class="feat-card">
+                        <div class="feat-icon-badge">🎯</div>
+                        <h3 class="feat-title">Multi-Target Precision</h3>
+                        <p class="feat-desc">Capture entire monitors, click-and-drag regions, or lock recording to a single app window without clutter.</p>
+                    </div>
+                    <div class="feat-card">
+                        <div class="feat-icon-badge">⚡</div>
+                        <h3 class="feat-title">100% On-Device</h3>
+                        <p class="feat-desc">Hardware-accelerated AVAssetWriter exports straight to standard .mov files. No cloud, no tracking, yours alone.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 4: Zero Friction Flow (12.5s – 17.0s) -->
+            <div id="scene-4" class="scene">
+                <div class="workflow-box">
+                    <div class="countdown-overlay" id="countdown-val">3</div>
+                    <h2 style="font-size: 32px; font-weight: 800; margin-bottom: 10px;">Unobtrusive Floating Controls</h2>
+                    <p style="color: var(--text-sub); font-size: 16px; margin-bottom: 16px;">
+                        The floating panel automatically vanishes when recording starts — keeping your footage pristine.
+                    </p>
+                    <div class="toast-pill">
+                        <span style="color: #34C759;">✓</span>
+                        <span>Multiplexed recording saved to ~/Downloads/Rec-2026-10-12.mov</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCENE 5: Outro & Terminal Install (17.0s – 20.0s) -->
+            <div id="scene-5" class="scene">
+                <img src="assets/logo.svg" alt="Rec Logo" class="outro-logo">
+                <h2 class="product-title" style="font-size: clamp(34px, 4.2vw, 54px); margin-bottom: 6px;">
+                    Your recording. Simplified.
+                </h2>
+                <p style="color: #d1d5db; font-size: 18px; font-weight: 500;">
+                    Free & Open Source for macOS · 100% On-Device
+                </p>
+
+                <div class="terminal-block">
+                    <span>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"</span>
+                    <span class="copy-chip">⌘ One-Line Install</span>
+                </div>
+                <div style="margin-top: 18px; display: flex; gap: 16px; font-size: 13px; color: #6b7280;">
+                    <span>Built with Swift & ScreenCaptureKit</span>
+                    <span>•</span>
+                    <span>By Arun Thomas</span>
+                    <span>•</span>
+                    <span>MIT Licensed</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Playback Controls Dock -->
+    <div class="controls-dock">
+        <div class="dock-left">
+            <button id="play-btn" class="play-btn" title="Play/Pause">▶</button>
+            <div id="timecode" class="timecode">00:00.0 / 00:20.0</div>
+        </div>
+
+        <div id="timeline" class="timeline-bar-wrapper">
+            <div id="timeline-fill" class="timeline-bar-fill"></div>
+        </div>
+
+        <div class="dock-right">
+            <div class="scene-chip active" onclick="seekTo(0)">1. Problem</div>
+            <div class="scene-chip" onclick="seekTo(3.5)">2. Reveal</div>
+            <div class="scene-chip" onclick="seekTo(7.5)">3. Features</div>
+            <div class="scene-chip" onclick="seekTo(12.5)">4. Flow</div>
+            <div class="scene-chip" onclick="seekTo(17.0)">5. Install</div>
+            <button id="audio-toggle-btn" class="scene-chip" style="color: #34C759;" onclick="toggleAudio()">🔊 BGM</button>
+        </div>
+    </div>
+
+    <!-- Background Music Audio Track -->
+    <audio id="bgm" src="assets/music/happy-beats-business-moves-vol-10-by-ende-dot-app.mp3" preload="auto"></audio>
+
+    <script>
+        const DURATION = 20.0;
+        let currentTime = 0;
+        let isPlaying = false;
+        let lastTimestamp = null;
+        let audioEnabled = true;
+
+        const scenes = [
+            { id: 'scene-1', start: 0.0, end: 3.5 },
+            { id: 'scene-2', start: 3.5, end: 7.5 },
+            { id: 'scene-3', start: 7.5, end: 12.5 },
+            { id: 'scene-4', start: 12.5, end: 17.0 },
+            { id: 'scene-5', start: 17.0, end: 20.0 }
+        ];
+
+        const playBtn = document.getElementById('play-btn');
+        const timecode = document.getElementById('timecode');
+        const timelineFill = document.getElementById('timeline-fill');
+        const timeline = document.getElementById('timeline');
+        const bgm = document.getElementById('bgm');
+        const menubarTimer = document.getElementById('menubar-timer');
+        const countdownVal = document.getElementById('countdown-val');
+        const sceneChips = document.querySelectorAll('.scene-chip');
+
+        function updateFrame(time) {
+            currentTime = Math.min(Math.max(time, 0), DURATION);
+
+            // Format timecode
+            const secs = Math.floor(currentTime);
+            const tenths = Math.floor((currentTime % 1) * 10);
+            timecode.textContent = `00:${secs.toString().padStart(2, '0')}.${tenths} / 00:20.0`;
+            menubarTimer.textContent = `00:${secs.toString().padStart(2, '0')}`;
+
+            // Update Progress Bar
+            const progress = (currentTime / DURATION) * 100;
+            timelineFill.style.width = `${progress}%`;
+
+            // Countdown animation in Scene 4
+            if (currentTime >= 12.5 && currentTime < 14.0) {
+                countdownVal.textContent = "3";
+            } else if (currentTime >= 14.0 && currentTime < 15.5) {
+                countdownVal.textContent = "2";
+            } else if (currentTime >= 15.5) {
+                countdownVal.textContent = "1";
+            }
+
+            // Determine active scene
+            scenes.forEach((sc, idx) => {
+                const el = document.getElementById(sc.id);
+                const isActive = (currentTime >= sc.start && currentTime < sc.end) || (idx === scenes.length - 1 && currentTime >= sc.start);
+                if (isActive) {
+                    el.classList.add('active');
+                    if (sceneChips[idx]) sceneChips[idx].classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                    if (sceneChips[idx]) sceneChips[idx].classList.remove('active');
+                }
+            });
+
+            // Music volume ducking / fade
+            if (audioEnabled && !bgm.paused) {
+                if (currentTime > 18.0) {
+                    bgm.volume = Math.max(0, 0.7 * (1 - (currentTime - 18.0) / 2.0));
+                } else {
+                    bgm.volume = 0.7;
+                }
+            }
+        }
+
+        function step(timestamp) {
+            if (!isPlaying) return;
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const delta = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+
+            currentTime += delta;
+            if (currentTime >= DURATION) {
+                currentTime = DURATION;
+                updateFrame(currentTime);
+                pauseVideo();
+                return;
+            }
+
+            updateFrame(currentTime);
+            requestAnimationFrame(step);
+        }
+
+        function playVideo() {
+            isPlaying = true;
+            playBtn.textContent = '❚❚';
+            lastTimestamp = null;
+            if (audioEnabled) {
+                bgm.currentTime = currentTime;
+                bgm.play().catch(() => {});
+            }
+            requestAnimationFrame(step);
+        }
+
+        function pauseVideo() {
+            isPlaying = false;
+            playBtn.textContent = '▶';
+            bgm.pause();
+        }
+
+        playBtn.addEventListener('click', () => {
+            if (currentTime >= DURATION) currentTime = 0;
+            if (isPlaying) pauseVideo(); else playVideo();
+        });
+
+        function seekTo(time) {
+            currentTime = time;
+            updateFrame(currentTime);
+            if (isPlaying && audioEnabled) {
+                bgm.currentTime = time;
+            }
+        }
+
+        timeline.addEventListener('click', (e) => {
+            const rect = timeline.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const targetRatio = clickX / rect.width;
+            seekTo(targetRatio * DURATION);
+        });
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            const btn = document.getElementById('audio-toggle-btn');
+            if (audioEnabled) {
+                btn.textContent = '🔊 BGM';
+                btn.style.color = '#34C759';
+                if (isPlaying) {
+                    bgm.currentTime = currentTime;
+                    bgm.play().catch(() => {});
+                }
+            } else {
+                btn.textContent = '🔇 Mute';
+                btn.style.color = '#9ca3af';
+                bgm.pause();
+            }
+        }
+
+        // Initialize state
+        updateFrame(0);
+    </script>
+</body>
+</html>

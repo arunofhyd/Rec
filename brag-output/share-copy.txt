@@ -1,0 +1,6 @@
+Stop installing messy 3rd-party audio drivers just to record your Mac screen.
+
+Rec captures your screen and internal system audio natively using Apple's ScreenCaptureKit — no BlackHole, no Soundflower, zero subscriptions. 100% on-device.
+
+Install with one command:
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"
