@@ -13,7 +13,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.5.0"
+    return "1.5.1"
 }()
 // =============================================================================
 //  Repository & Update Configuration (Update for internal GitHub)
@@ -573,12 +573,12 @@ class LastAreaPreviewWindow: NSWindow {
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.25
             self.animator().alphaValue = 1.0
-        }) {
+        }) { [weak self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 NSAnimationContext.runAnimationGroup({ context in
                     context.duration = 0.35
                     self?.animator().alphaValue = 0.0
-                }) {
+                }) { [weak self] in
                     self?.close()
                 }
             }
@@ -2010,7 +2010,7 @@ class AnnotationToolbarView: NSView {
     @objc private func openColorPicker() {
         let panel = NSColorPanel.shared
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 3)
-        panel.sharingType = .none
+        panel.sharingType = .readOnly
         panel.color = AnnotationManager.shared.currentColor
         panel.setTarget(self)
         panel.setAction(#selector(colorPanelChanged(_:)))
@@ -3203,7 +3203,7 @@ class FloatingPanel: NSPanel {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = false
-        self.sharingType = .none
+        self.sharingType = .readOnly
         self.standardWindowButton(.closeButton)?.isHidden = true
         self.standardWindowButton(.miniaturizeButton)?.isHidden = true
         self.standardWindowButton(.zoomButton)?.isHidden = true
@@ -3331,7 +3331,7 @@ class HoverPopUpButton: NSPopUpButton {
         addSubview(arrowImageView)
 
         NSLayoutConstraint.activate([
-            iconImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            iconImageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 1),
             iconImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconImageView.widthAnchor.constraint(equalToConstant: 17),
             iconImageView.heightAnchor.constraint(equalToConstant: 17),
@@ -8533,7 +8533,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Mic List (Modern API with external mic fallback)
         let micSubmenu = NSMenu()
-        let session = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeExternalUnknown")], mediaType: .audio, position: .unspecified)
+        let audioTypes: [AVCaptureDevice.DeviceType]
+        if #available(macOS 14.0, *) {
+            audioTypes = [.microphone, AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeExternalUnknown")]
+        } else {
+            audioTypes = [AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeBuiltInMicrophone"), AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeExternalUnknown")]
+        }
+        let session = AVCaptureDevice.DiscoverySession(deviceTypes: audioTypes, mediaType: .audio, position: .unspecified)
 
         if session.devices.isEmpty {
             let emptyItem = NSMenuItem(title: "No Microphones Found", action: nil, keyEquivalent: "")
@@ -8787,7 +8793,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cameraItems.append(noCamItem)
         cameraPopUp.menu?.addItem(noCamItem)
         
-        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .external], mediaType: .video, position: .unspecified).devices
+        let videoTypes: [AVCaptureDevice.DeviceType]
+        if #available(macOS 14.0, *) {
+            videoTypes = [.builtInWideAngleCamera, .external]
+        } else {
+            videoTypes = [.builtInWideAngleCamera, AVCaptureDevice.DeviceType(rawValue: "AVCaptureDeviceTypeExternalUnknown")]
+        }
+        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: videoTypes, mediaType: .video, position: .unspecified).devices
         for dev in devices {
             let item = NSMenuItem(title: dev.localizedName, action: #selector(cameraChanged(_:)), keyEquivalent: "")
             item.identifier = NSUserInterfaceItemIdentifier(dev.uniqueID)

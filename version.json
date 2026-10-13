@@ -1,7 +1,18 @@
 {
-  "version": "1.5.0",
+  "version": "1.5.1",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.5.1",
+      "date": "2026-10-13",
+      "changes": [
+        "Security & Entitlements Hardening: Added explicit camera and audio entitlements with designated requirement anchoring, guaranteeing permissions persist seamlessly across app updates without revocation.",
+        "macOS 13 Ventura Compatibility: Fixed AVFoundation audio and video capture device discovery fallbacks for macOS 13, resolving camera and microphone initialization on Ventura.",
+        "Script Reliability & ShellCheck Compliance: Hardened install and build scripts against format string vulnerabilities (SC2059) and cleaned process termination wait loops (SC2034).",
+        "Memory Optimization & Layout Polish: Resolved retain cycles in asynchronous animation completions with weak self captures and adjusted toolbar icon alignment.",
+        "Asset & Packaging Improvements: Corrected iconset resolution export paths for standard iconutil generation and added clean zero-metadata release packaging."
+      ]
+    },
     {
       "version": "1.5.0",
       "date": "2026-09-30",

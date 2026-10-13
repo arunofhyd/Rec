@@ -2,3 +2,5 @@
 *.app/
 Build/
 .swiftcache*
+.agents/skills/
+*.zip

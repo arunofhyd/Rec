@@ -27,50 +27,65 @@ fi
 if [ -z "$APP_VERSION" ]; then
     APP_VERSION=$(grep -m1 'appVersion' main.swift 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
 fi
-if [ -z "$APP_VERSION" ]; then APP_VERSION="1.5.0"; fi
+if [ -z "$APP_VERSION" ]; then APP_VERSION="1.5.1"; fi
 
 # ---- Terminal styling ------------------------------------
 BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 BLUE='\033[38;5;39m'; GREEN='\033[38;5;35m'; YELLOW='\033[38;5;220m'; RED='\033[38;5;196m'; GREY='\033[38;5;245m'
 
-line() { printf "${DIM}────────────────────────────────────────────────────────────${NC}\n"; }
-step() { printf "${RED}${BOLD}▸${NC} ${BOLD}%s${NC}\n" "$1"; }
-ok()   { printf "  ${GREEN}✓${NC} %s\n" "$1"; }
-warn() { printf "  ${YELLOW}!${NC} %s\n" "$1"; }
-fail() { printf "  ${RED}✗ %s${NC}\n" "$1"; }
+line() { printf '%b\n' "${DIM}────────────────────────────────────────────────────────────${NC}"; }
+step() { printf '%b▸%b %b%s%b\n' "${RED}${BOLD}" "${NC}" "${BOLD}" "$1" "${NC}"; }
+ok()   { printf '  %b✓%b %s\n' "${GREEN}" "${NC}" "$1"; }
+warn() { printf '  %b!%b %s\n' "${YELLOW}" "${NC}" "$1"; }
+fail() { printf '  %b✗ %s%b\n' "${RED}" "$1" "${NC}"; }
 
 clear
-printf "\n"
-printf "${RED}${BOLD}   Rec${NC}\n"
-printf "${GREY}   Simple, clean, native-feeling screen recording.${NC}\n\n"
+printf '\n'
+printf '%b\n' "${RED}${BOLD}   Rec${NC}"
+printf '%b\n\n' "${GREY}   Simple, clean, native-feeling screen recording.${NC}"
 line
-printf "\n"
+printf '\n'
 
 # ---- Step 1: Command Line Tools (compiler) -------------------------------
 step "Checking for build tools…"
 if ! xcode-select -p >/dev/null 2>&1; then
     warn "Apple's Command Line Tools are needed to build the app."
-    printf "  ${GREY}A small official Apple installer will pop up. Please click ${BOLD}Install${NC}${GREY} and wait for it to finish.${NC}\n\n"
+    printf '%b\n\n' "  ${GREY}A small official Apple installer will pop up. Please click ${BOLD}Install${NC}${GREY} and wait for it to finish.${NC}"
     xcode-select --install >/dev/null 2>&1
-    printf "  ${YELLOW}When the installation is COMPLETE, press [Enter] here to continue…${NC}"
+    printf '%b' "  ${YELLOW}When the installation is COMPLETE, press [Enter] here to continue…${NC}"
     read -r
     if ! xcode-select -p >/dev/null 2>&1; then
         fail "Build tools still not found."
-        printf "  ${GREY}Please finish the Apple installer, then run this file again.${NC}\n\n"
+        printf '%b\n\n' "  ${GREY}Please finish the Apple installer, then run this file again.${NC}"
         exit 1
     fi
 fi
 ok "Build tools ready."
-printf "\n"
+printf '\n'
 
 # ---- Step 2: Workspace ----------------------------------------------------
 step "Preparing a clean workspace…"
 BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
 cd "$BUILD_DIR" || { fail "Could not create workspace."; exit 1; }
+
+cat > Entitlements.plist <<'ENTEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>
+ENTEOF
+
 ok "Workspace ready."
-printf "
-"
+printf '\n'
 
 # ---- Step 3: Download the source -----------------------------------------
 step "Downloading Rec source…"
@@ -79,15 +94,12 @@ if ! curl -fsSL "${REPO_RAW_URL}/main.swift" -o main.swift 2>/dev/null; then
         cp "$OLDPWD/main.swift" .
     else
         fail "Could not download the app source."
-        printf "  ${GREY}Check your internet connection and try again.${NC}
-
-"
+        printf '%b\n\n' "  ${GREY}Check your internet connection and try again.${NC}"
         exit 1
     fi
 fi
 ok "Source ready."
-printf "
-"
+printf '\n'
 
 
 # ---- Step 3: Generate the app icon ---------------------------------------
@@ -156,7 +168,7 @@ ICONEOF
 swiftc MakeIcon.swift -o MakeIcon >/dev/null 2>&1 && ./MakeIcon
 if [ -f AppIcon.png ]; then
     mkdir -p AppIcon.iconset
-    for pair in "16 16" "32 16@2x" "32 32" "64 32@2x" "128 128" "256 128@2x" "256 256" "512 256@2x" "512 512" "1024 512@2x"; do
+    for pair in "16 16x16" "32 16x16@2x" "32 32x32" "64 32x32@2x" "128 128x128" "256 128x128@2x" "256 256x256" "512 256x256@2x" "512 512x512" "1024 512x512@2x"; do
         set -- $pair
         sips -z "$1" "$1" AppIcon.png --out "AppIcon.iconset/icon_${2}.png" >/dev/null 2>&1
     done
@@ -218,9 +230,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-if ! swiftc -O -o "$APP/Contents/MacOS/$APP_NAME" main.swift -framework Cocoa -framework ScreenCaptureKit -framework AVFoundation 2>build_errors.txt; then
+if ! swiftc -O -o "$APP/Contents/MacOS/$APP_NAME" main.swift -framework Cocoa -framework ScreenCaptureKit -framework AVFoundation -framework VideoToolbox -framework SwiftUI -framework QuartzCore 2>build_errors.txt; then
     warn "Local compilation failed."
-    printf "  ${GREY}Falling back to downloading pre-built release...${NC}\n"
+    printf '%b\n' "  ${GREY}Falling back to downloading pre-built release...${NC}"
     
     ZIP_URL="${REPO_BASE_URL}/releases/download/v${APP_VERSION}/Rec.zip"
     if ! curl -fsSL "$ZIP_URL" -o Rec.zip; then
@@ -233,10 +245,12 @@ if ! swiftc -O -o "$APP/Contents/MacOS/$APP_NAME" main.swift -framework Cocoa -f
     ok "Pre-built app downloaded successfully."
 else
     chmod +x "$APP/Contents/MacOS/$APP_NAME"
-    codesign --force --deep --sign - --requirements '=designated => identifier "com.aoh.rec"' "$APP" >/dev/null 2>&1 || true
+    ENTITLEMENTS_FLAG=""
+    [ -f Entitlements.plist ] && ENTITLEMENTS_FLAG="--entitlements Entitlements.plist"
+    codesign --force --options runtime $ENTITLEMENTS_FLAG --sign - --requirements '=designated => identifier "com.aoh.rec"' "$APP" >/dev/null 2>&1 || true
     ok "App built."
 fi
-printf "\n"
+printf '\n'
 
 if [ "$CI" = "true" ]; then
     mkdir -p "$OLDPWD/Build"
@@ -250,9 +264,10 @@ step "Installing Rec to /Applications…"
 
 pkill -9 -x "$APP_NAME" >/dev/null 2>&1 || true
 # Wait for process to fully exit (up to 5s)
-for _i in $(seq 1 10); do
-    pgrep -x "$APP_NAME" >/dev/null 2>&1 || break
+attempts=0
+while [ "$attempts" -lt 10 ] && pgrep -x "$APP_NAME" >/dev/null 2>&1; do
     sleep 0.5
+    attempts=$((attempts + 1))
 done
 DEST="/Applications/$APP_NAME.app"
 INSTALLED=false
@@ -269,10 +284,10 @@ fi
 if [ "$INSTALLED" = "true" ]; then
     xattr -dr com.apple.quarantine "$DEST" >/dev/null 2>&1 || true
     ok "Rec installed to /Applications."
-    printf "\n"
+    printf '\n'
     line
-    printf "\n  ${GREEN}${BOLD}✓ Rec is installed and running!${NC}\n\n"
-    printf "  ${GREY}Look for the floating record button on your screen.${NC}\n\n"
+    printf '\n%b\n\n' "  ${GREEN}${BOLD}✓ Rec is installed and running!${NC}"
+    printf '%b\n\n' "  ${GREY}Look for the floating record button on your screen.${NC}"
     open "$DEST"
     exit 0
 fi

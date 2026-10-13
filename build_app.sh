@@ -76,20 +76,25 @@ xcrun swiftc -O ${SWIFT_SDK:+-sdk "$SWIFT_SDK"} -module-cache-path "$SWIFT_CACHE
 
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 
-# 6. Codesign with designated identifier for permission persistence
-echo "🔏 Ad-hoc code signing..."
-codesign --force --deep --sign - --requirements '=designated => identifier "com.aoh.rec"' "$APP_DIR" >/dev/null 2>&1 || true
+# 6. Codesign with designated identifier & entitlements for permission persistence
+echo "🔏 Ad-hoc code signing with hardened runtime and entitlements..."
+ENTITLEMENTS_FLAG=""
+[ -f "$DIR/Entitlements.plist" ] && ENTITLEMENTS_FLAG="--entitlements $DIR/Entitlements.plist"
+codesign --force --options runtime $ENTITLEMENTS_FLAG --sign - --requirements '=designated => identifier "com.aoh.rec"' "$APP_DIR"
 
 # 7. Install to /Applications — force-kill any running instance first
 echo "🚀 Installing to $DEST_APP..."
 pkill -9 -x "$APP_NAME" 2>/dev/null || true
 # Wait until the process is actually gone (up to 5s)
-for i in $(seq 1 10); do
-    pgrep -x "$APP_NAME" >/dev/null 2>&1 || break
+attempts=0
+while [ "$attempts" -lt 10 ] && pgrep -x "$APP_NAME" >/dev/null 2>&1; do
     sleep 0.5
+    attempts=$((attempts + 1))
 done
 rm -rf "$DEST_APP" 2>/dev/null || true
 cp -R "$APP_DIR" "$DEST_APP"
+xattr -dr com.apple.quarantine "$DEST_APP" 2>/dev/null || true
+
 # Verify the installed version matches
 INSTALLED_VER=$(defaults read "$DEST_APP/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo "unknown")
 if [ "$INSTALLED_VER" != "$VERSION" ]; then
@@ -102,7 +107,16 @@ fi
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST_APP" 2>/dev/null || true
 touch "$DEST_APP"
 
-# 9. Relaunch
+# 9. Create clean release package (Rec.zip)
+echo "📦 Creating clean Rec.zip release package..."
+rm -f "$DIR/Rec.zip"
+export COPYFILE_DISABLE=1
+find "$APP_DIR" -name "._*" -delete 2>/dev/null || true
+find "$APP_DIR" -name ".DS_Store" -delete 2>/dev/null || true
+(cd "$DIR" && zip -q -r -y "$DIR/Rec.zip" "$APP_NAME.app")
+echo "🎁 Release package ready: $DIR/Rec.zip"
+
+# 10. Relaunch
 echo "✨ Launching $APP_NAME..."
 open "$DEST_APP"
 echo "✅ Build & Install Complete!"
