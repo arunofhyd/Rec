@@ -27,7 +27,7 @@ fi
 if [ -z "$APP_VERSION" ]; then
     APP_VERSION=$(grep -m1 'appVersion' main.swift 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
 fi
-if [ -z "$APP_VERSION" ]; then APP_VERSION="1.5.1"; fi
+if [ -z "$APP_VERSION" ]; then APP_VERSION="1.5.2"; fi
 
 # ---- Terminal styling ------------------------------------
 BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'

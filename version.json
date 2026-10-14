@@ -1,7 +1,16 @@
 {
-  "version": "1.5.1",
+  "version": "1.5.2",
   "downloadURL": "https://rec-aoh.netlify.app/#install",
   "changelog": [
+    {
+      "version": "1.5.2",
+      "date": "2026-10-14",
+      "changes": [
+        "Universal Binary (arm64 + x86_64): Compiled native fat binary for both Apple Silicon and Intel Macs with macOS 13.0+ deployment target.",
+        "Fixed Mach-O Minimum OS Compatibility: Resolved launch failure on macOS 26/15/14/13 caused by host SDK minos 27.0 stamping.",
+        "Build & Install Script Enhancement: Updated build_app.sh and install-rec.command with automated lipo universal binary generation."
+      ]
+    },
     {
       "version": "1.5.1",
       "date": "2026-10-13",

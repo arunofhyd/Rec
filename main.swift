@@ -13,7 +13,7 @@ let appVersion: String = {
     if let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !ver.isEmpty {
         return ver
     }
-    return "1.5.1"
+    return "1.5.2"
 }()
 // =============================================================================
 //  Repository & Update Configuration (Update for internal GitHub)
