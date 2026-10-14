@@ -67,13 +67,23 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# 5. Compile Swift Binary
-echo "🔨 Compiling main.swift with swiftc..."
+# 5. Compile Swift Binary (Universal Binary targeting macOS 13.0+)
+echo "🔨 Compiling main.swift (Universal arm64 + x86_64, macOS 13.0+)..."
 SWIFT_SDK=$(xcrun --show-sdk-path 2>/dev/null || true)
 SWIFT_CACHE="/tmp/.swiftcache_rec"
 mkdir -p "$SWIFT_CACHE"
-xcrun swiftc -O ${SWIFT_SDK:+-sdk "$SWIFT_SDK"} -module-cache-path "$SWIFT_CACHE" -o "$APP_DIR/Contents/MacOS/$APP_NAME" "$DIR/main.swift" -framework Cocoa -framework ScreenCaptureKit -framework AVFoundation -framework VideoToolbox -framework SwiftUI -framework QuartzCore
 
+xcrun swiftc -O ${SWIFT_SDK:+-sdk "$SWIFT_SDK"} -target arm64-apple-macos13.0 \
+  -module-cache-path "$SWIFT_CACHE" \
+  -o "$SWIFT_CACHE/${APP_NAME}_arm64" "$DIR/main.swift" \
+  -framework Cocoa -framework ScreenCaptureKit -framework AVFoundation -framework VideoToolbox -framework SwiftUI -framework QuartzCore
+
+xcrun swiftc -O ${SWIFT_SDK:+-sdk "$SWIFT_SDK"} -target x86_64-apple-macos13.0 \
+  -module-cache-path "$SWIFT_CACHE" \
+  -o "$SWIFT_CACHE/${APP_NAME}_x86_64" "$DIR/main.swift" \
+  -framework Cocoa -framework ScreenCaptureKit -framework AVFoundation -framework VideoToolbox -framework SwiftUI -framework QuartzCore
+
+lipo -create -output "$APP_DIR/Contents/MacOS/$APP_NAME" "$SWIFT_CACHE/${APP_NAME}_arm64" "$SWIFT_CACHE/${APP_NAME}_x86_64"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 
 # 6. Codesign with designated identifier & entitlements for permission persistence

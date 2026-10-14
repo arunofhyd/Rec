@@ -230,7 +230,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-if ! swiftc -O -o "$APP/Contents/MacOS/$APP_NAME" main.swift -framework Cocoa -framework ScreenCaptureKit -framework AVFoundation -framework VideoToolbox -framework SwiftUI -framework QuartzCore 2>build_errors.txt; then
+BUILD_OK=false
+if swiftc -O -target arm64-apple-macos13.0 -o "${APP_NAME}_arm64" main.swift -framework Cocoa -framework ScreenCaptureKit -framework AVFoundation -framework VideoToolbox -framework SwiftUI -framework QuartzCore 2>build_errors.txt && \
+   swiftc -O -target x86_64-apple-macos13.0 -o "${APP_NAME}_x86_64" main.swift -framework Cocoa -framework ScreenCaptureKit -framework AVFoundation -framework VideoToolbox -framework SwiftUI -framework QuartzCore 2>>build_errors.txt; then
+    if lipo -create -output "$APP/Contents/MacOS/$APP_NAME" "${APP_NAME}_arm64" "${APP_NAME}_x86_64" 2>>build_errors.txt; then
+        rm -f "${APP_NAME}_arm64" "${APP_NAME}_x86_64"
+        BUILD_OK=true
+    fi
+fi
+
+if [ "$BUILD_OK" != "true" ]; then
     warn "Local compilation failed."
     printf '%b\n' "  ${GREY}Falling back to downloading pre-built release...${NC}"
     
