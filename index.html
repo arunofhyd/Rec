@@ -1,26 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google-site-verification" content="iExbroKtO4ZRq3ZjUsyY8JJowXvx-yHOy4yQq0iS6vY" />
 
     <!-- SEO Meta Tags -->
-    <title>Rec | Native Screen & Audio Recorder for macOS</title>
-    <meta name="description" content="Rec is a native macOS screen recorder and internal audio recorder. Seamlessly record your entire screen, select a specific region, or record a specific app window with high quality video encoding and no external drivers.">
-    <meta name="keywords" content="macOS screen recorder, internal audio recorder, native screen recording, mac app, screen capture kit, screen recorder with internal audio">
+    <title>Rec — Native Screen &amp; Internal Audio Recorder for macOS</title>
+    <meta name="description" content="Rec is a native macOS screen recorder and internal audio recorder. 100% on-device, zero 3rd-party audio drivers, floating markup HUD, and multi-segment video trimming.">
+    <meta name="keywords" content="macOS screen recorder, internal audio recorder, native screen recording, ScreenCaptureKit, mac app, free screen recorder mac, on-device audio capture">
     <meta name="author" content="Arun Thomas">
     <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://rec-aoh.netlify.app/">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Rec | Native Screen & Audio Recorder for macOS">
-    <meta property="og:description" content="A native macOS screen and audio recorder. Capture your screen and system audio perfectly.">
+    <meta property="og:url" content="https://rec-aoh.netlify.app/">
+    <meta property="og:title" content="Rec — Native Screen &amp; Internal Audio Recorder for macOS">
+    <meta property="og:description" content="A delightfully simple native screen and system audio recorder for macOS. Zero third-party drivers, 100% on-device.">
+    <meta property="og:image" content="https://rec-aoh.netlify.app/brag.jpg">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:title" content="Rec | Native Screen & Audio Recorder for macOS">
-    <meta property="twitter:description" content="A delightfully simple native screen and internal audio recorder for macOS.">
-
+    <meta property="twitter:url" content="https://rec-aoh.netlify.app/">
+    <meta property="twitter:title" content="Rec — Native Screen &amp; Internal Audio Recorder for macOS">
+    <meta property="twitter:description" content="A delightfully simple native screen and system audio recorder for macOS. Built the hard way.">
+    <meta property="twitter:image" content="https://rec-aoh.netlify.app/brag.jpg">
 
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
@@ -28,428 +33,598 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "Rec",
-      "operatingSystem": "macOS",
+      "operatingSystem": "macOS 13.0+",
       "applicationCategory": "UtilitiesApplication",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-      "description": "A delightfully simple native screen and internal audio recorder for macOS.",
-      "author": { "@type": "Person", "name": "Arun Thomas" },
-      "softwareVersion": "Latest"
+      "description": "A delightfully simple native screen and internal audio recorder for macOS. 100% on-device.",
+      "author": { "@type": "Person", "name": "Arun Thomas", "url": "https://github.com/arunofhyd" },
+      "softwareVersion": "1.5.2"
     }
     </script>
 
     <link rel="icon" href="logo.svg" type="image/svg+xml">
+
+    <!-- ArtCraft Font Stack: Instrument Serif + Inter + Geist Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS with ArtCraft Design Tokens -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         if (history.scrollRestoration) { history.scrollRestoration = 'manual'; }
+        
+        // Theme initialization
+        try {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'light') {
+                document.documentElement.classList.remove('dark');
+            } else {
+                document.documentElement.classList.add('dark');
+            }
+        } catch (_) {}
+
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        brand: {
+                        canvas: {
+                            light: '#f2f1ee', // ArtCraft bone paper
+                            dark: '#0b0b0c',  // ArtCraft volcanic graphite
+                        },
+                        panel: {
+                            light: '#ffffff',
+                            dark: '#131316',
+                            subtleDark: '#17171c',
+                            subtleLight: '#f8f7f5'
+                        },
+                        borderLine: {
+                            light: '#dedcd5',
+                            dark: '#222228',
+                            strongDark: '#32323b',
+                            strongLight: '#c9c6bd'
+                        },
+                        ink: {
+                            strongDark: '#f5f5f7',
+                            mutedDark: '#8e8e98',
+                            faintDark: '#565660',
+                            strongLight: '#18181b',
+                            mutedLight: '#65656e',
+                            faintLight: '#a1a1aa'
+                        },
+                        rec: {
                             red: '#FF3B30',
-                            deep: '#CC2A22',
-                            ink: '#0b0d10',
-                            panel: '#15181d'
+                            glow: 'rgba(255, 59, 48, 0.35)',
+                            hover: '#e03228'
                         }
                     },
                     fontFamily: {
                         sans: ['Inter', 'system-ui', 'sans-serif'],
-                        mono: ['Fira Code', 'monospace']
+                        serif: ['"Instrument Serif"', 'serif'],
+                        mono: ['"Geist Mono"', 'monospace'],
                     }
                 }
             }
         }
-        function copyEmail(btn) {
-            navigator.clipboard.writeText('arunthomas04042001@gmail.com').then(() => {
-                const original = "Contact Developer";
-                btn.innerText = 'Email Copied!';
-                btn.classList.add('text-brand-red');
-                setTimeout(() => { btn.innerText = original; btn.classList.remove('text-brand-red'); }, 2000);
-            });
-        }
-        function copyToClipboard(text, elementId) {
-            // Select the command text so the user can ⌘C — avoids uBlock ClickFix
-            const btn = document.getElementById(elementId);
-            const codeSpan = btn ? btn.parentElement.querySelector('span') : null;
-            if (codeSpan) {
-                const range = document.createRange();
-                range.selectNodeContents(codeSpan);
-                const sel = window.getSelection();
-                sel.removeAllRanges();
-                sel.addRange(range);
-                // Try to copy — if blocked by extension, the text is still selected for manual ⌘C
-                try {
-                    document.execCommand('copy');
-                    if (btn) {
-                        const originalText = btn.innerText;
-                        btn.innerText = 'Copied!';
-                        setTimeout(() => { btn.innerText = originalText; }, 2000);
-                    }
-                } catch(e) {
-                    if (btn) {
-                        const originalText = btn.innerText;
-                        btn.innerText = 'Selected — press ⌘C';
-                        setTimeout(() => { btn.innerText = originalText; }, 3000);
-                    }
-                }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
             }
+        }
+
+        function copyTerminalCommand(btn) {
+            const cmd = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"';
+            const label = btn.querySelector('.copy-label') || btn;
+            const original = label.innerText;
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(cmd).then(() => {
+                    label.innerText = 'COPIED TO CLIPBOARD';
+                    btn.classList.add('border-rec-red');
+                    setTimeout(() => {
+                        label.innerText = original;
+                        btn.classList.remove('border-rec-red');
+                    }, 2200);
+                }).catch(() => fallbackCopy(cmd, label, original, btn));
+            } else {
+                fallbackCopy(cmd, label, original, btn);
+            }
+        }
+
+        function fallbackCopy(text, label, original, btn) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try {
+                document.execCommand('copy');
+                label.innerText = 'COPIED';
+                btn.classList.add('border-rec-red');
+                setTimeout(() => {
+                    label.innerText = original;
+                    btn.classList.remove('border-rec-red');
+                }, 2200);
+            } catch (err) {
+                label.innerText = 'SELECT & COPY COMMAND';
+                setTimeout(() => { label.innerText = original; }, 2500);
+            }
+            document.body.removeChild(ta);
         }
     </script>
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap');
-        body { background-color: #0b0d10; color: #e6e8eb; }
-        .gradient-text {
-            background: linear-gradient(90deg, #FF3B30, #FF6B60);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        /* Pulse ring for recording status */
+        @keyframes rec-pulse {
+            0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); }
+            50% { transform: scale(1.08); opacity: 0.85; box-shadow: 0 0 0 6px rgba(255, 59, 48, 0); }
         }
-        .typing-cursor::after {
-            content: '|'; margin-left: 2px; animation: blink 1s step-end infinite;
-            color: #FF3B30; -webkit-text-fill-color: #FF3B30;
+        .rec-beacon {
+            animation: rec-pulse 2.2s infinite ease-in-out;
         }
-        @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
-        .pill { animation: pulse-glow 3s infinite ease-in-out; }
-        @keyframes pulse-glow {
-            0%,100% { box-shadow: 0 0 5px rgba(255,59,48,0.2); border-color: rgba(255,59,48,0.3); }
-            50% { box-shadow: 0 0 20px rgba(255,59,48,0.55); border-color: rgba(255,59,48,0.8); }
+
+        /* Subtle hair-line grid background */
+        .blueprint-grid {
+            background-size: 32px 32px;
+            background-image: 
+                linear-gradient(to right, rgba(120, 120, 130, 0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(120, 120, 130, 0.05) 1px, transparent 1px);
         }
-        .copied-toast { transition: opacity .3s, transform .3s; }
-        /* Custom scrollbar for horizontal carousel */
-        #changelog-container::-webkit-scrollbar { height: 6px; }
-        #changelog-container::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 9999px; }
-        #changelog-container::-webkit-scrollbar-thumb { background: rgba(255, 59, 48, 0.3); border-radius: 9999px; }
-        #changelog-container::-webkit-scrollbar-thumb:hover { background: rgba(255, 59, 48, 0.6); }
-        function scrollCarousel(containerId, amount) {
-            const el = document.getElementById(containerId);
-            if (el) el.scrollBy({ left: amount, behavior: 'smooth' });
+
+        /* Spotlight effect on cards */
+        .spotlight-card {
+            position: relative;
         }
+        .spotlight-card::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: inherit;
+            background: radial-gradient(400px circle at var(--mouse-x, -400px) var(--mouse-y, -400px), rgba(255, 59, 48, 0.25), transparent 70%);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1;
+        }
+        .spotlight-card:hover::before {
+            opacity: 1;
+        }
+        .spotlight-card > * {
+            position: relative;
+            z-index: 2;
+        }
+
+        /* Smooth scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(140, 140, 150, 0.25); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 59, 48, 0.5); }
     </style>
 </head>
-<body class="antialiased selection:bg-brand-red selection:text-white">
+<body class="bg-canvas-light dark:bg-canvas-dark text-ink-strongLight dark:text-ink-strongDark font-sans antialiased selection:bg-rec-red selection:text-white transition-colors duration-200">
 
-    <!-- Navbar -->
-    <nav class="fixed w-full z-50 bg-brand-ink/90 backdrop-blur-md border-b border-white/10">
-        <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <img src="logo.svg" alt="Rec Logo" width="28" height="28">
-                <span class="font-bold text-xl tracking-tight text-white">Rec</span>
+    <!-- Top Technical HUD Navigation -->
+    <header class="sticky top-0 z-50 backdrop-blur-md bg-canvas-light/90 dark:bg-canvas-dark/90 border-b border-borderLine-light dark:border-borderLine-dark transition-colors duration-200">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between font-mono text-xs tracking-wider">
+            
+            <!-- Left: Brand + Status -->
+            <div class="flex items-center space-x-3">
+                <a href="/" class="flex items-center space-x-2.5 group">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rec-red rec-beacon inline-block"></span>
+                    <span class="font-bold text-sm tracking-tight font-sans text-neutral-900 dark:text-white">REC</span>
+                </a>
+                <span class="text-neutral-400 dark:text-neutral-600 hidden sm:inline">/</span>
+                <span class="text-ink-mutedLight dark:text-ink-mutedDark hidden sm:inline uppercase text-[11px]">macOS Native Screen &amp; Audio</span>
             </div>
-            <div class="hidden md:flex gap-8 text-sm font-medium text-gray-400">
-                <a href="#features" class="hover:text-brand-red transition-colors">Features</a>
-                <a href="#launch" class="version-label hover:text-brand-red transition-colors">Latest Version</a>
-                <a href="#how-it-works" class="hover:text-brand-red transition-colors">How it Works</a>
-                <a href="#install" class="hover:text-brand-red transition-colors">Install</a>
-                <a href="#changelog" class="hover:text-brand-red transition-colors">Changelog</a>
+
+            <!-- Center: Interactive Audio VU Meter HUD -->
+            <div class="hidden md:flex items-center space-x-4 text-[11px] text-ink-mutedLight dark:text-ink-mutedDark font-mono border border-borderLine-light dark:border-borderLine-dark px-3 py-1 rounded bg-panel-light dark:bg-panel-dark">
+                <span class="text-[10px] text-ink-faintLight dark:text-ink-faintDark">SYS AUDIO:</span>
+                <div class="flex items-end space-x-0.5 h-3" id="vu-meter">
+                    <span class="w-1 bg-rec-red h-1 rounded-sm"></span>
+                    <span class="w-1 bg-rec-red h-2 rounded-sm"></span>
+                    <span class="w-1 bg-rec-red h-1.5 rounded-sm"></span>
+                    <span class="w-1 bg-rec-red h-3 rounded-sm"></span>
+                    <span class="w-1 bg-rec-red h-2 rounded-sm"></span>
+                </div>
+                <span class="text-emerald-500 font-semibold text-[10px]">SCK-2.0 READY</span>
             </div>
-            <a href="https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command" target="_blank" rel="noopener noreferrer"
-               class="bg-white/10 text-white px-4 py-1.5 rounded-md text-sm font-semibold hover:bg-white/20 transition-all border border-white/10 flex items-center gap-1.5">
-               <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-               <span>View Code</span>
-            </a>
+
+            <!-- Right: Actions & Theme Toggle -->
+            <div class="flex items-center space-x-3 sm:space-x-4">
+                <a id="version-pill" href="https://github.com/arunofhyd/Rec/releases" target="_blank" rel="noopener noreferrer" 
+                   class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded border border-borderLine-light dark:border-borderLine-dark hover:border-rec-red/60 text-ink-mutedLight dark:text-ink-mutedDark hover:text-rec-red transition-all text-[11px]">
+                    <span class="version-label">v1.5.2</span>
+                    <span class="opacity-50">↗</span>
+                </a>
+
+                <button onclick="toggleTheme()" aria-label="Toggle theme" class="p-1.5 rounded border border-borderLine-light dark:border-borderLine-dark hover:text-rec-red text-ink-mutedLight dark:text-ink-mutedDark transition-colors">
+                    <svg class="w-3.5 h-3.5 hidden dark:block fill-current" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
+                    <svg class="w-3.5 h-3.5 block dark:hidden fill-current" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
+                </button>
+
+                <a href="https://github.com/arunofhyd/Rec" target="_blank" rel="noopener noreferrer" 
+                   class="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1 bg-panel-light dark:bg-panel-dark border border-borderLine-light dark:border-borderLine-dark hover:border-ink-mutedLight dark:hover:border-ink-mutedDark text-ink-strongLight dark:text-ink-strongDark rounded transition-all">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    <span>GitHub</span>
+                </a>
+            </div>
         </div>
-    </nav>
+    </header>
 
-    <!-- Hero -->
-    <section class="pt-28 pb-16 px-6 max-w-7xl mx-auto text-center">
-        <a id="version-pill" href="https://github.com/arunofhyd/Rec/releases/latest" target="_blank" rel="noopener noreferrer"
-           class="pill inline-flex items-center gap-1.5 px-3.5 py-1 mb-6 rounded-full bg-brand-red/10 border border-brand-red/30 text-brand-red text-xs font-mono hover:bg-brand-red/20 transition-all cursor-pointer">
-            <span>Latest Version</span>
-            <span class="opacity-60 text-[10px]">↗</span>
-        </a>
+    <!-- Main Content Blueprint Container -->
+    <main class="blueprint-grid min-h-screen">
 
-        <h1 class="text-5xl md:text-7xl font-bold mb-6 tracking-tight">
-            Record anything.<br>
-            <span id="typing-text" class="gradient-text typing-cursor">Yours alone.</span>
-        </h1>
-        <p class="text-xl text-gray-400 mb-4 max-w-2xl mx-auto leading-relaxed">
-            A delightfully simple native screen and internal audio recorder for macOS. No third-party drivers needed.
-        </p>
-        <p class="text-xl font-bold text-gray-300 mb-6 max-w-2xl mx-auto">
-            100% native. Captured locally on your Mac.
-        </p>
-        <p class="text-sm font-semibold text-brand-red mb-10 tracking-widest flex items-center justify-center gap-2">
-            MADE FOR
-            <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.127 3.675-.552 9.127 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
-            macOS
-        </p>
-        <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <a href="#install" class="bg-brand-red text-white px-8 py-3 rounded-lg font-bold hover:bg-brand-deep transition-all shadow-[0_0_20px_rgba(255,59,48,0.4)] flex items-center gap-2">
-                <span>⚡ Install via Terminal</span>
-            </a>
-            <a href="install-rec.command" download="install-rec.command" class="bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                <span>Download .command</span>
-            </a>
-        </div>
+        <!-- Hero Section -->
+        <section class="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-16">
+            
+            <!-- Index Monospace Pill -->
+            <div class="inline-flex items-center space-x-2 font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark border border-borderLine-light dark:border-borderLine-dark px-3 py-1 rounded bg-panel-light dark:bg-panel-dark mb-8">
+                <span class="text-rec-red font-bold">01</span>
+                <span class="opacity-40">/</span>
+                <span>NATIVE HARDWARE-ACCELERATED CAPTURE</span>
+                <span class="opacity-40">•</span>
+                <span class="text-emerald-500 font-semibold">ZERO DRIVERS</span>
+            </div>
 
-        <!-- Launch Video Showcase -->
-        <div class="mt-14 max-w-4xl mx-auto">
-            <div class="relative rounded-2xl overflow-hidden border border-white/10 shadow-[0_25px_70px_rgba(0,0,0,0.85)] bg-black/60">
-                <video id="rec-launch-video" class="w-full aspect-video object-cover" poster="brag.jpg" playsinline preload="metadata" controls>
-                    <source src="brag.mp4" type="video/mp4">
-                    Your browser does not support the video tag.
-                </video>
-                <div class="p-3.5 bg-brand-panel/90 backdrop-blur-md border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-400">
-                    <div class="flex items-center gap-2">
-                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-brand-red animate-pulse"></span>
-                        <span class="font-semibold text-white">Rec Launch Film</span>
-                        <span>• 20s 1080p Product Tour (3.9MB)</span>
+            <!-- Big Typographic Statement (ArtCraft Style) -->
+            <h1 class="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-ink-strongLight dark:text-ink-strongDark leading-[1.05] mb-6">
+                Native screen &amp; audio.<br>
+                <span class="font-serif italic font-normal text-rec-red selection:text-white">Built the hard way.</span>
+            </h1>
+
+            <p class="text-lg sm:text-xl text-ink-mutedLight dark:text-ink-mutedDark max-w-3xl leading-relaxed mb-10">
+                A fast, delightfully unbloated native screen and system audio recorder for macOS. Built with Apple’s modern <strong class="text-ink-strongLight dark:text-ink-strongDark font-semibold">ScreenCaptureKit</strong> framework. Seamlessly captures internal system audio alongside your microphone — without third-party audio drivers, kernel extensions, cloud subscriptions, or tracking.
+            </p>
+
+            <!-- 1-Click Terminal Snippet & Action Bar -->
+            <div class="space-y-4 max-w-3xl">
+                <!-- Terminal Command Box -->
+                <div class="p-1 rounded-lg border border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark shadow-sm">
+                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 font-mono text-xs">
+                        <div class="flex items-center space-x-2 overflow-x-auto py-1 text-ink-strongLight dark:text-ink-strongDark scrollbar-none">
+                            <span class="text-rec-red font-bold select-none">$</span>
+                            <span class="select-all">curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command | bash</span>
+                        </div>
+                        <button onclick="copyTerminalCommand(this)" 
+                                class="shrink-0 px-4 py-2 rounded bg-neutral-900 dark:bg-neutral-100 hover:bg-rec-red dark:hover:bg-rec-red text-white dark:text-neutral-900 dark:hover:text-white font-mono font-medium text-xs tracking-wider transition-all flex items-center justify-center space-x-1.5 border border-transparent">
+                            <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                            <span class="copy-label">COPY COMMAND</span>
+                        </button>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <button onclick="toggleRecVideo()" id="rec-video-btn" class="px-3 py-1 rounded bg-brand-red/10 hover:bg-brand-red/20 text-brand-red border border-brand-red/30 transition-all font-sans font-semibold">
+                </div>
+
+                <!-- Secondary Actions & Badges -->
+                <div class="flex flex-wrap items-center gap-3 pt-2 font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark">
+                    <a href="install-rec.command" download="install-rec.command" 
+                       class="inline-flex items-center space-x-2 px-4 py-2 rounded border border-borderLine-light dark:border-borderLine-dark hover:border-ink-mutedLight dark:hover:border-ink-mutedDark bg-panel-light dark:bg-panel-dark text-ink-strongLight dark:text-ink-strongDark transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        <span>Download install-rec.command</span>
+                    </a>
+
+                    <a href="https://github.com/arunofhyd/Rec/releases/latest" target="_blank" rel="noopener noreferrer"
+                       class="inline-flex items-center space-x-1.5 px-3 py-2 text-ink-mutedLight dark:text-ink-mutedDark hover:text-rec-red transition-colors">
+                        <span>Universal DMG / Zip (v1.5.2)</span>
+                        <span>↗</span>
+                    </a>
+
+                    <span class="hidden sm:inline text-neutral-400 dark:text-neutral-700">•</span>
+                    <span class="text-[11px] text-ink-faintLight dark:text-ink-faintDark">Requires macOS 13.0+ (Ventura, Sonoma, Sequoia)</span>
+                </div>
+            </div>
+
+            <!-- Video Demonstration in Hardware Bezel (ArtCraft Style) -->
+            <div class="mt-16 border border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark rounded-xl overflow-hidden shadow-2xl">
+                <!-- Mac Window Chrome -->
+                <div class="h-10 px-4 border-b border-borderLine-light dark:border-borderLine-dark flex items-center justify-between bg-panel-subtleLight dark:bg-panel-subtleDark font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark">
+                    <div class="flex items-center space-x-2">
+                        <span class="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E]/50 inline-block"></span>
+                        <span class="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]/50 inline-block"></span>
+                        <span class="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29]/50 inline-block"></span>
+                        <span class="ml-3 text-[11px] text-ink-faintLight dark:text-ink-faintDark">Rec.app — ScreenCaptureKit Studio</span>
+                    </div>
+                    <div class="flex items-center space-x-3 text-[11px]">
+                        <span class="flex items-center space-x-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-rec-red rec-beacon"></span>
+                            <span>LIVE CAPTURE DEMO</span>
+                        </span>
+                        <button id="rec-video-btn" onclick="toggleRecVideo()" class="px-2 py-0.5 rounded border border-borderLine-light dark:border-borderLine-dark hover:border-rec-red text-ink-strongLight dark:text-ink-strongDark transition-colors">
                             ▶ Play Film
                         </button>
                     </div>
                 </div>
-            </div>
-        </div>
-    </section>
 
-    <!-- Features -->
-    <section id="features" class="py-20 bg-black/20">
-        <div class="max-w-6xl mx-auto px-6">
-            <h2 class="text-3xl font-bold mb-12 text-center">Why use Rec?</h2>
-            <div class="grid md:grid-cols-3 gap-8">
-                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">✏️</div>
-                    <h3 class="text-xl font-bold mb-2">Live Screen Annotations</h3>
-                    <p class="text-gray-400">Apple Markup-style floating HUD with Pen, Brush, Highlighter, Magic Laser Writer, Shapes, and Eraser. Hidden from recording so only drawings appear.</p>
-                </div>
-                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">✂️</div>
-                    <h3 class="text-xl font-bold mb-2">In-App Multi-Segment Video Editor</h3>
-                    <p class="text-gray-400">Trim recordings with multi-block cutting, live cut-skipping preview, 60 FPS timeline scrubbing, audio muting, and in-place overwrite saving.</p>
-                </div>
-                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🔔</div>
-                    <h3 class="text-xl font-bold mb-2">Floating HUD Toast</h3>
-                    <p class="text-gray-400">Non-intrusive bottom-right toast with 7s auto-dismiss, hover-to-pause, 1-click clipboard copy, and rich right-click shortcuts.</p>
-                </div>
-                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🔊</div>
-                    <h3 class="text-xl font-bold mb-2">Internal Audio</h3>
-                    <p class="text-gray-400">Seamlessly captures your Mac's internal audio right alongside your video feed. No third-party drivers or loopback extensions required.</p>
-                </div>
-                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">⚡️</div>
-                    <h3 class="text-xl font-bold mb-2">Dynamic Bar & 120 FPS</h3>
-                    <p class="text-gray-400">Live duration timer during recording, tap feedback ripples, and custom framerates from 15 FPS to 120 FPS ProMotion.</p>
-                </div>
-                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🎯</div>
-                    <h3 class="text-xl font-bold mb-2">Multiple Modes</h3>
-                    <p class="text-gray-400">Record your entire screen, select a specific region, or focus exclusively on a specific application window.</p>
-                </div>
-                <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/50 transition-colors">
-                    <div class="w-12 h-12 bg-brand-red/10 rounded-lg flex items-center justify-center mb-4 text-2xl">🚀</div>
-                    <h3 class="text-xl font-bold mb-2">Native & Fast</h3>
-                    <p class="text-gray-400">Built with Apple's ScreenCaptureKit and AVFoundation. Directly encodes to .mov using hardware acceleration.</p>
+                <!-- Video Element -->
+                <div class="relative bg-black aspect-video flex items-center justify-center">
+                    <video id="rec-launch-video" class="w-full h-full object-cover" poster="brag.jpg" playsinline preload="metadata">
+                        <source src="brag.mp4" type="video/mp4">
+                        Your browser does not support HTML5 video.
+                    </video>
                 </div>
             </div>
-        </div>
-    </section>
 
-    <!-- How it works -->
-    <section id="how-it-works" class="py-20 px-6">
-        <div class="max-w-4xl mx-auto">
-            <h2 class="text-3xl font-bold mb-16 text-center">How it works</h2>
-            <div class="space-y-12">
-                <div class="flex gap-6">
-                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-brand-ink border border-white/20 flex items-center justify-center font-bold text-lg">1</div>
-                    <div>
-                        <h3 class="text-xl font-bold mb-2">Select your target</h3>
-                        <p class="text-gray-400">Choose to record your entire screen, a specific app, or click-and-drag to capture a precise region.</p>
-                    </div>
-                </div>
-                <div class="flex gap-6">
-                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-brand-red text-white flex items-center justify-center font-bold text-lg">2</div>
-                    <div>
-                        <h3 class="text-xl font-bold mb-2 text-brand-red">Hit Record</h3>
-                        <p class="text-gray-400">A clean countdown timer prepares you for the take. The floating control bar transforms into a live duration readout.</p>
-                    </div>
-                </div>
-                <div class="flex gap-6">
-                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-brand-ink border border-white/20 flex items-center justify-center font-bold text-lg">3</div>
-                    <div>
-                        <h3 class="text-xl font-bold mb-2">Instant Toast & Quick Actions</h3>
-                        <p class="text-gray-400">A non-intrusive HUD toast gives you instant playback, 1-click clipboard copy, in-place video editing, or quick Finder reveal.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- Launch Notes -->
-    <section id="launch" class="py-20 px-6 border-y border-white/5 bg-gradient-to-b from-brand-red/5 to-transparent">
-        <div class="max-w-4xl mx-auto">
-            <div class="text-center mb-12">
-                <span class="version-badge inline-block px-3 py-1 mb-4 rounded-full bg-brand-red/10 border border-brand-red/30 text-brand-red text-xs font-mono">🎉 Latest Release</span>
-                <h2 class="text-3xl font-bold mb-4">Say hello to Rec</h2>
-                <p class="text-gray-400 max-w-2xl mx-auto leading-relaxed">
-                    Rec is a beautifully simple, lightweight alternative to complex screen recording suites. It gets out of your way and does one thing exceptionally well: <span class="text-white font-semibold">native, high-quality screen and audio capture without the fuss.</span>
-                </p>
-            </div>
-            <div class="grid md:grid-cols-2 gap-6">
-                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
-                    <div class="text-2xl mb-3">✏️</div>
-                    <h3 class="font-bold text-lg mb-2">Live Screen Annotations</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">Apple Markup-style floating HUD with 8 drawing tools, glowing auto-fading laser trails, custom color palette, and ⌥A hotkey.</p>
-                </div>
-                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
-                    <div class="text-2xl mb-3">✂️</div>
-                    <h3 class="font-bold text-lg mb-2">Multi-Segment Video Editor</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">Cut out multiple unwanted segments or isolate keep blocks with smooth timeline scrubbing and live preview skipping.</p>
-                </div>
-                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
-                    <div class="text-2xl mb-3">🔔</div>
-                    <h3 class="font-bold text-lg mb-2">Floating HUD Toast</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">A subtle notification docked at the bottom-right of your screen lets you copy, edit, or share without center popups.</p>
-                </div>
-                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
-                    <div class="text-2xl mb-3">🔐</div>
-                    <h3 class="font-bold text-lg mb-2">Internal Audio without drivers</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">Most screen recorders require you to install messy third-party loopback extensions. Rec uses native ScreenCaptureKit APIs.</p>
-                </div>
-                <div class="bg-white/5 border border-white/10 rounded-xl p-6">
-                    <div class="text-2xl mb-3">⚡️</div>
-                    <h3 class="font-bold text-lg mb-2">Pro Performance & 120 FPS</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">Silky smooth recordings from 15 FPS up to 120 FPS ProMotion with hardware-accelerated Apple Silicon encoding.</p>
-                </div>
-            </div>
-            <p class="text-center text-gray-500 text-sm mt-10">This is just the beginning. Have an idea? <button onclick="copyEmail(this)" class="text-brand-red hover:underline bg-transparent border-none cursor-pointer p-0">Contact Developer</button>.</p>
-        </div>
-    </section>
-
-    <!-- Install -->
-    <section id="install" class="py-20 bg-white/5 border-y border-white/5">
-        <div class="max-w-6xl mx-auto px-6">
-            <h2 class="text-3xl font-bold mb-12 text-center">Installation</h2>
-            <div class="max-w-2xl mx-auto space-y-6">
-                <!-- One-liner Command -->
-                <div class="bg-black/40 border border-white/10 rounded-2xl p-8">
-                    <h3 class="text-lg font-bold mb-4 text-white flex items-center gap-2">
-                        <span>⚡ One-Click Terminal Install (Recommended)</span>
-                    </h3>
-                    <p class="text-gray-400 text-sm mb-6 leading-relaxed">
-                        Compile and install Rec locally on your Mac with one command:
-                    </p>
-                    <div class="bg-black/60 border border-white/10 rounded-xl p-4 flex items-center justify-between font-mono text-sm overflow-x-auto gap-4">
-                        <span class="text-brand-red select-all break-all text-left">/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"</span>
-                        <button id="btn-copy-command" onclick="copyToClipboard('/bin/bash -c &quot;$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)&quot;', 'btn-copy-command')"
-                                class="flex-shrink-0 bg-brand-red/10 border border-brand-red/30 text-brand-red hover:bg-brand-red hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold font-sans transition-all">
-                            Copy
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Manual fallback -->
-                <div class="bg-black/40 border border-white/10 rounded-2xl p-8">
-                    <h3 class="text-lg font-bold mb-4 text-white">Manual Installation (Fallback)</h3>
-                    <ol class="space-y-3 text-gray-300 list-decimal list-inside text-sm">
-                        <li><a href="install-rec.command" download="install-rec.command" class="text-brand-red underline font-semibold hover:text-white transition-colors">Download install-rec.command</a> file manually.</li>
-                        <li><span class="font-semibold text-white">Open Terminal</span> (⌘+Space, type "Terminal", press Enter).</li>
-                        <li>Type <span class="text-brand-red font-mono">sh </span> — that's <span class="font-semibold text-white">s</span>, <span class="font-semibold text-white">h</span>, then a <span class="font-semibold text-white">space</span>.</li>
-                        <li><span class="font-semibold text-white">Drag and drop</span> the downloaded file into the Terminal window (its path fills in automatically).</li>
-                        <li>Press <span class="font-semibold text-white">Enter</span> and follow the on-screen prompts, then drag Rec onto Applications.</li>
-                    </ol>
-                </div>
-            </div>
-            <div class="mt-6 p-4 bg-black rounded border border-white/10 text-xs text-gray-500 font-mono break-all whitespace-pre-wrap max-w-2xl mx-auto"><span class="text-green-400">user@macbook ~ %</span> /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"<br><span class="text-brand-red">==></span> Compiling and installing Rec…</div>
-            <p class="text-center text-gray-500 text-sm mt-6 max-w-2xl mx-auto">First time only: the installer may ask to install Apple's Command Line Tools (a small official Apple download). This lets your Mac build the app locally — which is why macOS trusts it, with no "damaged app" warnings.</p>
-        </div>
-    </section>
-
-    <!-- Changelog -->
-    <section id="changelog" class="py-12 bg-black/40 border-b border-white/5">
-        <div class="max-w-6xl mx-auto px-6">
-            <div class="flex items-center justify-between mb-8">
-                <div>
-                    <h2 class="text-2xl font-bold text-gray-200">Release Notes</h2>
-                    <p class="text-xs text-gray-400 mt-1">Scroll sideways to explore version history</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="scrollCarousel('changelog-container', -360)" class="w-9 h-9 rounded-full bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 flex items-center justify-center transition-all">←</button>
-                    <button onclick="scrollCarousel('changelog-container', 360)" class="w-9 h-9 rounded-full bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 flex items-center justify-center transition-all">→</button>
-                </div>
-            </div>
-            <div id="changelog-container" class="flex gap-6 overflow-x-auto pb-6 snap-x snap-mandatory scroll-smooth">
-                <div class="text-center text-gray-500 animate-pulse w-full py-8">Loading updates…</div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="py-6 border-t border-white/10 text-center">
-        <div class="flex flex-col md:flex-row justify-center items-center gap-4 md:gap-8 text-xs text-gray-500">
-            <div>Built by <span class="text-white">Arun Thomas</span></div>
-            <button onclick="copyEmail(this)" class="hover:text-brand-red transition-colors bg-transparent border-none cursor-pointer">Contact Developer</button>
-            <div class="text-gray-700">&copy; 2026 Rec.</div>
-        </div>
-    </footer>
-
-    <script>
-        function scrollCarousel(id, amount) {
-            const el = document.getElementById(id);
-            if (el) el.scrollBy({ left: amount, behavior: 'smooth' });
-        }
-
-        // Version pill from version.json
-        fetch('version.json').then(r => r.json()).then(data => {
-            if (data.version) {
-                const pill = document.getElementById('version-pill');
-                if (pill) {
-                    pill.innerHTML = `<span>v${data.version} Now Available</span> <span class="opacity-60 text-[10px]">↗</span>`;
-                    pill.href = `https://github.com/arunofhyd/Rec/releases/tag/v${data.version}`;
-                }
+        <!-- Interactive Sandbox: Test Rec's Floating Laser Writer Right in Browser -->
+        <section class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+            <div class="border border-borderLine-light dark:border-borderLine-dark rounded-xl p-6 bg-panel-light dark:bg-panel-dark">
                 
-                document.querySelectorAll('.version-label').forEach(el => el.textContent = 'v' + data.version);
-                document.querySelectorAll('.version-badge').forEach(el => el.textContent = '🎉 Now on v' + data.version);
-
-                const schema = document.querySelector('script[type="application/ld+json"]');
-                if (schema) {
-                    let json = JSON.parse(schema.textContent);
-                    json.softwareVersion = data.version;
-                    schema.textContent = JSON.stringify(json);
-                }
-            }
-            // Changelog Horizontal Carousel
-            const container = document.getElementById('changelog-container');
-            if (container && Array.isArray(data.changelog)) {
-                container.innerHTML = '';
-                data.changelog.forEach((release, index) => {
-                    const isLatest = index === 0;
-                    const div = document.createElement('div');
-                    div.className = `flex-none w-[320px] sm:w-[360px] snap-start bg-white/5 border ${isLatest ? 'border-brand-red/60 shadow-[0_0_15px_rgba(255,59,48,0.15)]' : 'border-white/10'} rounded-2xl p-6 hover:border-brand-red/30 transition-all flex flex-col justify-between`;
-                    
-                    const header = `<div class="flex items-center justify-between mb-4">
-                        <div class="flex items-center gap-2.5">
-                            <a href="https://github.com/arunofhyd/Rec/releases/tag/v${release.version}" target="_blank" rel="noopener noreferrer" class="text-brand-red font-mono font-bold text-lg hover:underline flex items-center gap-1">
-                                <span>v${release.version}</span>
-                                <span class="text-xs opacity-60">↗</span>
-                            </a>
-                            ${isLatest ? `<span class="bg-brand-red/20 text-brand-red text-[10px] font-bold px-2 py-0.5 rounded-full border border-brand-red/30 tracking-wider">LATEST</span>` : ''}
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span class="w-2 h-2 rounded-full bg-rec-red"></span>
+                            <span class="font-mono text-xs uppercase tracking-wider text-rec-red font-bold">INTERACTIVE HUD SIMULATOR</span>
                         </div>
-                        ${release.date ? `<span class="text-gray-400 text-xs font-mono px-2 py-0.5 rounded bg-white/5 border border-white/5">${release.date}</span>` : ''}
-                    </div>`;
-                    const list = document.createElement('ul');
-                    list.className = 'space-y-2 text-gray-400 text-sm list-disc list-inside overflow-y-auto max-h-[160px] pr-1';
-                    (release.changes || []).forEach(change => {
-                        const li = document.createElement('li');
-                        li.className = 'leading-relaxed';
-                        li.textContent = change;
-                        list.appendChild(li);
-                    });
-                    div.innerHTML = header;
-                    div.appendChild(list);
-                    container.appendChild(div);
-                });
-            }
-        }).catch(() => {
-            const c = document.getElementById('changelog-container');
-            if (c) c.innerHTML = '<div class="text-red-500 text-center text-sm">Failed to load updates.</div>';
-        });
+                        <h3 class="text-xl font-bold tracking-tight mt-1">Try the Magic Laser Writer</h3>
+                        <p class="text-xs text-ink-mutedLight dark:text-ink-mutedDark">
+                            Click and drag below. Draws glowing red laser trails that automatically fade out over 1.5 seconds.
+                        </p>
+                    </div>
 
+                    <!-- Sandbox Controls -->
+                    <div class="flex items-center space-x-2 font-mono text-xs">
+                        <button onclick="clearLaserCanvas()" class="px-3 py-1 rounded border border-borderLine-light dark:border-borderLine-dark hover:border-rec-red text-ink-mutedLight dark:text-ink-mutedDark transition-colors">
+                            Clear Canvas
+                        </button>
+                        <span class="text-[11px] text-ink-faintLight dark:text-ink-faintDark hidden sm:inline">Active: Auto-Fade</span>
+                    </div>
+                </div>
 
+                <!-- Interactive Canvas Element -->
+                <div class="relative w-full h-64 sm:h-80 bg-neutral-950 rounded-lg overflow-hidden border border-borderLine-light dark:border-borderLine-dark cursor-crosshair">
+                    <canvas id="laser-canvas" class="w-full h-full block"></canvas>
+                    <div class="absolute bottom-3 left-4 pointer-events-none font-mono text-[10px] text-neutral-500">
+                        [DRAG MOUSE OR FINGER TO DRAW ANNOTATION]
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Technical Manifesto Bento Grid (6 Pillars - ArtCraft Style with Spotlight) -->
+        <section class="border-t border-borderLine-light dark:border-borderLine-dark py-20 bg-panel-subtleLight/40 dark:bg-panel-subtleDark/40">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6">
+                
+                <div class="flex flex-col md:flex-row md:items-end justify-between mb-12">
+                    <div>
+                        <div class="font-mono text-xs text-rec-red tracking-wider uppercase mb-2">Architectural Principles</div>
+                        <h2 class="text-3xl sm:text-5xl font-bold tracking-tight">Built without compromises.</h2>
+                    </div>
+                    <p class="text-ink-mutedLight dark:text-ink-mutedDark font-mono text-xs max-w-md mt-4 md:mt-0">
+                        Designed for creators, engineers, and power users who demand uncompromising fidelity without bloat.
+                    </p>
+                </div>
+
+                <!-- The 6-Cell Modular Bento Matrix -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border-t border-l border-borderLine-light dark:border-borderLine-dark">
+                    
+                    <!-- 01: Engine -->
+                    <div class="spotlight-card p-8 border-r border-b border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark flex flex-col justify-between group hover:bg-panel-subtleLight dark:hover:bg-panel-subtleDark transition-colors">
+                        <div>
+                            <div class="flex items-center justify-between font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark mb-6">
+                                <span class="text-rec-red font-bold">01 / ENGINE</span>
+                                <span>SCK NATIVE</span>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-3 tracking-tight">Apple ScreenCaptureKit</h3>
+                            <p class="text-sm text-ink-mutedLight dark:text-ink-mutedDark leading-relaxed">
+                                Zero third-party audio drivers. No BlackHole, Soundflower, or dangerous kernel extensions. Built on Apple's modern ScreenCaptureKit APIs for hardware-accelerated, zero-copy video processing.
+                            </p>
+                        </div>
+                        <div class="mt-8 pt-4 border-t border-borderLine-light/60 dark:border-borderLine-dark/60 font-mono text-[11px] text-ink-faintLight dark:text-ink-faintDark">
+                            Direct GPU Pipeline · Metal Accelerated
+                        </div>
+                    </div>
+
+                    <!-- 02: Dual Audio -->
+                    <div class="spotlight-card p-8 border-r border-b border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark flex flex-col justify-between group hover:bg-panel-subtleLight dark:hover:bg-panel-subtleDark transition-colors">
+                        <div>
+                            <div class="flex items-center justify-between font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark mb-6">
+                                <span class="text-rec-red font-bold">02 / AUDIO</span>
+                                <span>INTERNAL + MIC</span>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-3 tracking-tight">Simultaneous System Sound</h3>
+                            <p class="text-sm text-ink-mutedLight dark:text-ink-mutedDark leading-relaxed">
+                                Record your Zoom calls, YouTube references, Spotify playback, DAW sessions, and microphone at the same time in sample-accurate synchronization.
+                            </p>
+                        </div>
+                        <div class="mt-8 pt-4 border-t border-borderLine-light/60 dark:border-borderLine-dark/60 font-mono text-[11px] text-ink-faintLight dark:text-ink-faintDark">
+                            32-bit Float PCM · Zero Latency Drift
+                        </div>
+                    </div>
+
+                    <!-- 03: Live Markup HUD -->
+                    <div class="spotlight-card p-8 border-r border-b border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark flex flex-col justify-between group hover:bg-panel-subtleLight dark:hover:bg-panel-subtleDark transition-colors">
+                        <div>
+                            <div class="flex items-center justify-between font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark mb-6">
+                                <span class="text-rec-red font-bold">03 / HUD</span>
+                                <span>LIVE ANNOTATIONS</span>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-3 tracking-tight">Laser Writer &amp; Vector Shapes</h3>
+                            <p class="text-sm text-ink-mutedLight dark:text-ink-mutedDark leading-relaxed">
+                                Draw live during recording with glowing, auto-fading laser trails, pens, highlighters, arrows, and boxes. The annotation HUD is automatically excluded from the final recording.
+                            </p>
+                        </div>
+                        <div class="mt-8 pt-4 border-t border-borderLine-light/60 dark:border-borderLine-dark/60 font-mono text-[11px] text-ink-faintLight dark:text-ink-faintDark">
+                            Smart Window Exclusion · Floating Canvas
+                        </div>
+                    </div>
+
+                    <!-- 04: Multi-Segment Trimmer -->
+                    <div class="spotlight-card p-8 border-r border-b border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark flex flex-col justify-between group hover:bg-panel-subtleLight dark:hover:bg-panel-subtleDark transition-colors">
+                        <div>
+                            <div class="flex items-center justify-between font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark mb-6">
+                                <span class="text-rec-red font-bold">04 / STUDIO</span>
+                                <span>MULTI-BLOCK CUT</span>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-3 tracking-tight">In-App Multi-Cut Trimmer</h3>
+                            <p class="text-sm text-ink-mutedLight dark:text-ink-mutedDark leading-relaxed">
+                                Cut out coughs, awkward silences, or mistakes directly inside the app without opening Premiere or QuickTime. Mark multiple cut regions, preview jump transitions, and save in-place.
+                            </p>
+                        </div>
+                        <div class="mt-8 pt-4 border-t border-borderLine-light/60 dark:border-borderLine-dark/60 font-mono text-[11px] text-ink-faintLight dark:text-ink-faintDark">
+                            Lossless Stitching · In-Place Trim
+                        </div>
+                    </div>
+
+                    <!-- 05: Air-Gapped Privacy -->
+                    <div class="spotlight-card p-8 border-r border-b border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark flex flex-col justify-between group hover:bg-panel-subtleLight dark:hover:bg-panel-subtleDark transition-colors">
+                        <div>
+                            <div class="flex items-center justify-between font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark mb-6">
+                                <span class="text-rec-red font-bold">05 / PRIVACY</span>
+                                <span>AIR-GAPPED</span>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-3 tracking-tight">Your Screen, Your Machine</h3>
+                            <p class="text-sm text-ink-mutedLight dark:text-ink-mutedDark leading-relaxed">
+                                Rec never sends a single byte to the cloud. No analytics SDKs, no tracking pixels, and no accounts. Confidential code, internal meetings, and personal screens stay strictly on your Mac.
+                            </p>
+                        </div>
+                        <div class="mt-8 pt-4 border-t border-borderLine-light/60 dark:border-borderLine-dark/60 font-mono text-[11px] text-ink-faintLight dark:text-ink-faintDark">
+                            Zero Outbound Traffic · Sandboxed
+                        </div>
+                    </div>
+
+                    <!-- 06: Architecture -->
+                    <div class="spotlight-card p-8 border-r border-b border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark flex flex-col justify-between group hover:bg-panel-subtleLight dark:hover:bg-panel-subtleDark transition-colors">
+                        <div>
+                            <div class="flex items-center justify-between font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark mb-6">
+                                <span class="text-rec-red font-bold">06 / ARCHITECTURE</span>
+                                <span>UNIVERSAL BINARY</span>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-3 tracking-tight">Pure Swift &amp; AppKit</h3>
+                            <p class="text-sm text-ink-mutedLight dark:text-ink-mutedDark leading-relaxed">
+                                Fat binary compiled for both Apple Silicon (M1/M2/M3/M4) and Intel Macs. Launches in under 50 milliseconds and sits invisibly in your menu bar using less than 20MB of memory.
+                            </p>
+                        </div>
+                        <div class="mt-8 pt-4 border-t border-borderLine-light/60 dark:border-borderLine-dark/60 font-mono text-[11px] text-ink-faintLight dark:text-ink-faintDark">
+                            Sub-50ms Launch · Fat Mach-O Binary
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- Technical Comparison Matrix (ArtCraft Spec Sheet Style) -->
+        <section class="py-20 max-w-6xl mx-auto px-4 sm:px-6">
+            <div class="mb-10">
+                <span class="font-mono text-xs text-rec-red uppercase tracking-wider">Engineering Comparison</span>
+                <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mt-1">Why choose Rec over alternatives?</h2>
+            </div>
+
+            <div class="border border-borderLine-light dark:border-borderLine-dark rounded-lg overflow-x-auto bg-panel-light dark:bg-panel-dark">
+                <table class="w-full text-left font-mono text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-borderLine-light dark:border-borderLine-dark bg-panel-subtleLight dark:bg-panel-subtleDark text-ink-mutedLight dark:text-ink-mutedDark">
+                            <th class="p-4 font-medium uppercase tracking-wider">Capability</th>
+                            <th class="p-4 font-bold text-rec-red uppercase tracking-wider">Rec (Native macOS)</th>
+                            <th class="p-4 font-medium uppercase tracking-wider">Built-in macOS (⌘⇧5)</th>
+                            <th class="p-4 font-medium uppercase tracking-wider">Third-Party Loopbacks</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-borderLine-light dark:divide-borderLine-dark">
+                        <tr>
+                            <td class="p-4 font-sans font-medium text-ink-strongLight dark:text-ink-strongDark">Internal System Audio Capture</td>
+                            <td class="p-4 font-bold text-emerald-500">✓ Native (Zero Drivers)</td>
+                            <td class="p-4 text-neutral-400">✗ Microphone only</td>
+                            <td class="p-4 text-neutral-400">⚠️ Requires virtual drivers</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-sans font-medium text-ink-strongLight dark:text-ink-strongDark">Multi-Segment In-App Trimming</td>
+                            <td class="p-4 font-bold text-emerald-500">✓ Multi-Block Cut &amp; Stitch</td>
+                            <td class="p-4 text-neutral-400">⚠️ Simple head/tail trim only</td>
+                            <td class="p-4 text-neutral-400">✗ External editor needed</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-sans font-medium text-ink-strongLight dark:text-ink-strongDark">Live Screen Annotations &amp; Laser</td>
+                            <td class="p-4 font-bold text-emerald-500">✓ Apple Markup + Laser HUD</td>
+                            <td class="p-4 text-neutral-400">✗ None during recording</td>
+                            <td class="p-4 text-neutral-400">⚠️ Clunky overlays</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-sans font-medium text-ink-strongLight dark:text-ink-strongDark">Application Window Targeting</td>
+                            <td class="p-4 font-bold text-emerald-500">✓ Target specific process</td>
+                            <td class="p-4 text-neutral-400">✓ Window snapshot</td>
+                            <td class="p-4 text-neutral-400">⚠️ Varies</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-sans font-medium text-ink-strongLight dark:text-ink-strongDark">Account / Cloud Dependency</td>
+                            <td class="p-4 font-bold text-emerald-500">✓ 100% Air-Gapped &amp; Free</td>
+                            <td class="p-4 text-emerald-500">✓ Local</td>
+                            <td class="p-4 text-red-400">✗ Monthly SaaS subscription</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Interactive Changelog & Releases (ArtCraft Style Feed) -->
+        <section id="changelog" class="border-t border-borderLine-light dark:border-borderLine-dark py-20 bg-panel-subtleLight/30 dark:bg-panel-subtleDark/30">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6">
+                
+                <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-10">
+                    <div>
+                        <span class="font-mono text-xs text-rec-red uppercase tracking-wider">Release Telemetry</span>
+                        <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mt-1">Continuous improvement.</h2>
+                    </div>
+                    <div class="mt-4 sm:mt-0 font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark flex items-center space-x-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span class="version-badge">Now on v1.5.2</span>
+                    </div>
+                </div>
+
+                <!-- Changelog Cards Container (populated dynamically) -->
+                <div id="changelog-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
+                    <!-- Fallback / Loading card -->
+                    <div class="p-6 rounded border border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-rec-red font-bold text-sm">v1.5.2 (Latest)</span>
+                            <span class="text-neutral-400 text-[11px]">2026-10-14</span>
+                        </div>
+                        <p class="text-neutral-400 text-xs">Loading updates...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Colophon / Footer (ArtCraft Style) -->
+        <footer class="border-t border-borderLine-light dark:border-borderLine-dark py-16 bg-canvas-light dark:bg-canvas-dark transition-colors duration-200">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-8 font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark">
+                
+                <div>
+                    <div class="flex items-center space-x-2.5 mb-2">
+                        <span class="w-2 h-2 rounded-full bg-rec-red"></span>
+                        <span class="font-bold text-sm tracking-tight font-sans text-neutral-900 dark:text-white">REC</span>
+                        <span class="text-neutral-400">/</span>
+                        <span>BY ARUN THOMAS</span>
+                    </div>
+                    <p class="text-ink-faintLight dark:text-ink-faintDark max-w-sm font-sans text-xs">
+                        Open-source software engineered for speed, privacy, and minimalism on macOS.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-6">
+                    <a href="https://github.com/arunofhyd/Rec" target="_blank" rel="noopener noreferrer" class="hover:text-rec-red transition-colors">GitHub Repository ↗</a>
+                    <a href="https://github.com/arunofhyd/Rec/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="hover:text-rec-red transition-colors">MIT License</a>
+                    <a href="https://arunofhyd.github.io/my-portfolio/" target="_blank" rel="noopener noreferrer" class="hover:text-rec-red transition-colors">Developer Portfolio ↗</a>
+                    <a href="mailto:arunthomas04042001@gmail.com" class="hover:text-rec-red transition-colors">Contact</a>
+                </div>
+
+            </div>
+        </footer>
+
+    </main>
+
+    <!-- Interactive Logic: Video, Changelog, VU Meter & Magic Laser Sandbox -->
+    <script>
         function toggleRecVideo() {
             const video = document.getElementById('rec-launch-video');
             const btn = document.getElementById('rec-video-btn');
@@ -463,8 +638,113 @@
             }
         }
 
-        // Typing effect & video event listeners
+        // Spotlight Cursor Tracking on Cards
+        document.addEventListener('mousemove', (e) => {
+            const cards = document.querySelectorAll('.spotlight-card');
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+            });
+        });
+
+        // Live Audio VU Meter Simulation
+        const vuMeter = document.getElementById('vu-meter');
+        if (vuMeter) {
+            setInterval(() => {
+                const bars = vuMeter.querySelectorAll('span');
+                bars.forEach(bar => {
+                    const h = Math.floor(Math.random() * 10) + 2;
+                    bar.style.height = `${h}px`;
+                });
+            }, 120);
+        }
+
+        // Interactive Magic Laser Writer Sandbox Canvas
+        const canvas = document.getElementById('laser-canvas');
+        let ctx = null;
+        let points = [];
+        let isDrawing = false;
+
+        function initLaserCanvas() {
+            if (!canvas) return;
+            ctx = canvas.getContext('2d');
+            resizeLaserCanvas();
+            window.addEventListener('resize', resizeLaserCanvas);
+
+            canvas.addEventListener('mousedown', (e) => { isDrawing = true; addPoint(e); });
+            canvas.addEventListener('mousemove', (e) => { if (isDrawing) addPoint(e); });
+            window.addEventListener('mouseup', () => { isDrawing = false; });
+
+            canvas.addEventListener('touchstart', (e) => { isDrawing = true; addPoint(e.touches[0]); e.preventDefault(); }, { passive: false });
+            canvas.addEventListener('touchmove', (e) => { if (isDrawing) addPoint(e.touches[0]); e.preventDefault(); }, { passive: false });
+            window.addEventListener('touchend', () => { isDrawing = false; });
+
+            requestAnimationFrame(renderLaser);
+        }
+
+        function resizeLaserCanvas() {
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+            if (ctx) ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+
+        function addPoint(e) {
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            points.push({
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top,
+                time: Date.now()
+            });
+        }
+
+        function clearLaserCanvas() {
+            points = [];
+        }
+
+        function renderLaser() {
+            if (!ctx || !canvas) return;
+            const now = Date.now();
+            const lifespan = 1400; // ms to auto-fade
+
+            // Remove dead points
+            points = points.filter(p => now - p.time < lifespan);
+
+            const rect = canvas.getBoundingClientRect();
+            ctx.clearRect(0, 0, rect.width, rect.height);
+
+            if (points.length > 1) {
+                for (let i = 1; i < points.length; i++) {
+                    const p1 = points[i - 1];
+                    const p2 = points[i];
+                    const age = now - p2.time;
+                    const opacity = Math.max(0, 1 - (age / lifespan));
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x, p1.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.strokeStyle = `rgba(255, 59, 48, ${opacity})`;
+                    ctx.lineWidth = 4 * opacity + 1;
+                    ctx.lineCap = 'round';
+                    ctx.shadowColor = 'rgba(255, 59, 48, 0.8)';
+                    ctx.shadowBlur = 12 * opacity;
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            requestAnimationFrame(renderLaser);
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
+            initLaserCanvas();
+
             const vid = document.getElementById('rec-launch-video');
             if (vid) {
                 vid.addEventListener('play', () => {
@@ -481,20 +761,65 @@
                 });
             }
 
-            const el = document.getElementById('typing-text');
-            if (!el) return;
-            const phrases = ["Record anything.", "Capture internal audio.", "Native to macOS."];
-            let pi = 0, ci = 0, deleting = false, speed = 100;
-            function type() {
-                const cur = phrases[pi];
-                if (deleting) { el.textContent = cur.substring(0, ci - 1); ci--; speed = 50; }
-                else { el.textContent = cur.substring(0, ci + 1); ci++; speed = 100; }
-                if (!deleting && ci === cur.length) { deleting = true; speed = 2000; }
-                else if (deleting && ci === 0) { deleting = false; pi = (pi + 1) % phrases.length; speed = 500; }
-                setTimeout(type, speed);
-            }
-            el.textContent = '';
-            setTimeout(type, 500);
+            // Fetch releases from version.json
+            fetch('version.json').then(r => r.json()).then(data => {
+                if (data.version) {
+                    const pill = document.getElementById('version-pill');
+                    if (pill) {
+                        pill.innerHTML = `<span>v${data.version}</span> <span class="opacity-50 text-[10px]">↗</span>`;
+                        pill.href = `https://github.com/arunofhyd/Rec/releases/tag/v${data.version}`;
+                    }
+                    
+                    document.querySelectorAll('.version-label').forEach(el => el.textContent = 'v' + data.version);
+                    document.querySelectorAll('.version-badge').forEach(el => el.textContent = 'Active v' + data.version);
+
+                    const schema = document.querySelector('script[type="application/ld+json"]');
+                    if (schema) {
+                        try {
+                            let json = JSON.parse(schema.textContent);
+                            json.softwareVersion = data.version;
+                            schema.textContent = JSON.stringify(json);
+                        } catch (_) {}
+                    }
+                }
+
+                const container = document.getElementById('changelog-container');
+                if (container && Array.isArray(data.changelog)) {
+                    container.innerHTML = '';
+                    data.changelog.slice(0, 6).forEach((release, index) => {
+                        const isLatest = index === 0;
+                        const card = document.createElement('div');
+                        card.className = `spotlight-card p-6 rounded border ${isLatest ? 'border-rec-red/60 bg-panel-light dark:bg-panel-dark' : 'border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark'} flex flex-col justify-between`;
+                        
+                        let changesHtml = (release.changes || []).map(c => `
+                            <li class="leading-relaxed text-ink-mutedLight dark:text-ink-mutedDark text-xs font-sans list-disc list-inside">
+                                ${c}
+                            </li>
+                        `).join('');
+
+                        card.innerHTML = `
+                            <div>
+                                <div class="flex items-center justify-between mb-4">
+                                    <div class="flex items-center space-x-2">
+                                        <a href="https://github.com/arunofhyd/Rec/releases/tag/v${release.version}" target="_blank" rel="noopener noreferrer" class="font-bold text-rec-red hover:underline text-sm font-mono">
+                                            v${release.version}
+                                        </a>
+                                        ${isLatest ? `<span class="px-1.5 py-0.5 rounded text-[10px] bg-rec-red/10 border border-rec-red/30 text-rec-red font-semibold">LATEST</span>` : ''}
+                                    </div>
+                                    <span class="text-ink-faintLight dark:text-ink-faintDark text-[11px] font-mono">${release.date || ''}</span>
+                                </div>
+                                <ul class="space-y-2 mt-2">
+                                    ${changesHtml}
+                                </ul>
+                            </div>
+                        `;
+                        container.appendChild(card);
+                    });
+                }
+            }).catch(() => {
+                const c = document.getElementById('changelog-container');
+                if (c) c.innerHTML = '<div class="text-ink-faintLight p-4 font-mono">Local changelog telemetry unavailable.</div>';
+            });
         });
     </script>
 </body>
