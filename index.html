@@ -52,6 +52,11 @@
     <!-- Tailwind CSS with ArtCraft Design Tokens -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+        function scrollCarousel(id, amount) {
+            const el = document.getElementById(id);
+            if (el) el.scrollBy({ left: amount, behavior: 'smooth' });
+        }
+    
         if (history.scrollRestoration) { history.scrollRestoration = 'manual'; }
         
         // Theme initialization
@@ -208,6 +213,13 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(140, 140, 150, 0.25); border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255, 59, 48, 0.5); }
+    
+        /* Custom scrollbar for horizontal release telemetry */
+        #changelog-container::-webkit-scrollbar { height: 4px; }
+        #changelog-container::-webkit-scrollbar-track { background: rgba(140, 140, 150, 0.05); }
+        #changelog-container::-webkit-scrollbar-thumb { background: rgba(255, 59, 48, 0.4); border-radius: 2px; }
+        #changelog-container::-webkit-scrollbar-thumb:hover { background: rgba(255, 59, 48, 0.8); }
+    
     </style>
 </head>
 <body class="bg-canvas-light dark:bg-canvas-dark text-ink-strongLight dark:text-ink-strongDark font-sans antialiased selection:bg-rec-red selection:text-white transition-colors duration-200">
@@ -570,27 +582,25 @@
         <section id="changelog" class="border-t border-borderLine-light dark:border-borderLine-dark py-20 bg-panel-subtleLight/30 dark:bg-panel-subtleDark/30">
             <div class="max-w-6xl mx-auto px-4 sm:px-6">
                 
-                <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-10">
+                <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
                     <div>
                         <span class="font-mono text-xs text-rec-red uppercase tracking-wider">Release Telemetry</span>
                         <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mt-1">Continuous improvement.</h2>
+                        <p class="text-xs text-ink-mutedLight dark:text-ink-mutedDark font-mono mt-1">Scroll sideways or use arrows to explore version history</p>
                     </div>
-                    <div class="mt-4 sm:mt-0 font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark flex items-center space-x-2">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                        <span class="version-badge">Now on v1.5.2</span>
+                    <div class="flex items-center space-x-3">
+                        <div class="font-mono text-xs text-ink-mutedLight dark:text-ink-mutedDark flex items-center space-x-2 mr-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span class="version-badge">Active Releases</span>
+                        </div>
+                        <button onclick="scrollCarousel('changelog-container', -380)" aria-label="Previous releases" class="w-8 h-8 rounded border border-borderLine-light dark:border-borderLine-dark hover:border-rec-red text-ink-mutedLight dark:text-ink-mutedDark flex items-center justify-center transition-all font-mono">←</button>
+                        <button onclick="scrollCarousel('changelog-container', 380)" aria-label="Next releases" class="w-8 h-8 rounded border border-borderLine-light dark:border-borderLine-dark hover:border-rec-red text-ink-mutedLight dark:text-ink-mutedDark flex items-center justify-center transition-all font-mono">→</button>
                     </div>
                 </div>
 
-                <!-- Changelog Cards Container (populated dynamically) -->
-                <div id="changelog-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
-                    <!-- Fallback / Loading card -->
-                    <div class="p-6 rounded border border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark">
-                        <div class="flex items-center justify-between mb-4">
-                            <span class="text-rec-red font-bold text-sm">v1.5.2 (Latest)</span>
-                            <span class="text-neutral-400 text-[11px]">2026-10-14</span>
-                        </div>
-                        <p class="text-neutral-400 text-xs">Loading updates...</p>
-                    </div>
+                <!-- Horizontal Side-Scrolling Changelog Container -->
+                <div id="changelog-container" class="flex gap-4 overflow-x-auto pb-6 pt-2 snap-x snap-mandatory scroll-smooth font-mono text-xs">
+                    <!-- Populated dynamically via JS -->
                 </div>
             </div>
         </section>
@@ -786,10 +796,10 @@
                 const container = document.getElementById('changelog-container');
                 if (container && Array.isArray(data.changelog)) {
                     container.innerHTML = '';
-                    data.changelog.slice(0, 6).forEach((release, index) => {
+                    data.changelog.forEach((release, index) => {
                         const isLatest = index === 0;
                         const card = document.createElement('div');
-                        card.className = `spotlight-card p-6 rounded border ${isLatest ? 'border-rec-red/60 bg-panel-light dark:bg-panel-dark' : 'border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark'} flex flex-col justify-between`;
+                        card.className = `w-[320px] sm:w-[380px] shrink-0 snap-start spotlight-card p-6 rounded border ${isLatest ? 'border-rec-red/60 bg-panel-light dark:bg-panel-dark' : 'border-borderLine-light dark:border-borderLine-dark bg-panel-light dark:bg-panel-dark'} flex flex-col justify-between`;
                         
                         let changesHtml = (release.changes || []).map(c => `
                             <li class="leading-relaxed text-ink-mutedLight dark:text-ink-mutedDark text-xs font-sans list-disc list-inside">
@@ -808,7 +818,7 @@
                                     </div>
                                     <span class="text-ink-faintLight dark:text-ink-faintDark text-[11px] font-mono">${release.date || ''}</span>
                                 </div>
-                                <ul class="space-y-2 mt-2">
+                                <ul class="space-y-2 mt-2 max-h-48 overflow-y-auto pr-1">
                                     ${changesHtml}
                                 </ul>
                             </div>
