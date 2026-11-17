@@ -125,7 +125,7 @@
         }
 
         function copyTerminalCommand(btn) {
-            const cmd = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command)"';
+            const cmd = 'curl -fsSL https://raw.githubusercontent.com/arunofhyd/Rec/main/install-rec.command | bash';
             const label = btn.querySelector('.copy-label') || btn;
             const original = label.innerText;
 
